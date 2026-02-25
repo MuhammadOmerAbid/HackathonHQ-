@@ -1,13 +1,4 @@
-import '../styles/global.css';
-
-export const metadata = {
-  title: 'Backend Practice',
-}
-
-export const viewport = {
-  width: 'device-width',
-  initialScale: 1,
-}
+import "../styles/global.css";
 
 export default function RootLayout({ children }) {
   return (

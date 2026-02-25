@@ -42,3 +42,44 @@ class PostViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)  # assign logged-in user as owner
     
+#hackathon plateform
+from rest_framework import viewsets, permissions
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from .models import Event, Team, Submission, JudgeFeedback
+from .serializers import EventSerializer, TeamSerializer, SubmissionSerializer, JudgeFeedbackSerializer
+from django.contrib.auth.models import User
+
+class EventViewSet(viewsets.ModelViewSet):
+    queryset = Event.objects.all().order_by('-start_date')
+    serializer_class = EventSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=True, methods=["get"])
+    def teams(self, request, pk=None):
+        event = self.get_object()
+        serializer = TeamSerializer(event.teams.all(), many=True)
+        return Response(serializer.data)
+
+class TeamViewSet(viewsets.ModelViewSet):
+    queryset = Team.objects.all()
+    serializer_class = TeamSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=True, methods=["post"])
+    def add_member(self, request, pk=None):
+        team = self.get_object()
+        user_id = request.data.get("user_id")
+        user = User.objects.get(id=user_id)
+        team.members.add(user)
+        return Response({"status": "member added"})
+
+class SubmissionViewSet(viewsets.ModelViewSet):
+    queryset = Submission.objects.all()
+    serializer_class = SubmissionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class JudgeFeedbackViewSet(viewsets.ModelViewSet):
+    queryset = JudgeFeedback.objects.all()
+    serializer_class = JudgeFeedbackSerializer
+    permission_classes = [permissions.IsAuthenticated]

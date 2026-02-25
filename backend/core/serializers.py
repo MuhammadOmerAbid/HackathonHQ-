@@ -33,3 +33,37 @@ class RegisterSerializer(serializers.ModelSerializer):
             password=validated_data["password"]
         )
         return user
+
+#hackathon plateform 
+from rest_framework import serializers
+from .models import Event, Team, Submission, JudgeFeedback
+from django.contrib.auth.models import User
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["id", "username", "email"]
+
+class EventSerializer(serializers.ModelSerializer):
+    organizer = UserSerializer(read_only=True)
+    class Meta:
+        model = Event
+        fields = "__all__"
+
+class TeamSerializer(serializers.ModelSerializer):
+    members = UserSerializer(many=True, read_only=True)
+    class Meta:
+        model = Team
+        fields = "__all__"
+
+class SubmissionSerializer(serializers.ModelSerializer):
+    team = TeamSerializer(read_only=True)
+    class Meta:
+        model = Submission
+        fields = "__all__"
+
+class JudgeFeedbackSerializer(serializers.ModelSerializer):
+    judge = UserSerializer(read_only=True)
+    class Meta:
+        model = JudgeFeedback
+        fields = "__all__"

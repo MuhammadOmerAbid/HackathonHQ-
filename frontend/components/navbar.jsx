@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import axios from "../utils/axios";
 
@@ -116,11 +115,11 @@ export default function LiquidGlassNavbar() {
   }, []);
 
   // Calculate styles based on scroll
-  const blurIntensity = 8 + (scrollProgress * 12);
-  const bgOpacity = 0.15 + (scrollProgress * 0.2);
+  const blurIntensity = 8 + (scrollProgress * 12); // 8px to 20px
+  const bgOpacity = 0.15 + (scrollProgress * 0.2); // 0.15 to 0.35
 
   const bubbleStyle = {
-    transform: `translateX(${bubblePosition - 60}px)`, // Adjusted for larger nav items
+    transform: `translateX(${bubblePosition - 48}px)`,
   };
 
   const mobileBubbleStyle = {
@@ -139,29 +138,17 @@ export default function LiquidGlassNavbar() {
             WebkitBackdropFilter: `blur(${blurIntensity}px)`,
           }}
         >
-          {/* Logo with Images - Made Much Larger */}
+          {/* Logo */}
           <Link href="/" className="glass-logo">
-            <Image 
-              src="/logo.png" 
-              alt="HackForge Logo" 
-              width={48} 
-              height={48}
-              className="glass-logo-image"
-              priority
-            />
-            <Image 
-              src="/HackForge.png" 
-              alt="HackForge" 
-              width={180} 
-              height={48}
-              className="glass-logo-text-image"
-              priority
-            />
+            <svg className="glass-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0114 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+            <span className="glass-logo-text">HackForge</span>
           </Link>
 
           {/* Navigation Items */}
           <div className="glass-nav">
-            {/* Animated Bubble - Made larger */}
+            {/* Animated Bubble */}
             <div className="glass-nav-bubble" style={bubbleStyle} />
 
             {/* Nav Items */}
@@ -225,7 +212,7 @@ export default function LiquidGlassNavbar() {
         </div>
       </nav>
 
-      {/* Spacer - Increased height for larger navbar */}
+      {/* Spacer */}
       <div className="glass-navbar-spacer"></div>
     </>
   );

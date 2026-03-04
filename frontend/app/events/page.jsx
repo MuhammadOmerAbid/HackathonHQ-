@@ -2,26 +2,71 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import axios from "../../utils/axios";
 
 export default function EventsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all"); // all, upcoming, ongoing, past
+  const [filter, setFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [user, setUser] = useState(null);
+  const [isOrganizer, setIsOrganizer] = useState(false);
+  const [error, setError] = useState("");
+
+  // Check for error message from redirect
+  useEffect(() => {
+    const errorMsg = searchParams.get('error');
+    if (errorMsg) {
+      setError(errorMsg);
+      // Clear after 5 seconds
+      setTimeout(() => setError(""), 5000);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
-    const fetchEvents = async () => {
+    const fetchData = async () => {
       try {
-        const res = await axios.get("/events/");
-        setEvents(res.data.results);
+        // Fetch events first
+        const eventsRes = await axios.get("/events/");
+        setEvents(eventsRes.data.results || []);
+        
+        // Check if user is logged in and has organizer rights
+        const token = localStorage.getItem('access');
+        if (token) {
+          try {
+            // Set token in headers
+            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            
+            // Get current user info
+            const userRes = await axios.get("/users/me/");
+            console.log("User data:", userRes.data);
+            setUser(userRes.data);
+            
+            // Check if user is organizer (profile?.is_organizer === true)
+            const organizerStatus = 
+              userRes.data.profile?.is_organizer === true || 
+              userRes.data.is_staff || 
+              userRes.data.is_superuser;
+            
+            console.log("Is organizer?", organizerStatus);
+            setIsOrganizer(organizerStatus);
+            
+          } catch (err) {
+            console.error("Error fetching user:", err);
+            setUser(null);
+            setIsOrganizer(false);
+          }
+        }
       } catch (err) {
-        console.error(err);
+        console.error("Error fetching events:", err);
       } finally {
         setLoading(false);
       }
     };
-    fetchEvents();
+    fetchData();
   }, []);
 
   const filterEvents = (events) => {
@@ -61,6 +106,22 @@ export default function EventsPage() {
     return { label: "Live", color: "green" };
   };
 
+  const handleCreateClick = () => {
+    const token = localStorage.getItem('access');
+    
+    if (!token) {
+      // Not logged in, redirect to login
+      sessionStorage.setItem('redirectAfterLogin', '/events/create');
+      router.push('/login?message=Please login to create an event');
+    } else if (!isOrganizer) {
+      // Logged in but not organizer
+      setError("Only event organizers can create events. If you're interested in organizing, please contact us.");
+    } else {
+      // Is organizer, go to create page
+      router.push('/events/create');
+    }
+  };
+
   const filteredEvents = filterEvents(events);
 
   if (loading) {
@@ -83,10 +144,60 @@ export default function EventsPage() {
       <div className="blob blob3"></div>
 
       <div className="events-card">
-        <div className="events-header">
-          <h1 className="events-title">Hackathons</h1>
-          <p className="events-subtitle">Discover and join exciting hackathon events</p>
+        {/* Header with Create Button - Only visible to organizers */}
+        <div className="events-header" style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem',
+          marginBottom: '2rem'
+        }}>
+          <div>
+            <h1 className="events-title">Hackathons</h1>
+            <p className="events-subtitle">Discover and join exciting hackathon events</p>
+          </div>
+          
+          {/* Create Event Button - ONLY SHOW TO ORGANIZERS */}
+          {isOrganizer && (
+            <button onClick={handleCreateClick} className="create-event-btn">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Create Event
+            </button>
+          )}
+
+          {/* Show login prompt for non-logged in users who might want to create */}
+          {!user && (
+            <button onClick={() => router.push('/login')} className="login-to-create-btn">
+              Login to View More
+            </button>
+          )}
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="error-message" style={{
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            color: '#f87171',
+            padding: '1rem',
+            borderRadius: '12px',
+            marginBottom: '1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem'
+          }}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            {error}
+          </div>
+        )}
 
         {/* Search and Filter Bar */}
         <div className="events-filters">
@@ -126,6 +237,11 @@ export default function EventsPage() {
               <line x1="12" y1="16" x2="12.01" y2="16"></line>
             </svg>
             <p className="events-empty-text">No hackathons found</p>
+            {isOrganizer && (
+              <button onClick={handleCreateClick} className="events-empty-create-btn">
+                Create the First Event
+              </button>
+            )}
           </div>
         ) : (
           <div className="events-grid">
@@ -146,7 +262,11 @@ export default function EventsPage() {
                     <div className="events-item-header">
                       <div>
                         <h3 className="events-item-title">{event.name}</h3>
-                        <p className="events-item-organizer">by {event.organizer?.username || 'Organizer'}</p>
+                        <p className="events-item-organizer">
+                          Organized by {event.organizer_username || event.organizer?.username || 'HackForge'}
+                          {event.organizer_details?.profile?.organization_name && 
+                            ` • ${event.organizer_details.profile.organization_name}`}
+                        </p>
                       </div>
                       <span className={`events-status-badge ${status.color}`}>
                         {status.label}
@@ -184,6 +304,51 @@ export default function EventsPage() {
                 </Link>
               );
             })}
+          </div>
+        )}
+
+        {/* Show organizer info if user is organizer */}
+        {isOrganizer && (
+          <div className="organizer-info-banner" style={{
+            marginTop: '2rem',
+            padding: '1rem',
+            background: 'rgba(102, 126, 234, 0.1)',
+            border: '1px solid rgba(102, 126, 234, 0.3)',
+            borderRadius: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '1rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontWeight: 'bold'
+              }}>
+                🎯
+              </div>
+              <div>
+                <p style={{ color: 'white', margin: '0 0 0.25rem 0' }}>
+                  You are an <strong>Event Organizer</strong>
+                </p>
+                <p style={{ color: 'rgba(255,255,255,0.6)', margin: '0', fontSize: '0.85rem' }}>
+                  {user?.profile?.organization_name 
+                    ? `Organizing for ${user.profile.organization_name}`
+                    : 'You can create and manage hackathon events'}
+                </p>
+              </div>
+            </div>
+            <button onClick={handleCreateClick} className="create-event-btn" style={{ margin: 0 }}>
+              Create New Event
+            </button>
           </div>
         )}
       </div>

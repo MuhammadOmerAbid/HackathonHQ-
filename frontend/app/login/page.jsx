@@ -1,17 +1,30 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation"; // <-- import router
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import axios from "../../utils/axios";
 import "../../styles/global.css";
 
 export default function LoginPage() {
-  const router = useRouter(); // <-- initialize router
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   
+  // Get redirect URL and message from query parameters
+  const redirectUrl = searchParams.get('redirect') || '/posts';
+  const messageText = searchParams.get('message');
+
+  // Show message from URL if present
+  useEffect(() => {
+    if (messageText) {
+      setMessage({ type: "info", text: messageText });
+    }
+  }, [messageText]);
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -19,16 +32,24 @@ export default function LoginPage() {
 
     try {
       const res = await axios.post("/token/", { username, password });
+      
+      // Store tokens
       localStorage.setItem("access", res.data.access);
       localStorage.setItem("refresh", res.data.refresh);
+      
+      // Set axios default header
+      axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.access}`;
+      
       setMessage({ type: "success", text: "Login successful!" });
 
-      // clear form
+      // Clear form
       setUsername("");
       setPassword("");
 
-      // redirect to /posts
-      router.push("/posts"); // <-- this triggers the page change
+      // Redirect to the URL from parameter or default to /posts
+      console.log("Redirecting to:", redirectUrl);
+      router.push(redirectUrl);
+      
     } catch (err) {
       console.error(err);
       setMessage({ 
@@ -102,7 +123,11 @@ export default function LoginPage() {
           {message && (
             <div className={`register-message ${message.type}`}>
               <svg className="register-message-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                {message.type === "success" ? <path d="M20 6L9 17l-5-5" /> : <circle cx="12" cy="12" r="10" />}
+                {message.type === "success" ? (
+                  <path d="M20 6L9 17l-5-5" />
+                ) : (
+                  <circle cx="12" cy="12" r="10" />
+                )}
               </svg>
               {message.text}
             </div>
@@ -110,7 +135,7 @@ export default function LoginPage() {
         </form>
 
         <p className="register-login-link">
-          Don’t have an account? <a href="/register">Sign up</a>
+          Don't have an account? <Link href="/register">Sign up</Link>
         </p>
       </div>
     </div>

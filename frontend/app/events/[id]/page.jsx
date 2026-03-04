@@ -215,64 +215,90 @@ export default function EventDetailPage() {
           )}
 
           {activeTab === "teams" && (
-            <div className="event-detail-teams">
-              <div className="event-detail-teams-header">
-                <h3>Registered Teams ({teams.length})</h3>
-                {status.label === "Live Now" && (
-                  <Link href={`/events/${id}/register-team`} className="event-detail-teams-create">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="12" y1="5" x2="12" y2="19"></line>
-                      <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                    Create Team
-                  </Link>
-                )}
-              </div>
+  <div>
+    {/* Header - using event detail teams styles */}
+    <div className="event-detail-teams-header">
+      <h3>Registered Teams ({teams.length})</h3>
+      {status.label === "Live Now" && (
+        <Link href={`/events/${id}/register-team`} className="event-detail-teams-create">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          Create Team
+        </Link>
+      )}
+    </div>
 
-              {teams.length === 0 ? (
-                <div className="event-detail-teams-empty">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="9" cy="7" r="4"></circle>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                  </svg>
-                  <p>No teams have registered yet</p>
-                  {status.label === "Live Now" && (
-                    <Link href={`/events/${id}/register-team`} className="event-detail-teams-empty-btn">
-                      Be the first to register
-                    </Link>
+    {teams.length === 0 ? (
+      /* Empty state - using event detail teams empty styles */
+      <div className="event-detail-teams-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        <p>No teams have registered yet</p>
+        {status.label === "Live Now" && (
+          <Link href={`/events/${id}/register-team`} className="event-detail-teams-empty-btn">
+            Be the first to register
+          </Link>
+        )}
+      </div>
+    ) : (
+      /* Teams Grid - using the main team cards from teams page for consistency */
+      <div className="teams-grid" style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', 
+        gap: '1rem',
+        marginTop: '1rem' 
+      }}>
+        {teams.map((team) => (
+          <Link href={`/teams/${team.id}`} key={team.id} className="team-card-link">
+            <div className="team-card" style={{ padding: '1.25rem' }}>
+              <div className="team-card-header">
+                <div className="team-card-avatar" style={{ width: '40px', height: '40px', fontSize: '1.2rem' }}>
+                  {team.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="team-card-info">
+                  <h3 className="team-card-name" style={{ fontSize: '1rem' }}>{team.name}</h3>
+                </div>
+              </div>
+              
+              <div className="team-card-members" style={{ marginTop: '0.5rem', padding: '0.5rem 0' }}>
+                <div className="team-card-members-avatars">
+                  {team.members?.slice(0, 4).map((member, idx) => (
+                    <div 
+                      key={idx} 
+                      className="member-avatar"
+                      style={{ 
+                        width: '28px', 
+                        height: '28px', 
+                        fontSize: '0.75rem',
+                        background: `linear-gradient(135deg, #${Math.floor(Math.random()*16777215).toString(16).slice(0,6)}, #${Math.floor(Math.random()*16777215).toString(16).slice(0,6)})`
+                      }}
+                    >
+                      {member.username?.charAt(0).toUpperCase()}
+                    </div>
+                  ))}
+                  {team.members?.length > 4 && (
+                    <div className="member-avatar more" style={{ width: '28px', height: '28px', fontSize: '0.7rem' }}>
+                      +{team.members.length - 4}
+                    </div>
                   )}
                 </div>
-              ) : (
-                <div className="event-detail-teams-grid">
-                  {teams.map((team) => (
-                    <Link href={`/teams/${team.id}`} key={team.id} className="event-detail-team-card">
-                      <div className="event-detail-team-header">
-                        <h4>{team.name}</h4>
-                        <span className="event-detail-team-size">{team.members.length} members</span>
-                      </div>
-                      <div className="event-detail-team-members">
-                        {team.members.slice(0, 3).map((member, idx) => (
-                          <div key={idx} className="event-detail-team-member">
-                            <div className="event-detail-team-member-avatar">
-                              {member.username.charAt(0).toUpperCase()}
-                            </div>
-                            <span>{member.username}</span>
-                          </div>
-                        ))}
-                        {team.members.length > 3 && (
-                          <div className="event-detail-team-member-more">
-                            +{team.members.length - 3}
-                          </div>
-                        )}
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
+                <span className="team-card-members-count" style={{ fontSize: '0.8rem' }}>
+                  {team.members?.length || 0} members
+                </span>
+              </div>
             </div>
-          )}
+          </Link>
+        ))}
+      </div>
+    )}
+  </div>
+)}
 
           {activeTab === "submissions" && (
             <div className="event-detail-submissions">

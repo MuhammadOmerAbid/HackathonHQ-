@@ -122,11 +122,12 @@ export default function TeamDetailPage() {
     );
   }
 
-  const memberCount = team.members?.length || 0;
+  // Use members_details from your serializer
+  const memberCount = team.members_details?.length || 0;
   const maxMembers = team.max_members || 4;
   const isFull = memberCount >= maxMembers;
   const isLeader = user && team.leader?.id === user.id;
-  const isMember = user && team.members?.some(m => m.id === user.id);
+  const isMember = user && team.members_details?.some(m => m.id === user.id);
 
   return (
     <div className="team-detail-container">
@@ -150,12 +151,12 @@ export default function TeamDetailPage() {
         {/* Team Header */}
         <div className="team-detail-title-section">
           <div className="team-detail-avatar">
-            {team.name.charAt(0).toUpperCase()}
+            {team.name?.charAt(0).toUpperCase() || 'T'}
           </div>
           <div>
             <h1 className="team-detail-name">{team.name}</h1>
             <p className="team-detail-event">
-              {team.event?.name || "Hackathon Team"}
+              {team.event_name || "Hackathon Team"}
             </p>
           </div>
         </div>
@@ -182,7 +183,7 @@ export default function TeamDetailPage() {
             </svg>
             <div>
               <span className="meta-label">Team Lead</span>
-              <span className="meta-value">{team.leader?.username}</span>
+              <span className="meta-value">{team.leader?.username || "Unknown"}</span>
             </div>
           </div>
 
@@ -208,28 +209,62 @@ export default function TeamDetailPage() {
           <p>{team.description || "No description provided."}</p>
         </div>
 
-        {/* Members Section */}
+        {/* Members Section - FIXED SINGLE VERSION */}
         <div className="team-detail-members-section">
           <h3>Team Members ({memberCount})</h3>
-          {team.members?.length > 0 ? (
+          
+          {team.members_details && team.members_details.length > 0 ? (
             <div className="team-detail-members-grid">
-              {team.members.map((member) => (
-                <Link href={`/users/${member.id}`} key={member.id} className="member-card">
-                  <div className="member-card-avatar">
-                    {member.username.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="member-card-info">
-                    <span className="member-card-name">{member.username}</span>
-                    {member.id === team.leader?.id && (
-                      <span className="member-card-badge">Leader</span>
-                    )}
-                  </div>
-                </Link>
-              ))}
+              {team.members_details.map((member, index) => {
+                // Safe key using member.id or index
+                const safeKey = member?.id ? `member-${member.id}` : `member-index-${index}`;
+                
+                const getInitial = () => {
+                  if (!member || !member.username) return '?';
+                  return member.username.charAt(0).toUpperCase();
+                };
+
+                // Member content
+                const MemberContent = () => (
+                  <>
+                    <div className="member-card-avatar">
+                      {getInitial()}
+                    </div>
+                    <div className="member-card-info">
+                      <span className="member-card-name">
+                        {member?.username || 'Unknown User'}
+                      </span>
+                      {member?.id === team.leader?.id && (
+                        <span className="member-card-badge">Leader</span>
+                      )}
+                    </div>
+                  </>
+                );
+
+                // If member has no id, render without link
+                if (!member?.id) {
+                  return (
+                    <div key={safeKey} className="member-card" style={{ cursor: 'default' }}>
+                      <MemberContent />
+                    </div>
+                  );
+                }
+
+                // If member has id, render with link
+                return (
+                  <Link 
+                    href={`/users/${member.id}`} 
+                    key={safeKey} 
+                    className="member-card"
+                  >
+                    <MemberContent />
+                  </Link>
+                );
+              })}
             </div>
           ) : (
-            <div className="team-detail-members-empty">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <div className="event-detail-teams-empty">
+              <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
                 <circle cx="9" cy="7" r="4"></circle>
               </svg>

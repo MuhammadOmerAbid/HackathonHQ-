@@ -1,17 +1,23 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import axios from "../utils/axios";
+import Image from "next/image";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext"; // Add this import
 
 export default function LiquidGlassNavbar() {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [bubblePosition, setBubblePosition] = useState(0);
-  const [user, setUser] = useState(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef(null);
   const pathname = usePathname();
+  const router = useRouter();
+  
+  // Use auth context instead of local state
+  const { user, isOrganizer, logout, loading } = useAuth();
 
-  // Navigation items
+  // Navigation items - filter based on role
   const navItems = [
     { 
       id: 0,
@@ -37,18 +43,28 @@ export default function LiquidGlassNavbar() {
       icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
       label: "Submissions" 
     },
-    { 
-      id: 4,
-      path: "/posts", 
-      icon: "M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z",
-      label: "Posts" 
-    },
-    { 
-      id: 5,
-      path: "/users", 
-      icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
-      label: "Users" 
-    },
+    // Only show Posts and Users to logged-in users
+    ...(user ? [
+      { 
+        id: 4,
+        path: "/posts", 
+        icon: "M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z",
+        label: "Posts" 
+      },
+      { 
+        id: 5,
+        path: "/users", 
+        icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
+        label: "Users" 
+      }
+    ] : []),
+    // Add Create Event for organizers
+    ...(isOrganizer ? [{
+      id: 6,
+      path: "/events/create",
+      icon: "M12 4v16m8-8H4",
+      label: "Create Event"
+    }] : [])
   ];
 
   // Get current active index based on pathname
@@ -64,7 +80,7 @@ export default function LiquidGlassNavbar() {
 
   useEffect(() => {
     setActiveIndex(getActiveIndex());
-  }, [pathname]);
+  }, [pathname, user, isOrganizer]); // Re-calc when user role changes
 
   // Track scroll progress for blur effect
   useEffect(() => {
@@ -99,24 +115,30 @@ export default function LiquidGlassNavbar() {
     updateBubblePosition();
     window.addEventListener('resize', updateBubblePosition);
     return () => window.removeEventListener('resize', updateBubblePosition);
-  }, [activeIndex]);
+  }, [activeIndex, navItems.length]); // Add navItems.length as dependency
 
-  // Fetch user
+  // Close dropdown when clicking outside
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await axios.get("/users/me/");
-        setUser(res.data);
-      } catch {
-        setUser(null);
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowDropdown(false);
       }
     };
-    fetchUser();
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Handle logout
+  const handleLogout = () => {
+    logout(); // Use auth context logout
+    setShowDropdown(false);
+    router.push('/');
+  };
+
   // Calculate styles based on scroll
-  const blurIntensity = 8 + (scrollProgress * 12); // 8px to 20px
-  const bgOpacity = 0.15 + (scrollProgress * 0.2); // 0.15 to 0.35
+  const blurIntensity = 8 + (scrollProgress * 12);
+  const bgOpacity = 0.15 + (scrollProgress * 0.2);
 
   const bubbleStyle = {
     transform: `translateX(${bubblePosition - 48}px)`,
@@ -125,6 +147,24 @@ export default function LiquidGlassNavbar() {
   const mobileBubbleStyle = {
     transform: `translateX(${bubblePosition * 0.6 - 28}px)`,
   };
+
+  // Show loading skeleton if needed (optional)
+  if (loading) {
+    return (
+      <>
+        <nav className="glass-nav-wrapper">
+          <div className="glass-nav-container" style={{ backgroundColor: 'rgba(10, 10, 10, 0.15)' }}>
+            <Link href="/" className="glass-logo">
+              <Image src="/logo.png" alt="HackForge Logo" width={32} height={32} className="glass-logo-image" priority />
+              <Image src="/HackForge.png" alt="HackForge" width={120} height={32} className="glass-logo-text-image" priority />
+            </Link>
+            <div className="glass-nav-placeholder"></div>
+          </div>
+        </nav>
+        <div className="glass-navbar-spacer"></div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -138,12 +178,24 @@ export default function LiquidGlassNavbar() {
             WebkitBackdropFilter: `blur(${blurIntensity}px)`,
           }}
         >
-          {/* Logo */}
+          {/* Logo with Images */}
           <Link href="/" className="glass-logo">
-            <svg className="glass-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0114 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-            <span className="glass-logo-text">HackForge</span>
+            <Image 
+              src="/logo.png" 
+              alt="HackForge Logo" 
+              width={32} 
+              height={32}
+              className="glass-logo-image"
+              priority
+            />
+            <Image 
+              src="/HackForge.png" 
+              alt="HackForge" 
+              width={120} 
+              height={32}
+              className="glass-logo-text-image"
+              priority
+            />
           </Link>
 
           {/* Navigation Items */}
@@ -166,19 +218,48 @@ export default function LiquidGlassNavbar() {
             ))}
           </div>
 
-          {/* User Menu */}
-          <div className="glass-user">
+          {/* User Menu with Dropdown */}
+          <div className="glass-user" ref={dropdownRef}>
             {user ? (
-              <div className="glass-user-menu">
+              <div className="glass-user-menu" onClick={() => setShowDropdown(!showDropdown)}>
                 <div className="glass-user-avatar">
-                  {user.username.charAt(0).toUpperCase()}
+                  {user.username?.charAt(0).toUpperCase() || 'U'}
                 </div>
-                <span className="glass-user-name">{user.username}</span>
+                <span className="glass-user-name">{user.username || 'User'}</span>
                 <button className="glass-user-dropdown">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="6 9 12 15 18 9"></polyline>
                   </svg>
                 </button>
+                
+                {/* Dropdown Menu */}
+                {showDropdown && (
+                  <div className="glass-dropdown">
+                    <Link href="/profile" className="glass-dropdown-item" onClick={() => setShowDropdown(false)}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                      </svg>
+                      Profile
+                    </Link>
+                    <Link href="/settings" className="glass-dropdown-item" onClick={() => setShowDropdown(false)}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H5.78a1.65 1.65 0 0 0-1.51 1 1.65 1.65 0 0 0 .33 1.82l.09.1A10 10 0 0 0 12 17.66a10 10 0 0 0 6.22-2.46l.09-.1z"></path>
+                      </svg>
+                      Settings
+                    </Link>
+                    <div className="glass-dropdown-divider"></div>
+                    <button onClick={handleLogout} className="glass-dropdown-item logout">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                      </svg>
+                      Logout
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="glass-auth-buttons">
@@ -196,7 +277,7 @@ export default function LiquidGlassNavbar() {
           {/* Animated Bubble */}
           <div className="glass-mobile-bubble" style={mobileBubbleStyle} />
 
-          {/* Mobile Nav Items */}
+          {/* Mobile Nav Items - limit to first 5 */}
           {navItems.slice(0, 5).map((item) => (
             <Link
               key={item.id}

@@ -4,18 +4,20 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import axios from "../../utils/axios";
+import { useAuth } from "@/context/AuthContext"; // Add this import
 import "../../styles/global.css";
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { login } = useAuth(); // Add this line
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   
   // Get redirect URL and message from query parameters
-  const redirectUrl = searchParams.get('redirect') || '/posts';
+  const redirectUrl = searchParams.get('redirect') || '/'; // Changed from /posts to /
   const messageText = searchParams.get('message');
 
   // Show message from URL if present
@@ -33,12 +35,8 @@ export default function LoginPage() {
     try {
       const res = await axios.post("/token/", { username, password });
       
-      // Store tokens
-      localStorage.setItem("access", res.data.access);
-      localStorage.setItem("refresh", res.data.refresh);
-      
-      // Set axios default header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.access}`;
+      // Use auth context to login (this will update navbar immediately)
+      await login(res.data);
       
       setMessage({ type: "success", text: "Login successful!" });
 
@@ -46,7 +44,7 @@ export default function LoginPage() {
       setUsername("");
       setPassword("");
 
-      // Redirect to the URL from parameter or default to /posts
+      // Redirect to dashboard or stored URL
       console.log("Redirecting to:", redirectUrl);
       router.push(redirectUrl);
       

@@ -141,11 +141,11 @@ export default function LiquidGlassNavbar() {
   const bgOpacity = 0.15 + (scrollProgress * 0.2);
 
   const bubbleStyle = {
-    transform: `translateX(${bubblePosition - 48}px)`,
+    transform: `translateX(${bubblePosition - 40}px)`,
   };
 
   const mobileBubbleStyle = {
-    transform: `translateX(${bubblePosition * 0.6 - 28}px)`,
+    transform: `translateX(${bubblePosition * 0.6 - 24}px)`, 
   };
 
   // Show loading skeleton if needed (optional)

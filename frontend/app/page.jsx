@@ -4,636 +4,748 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import axios from "../utils/axios";
 
-// Inline styles to replicate Vision UI dark blue aesthetic
-const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+/* ─────────────────────────────────────────────────────────────
+   DESIGN SYSTEM
+   Font: Syne (display) + DM Sans (body)
+   Base: #0c0c0f  Card: #111114  Border: #1e1e24
+   Accent: #6EE7B7 (mint — used sparingly)
+   Secondary text: #5c5c6e
+   ───────────────────────────────────────────────────────────── */
+const css = `
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  .db-root {
-    min-height: 100vh;
-    background: #0a0f1a;  // Darker, more sophisticated background
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    color: #fff;
-    display: flex;
-  }
+:root {
+  --bg:        #0c0c0f;
+  --surface:   #111114;
+  --surface2:  #17171b;
+  --border:    #1e1e24;
+  --border2:   #26262e;
+  --accent:    #6EE7B7;
+  --accent-dim:#6EE7B720;
+  --accent-mid:#6EE7B740;
+  --text:      #f0f0f3;
+  --muted:     #5c5c6e;
+  --muted2:    #3a3a48;
+  --danger:    #f87171;
+  --warn:      #fbbf24;
+  --radius:    12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+}
 
-  /* ── Sidebar ── */
-  .db-sidebar {
-    width: 220px;
-    min-height: 100vh;
-    background: linear-gradient(180deg, #0d1326 0%, #0a0f1f 100%);
-    border-right: 1px solid rgba(16, 185, 129, 0.15);  // Emerald tinted border
-    backdrop-filter: blur(20px);
-    display: flex;
-    flex-direction: column;
-    padding: 28px 16px;
-    position: fixed;
-    left: 0; top: 0; bottom: 0;
-    z-index: 100;
-  }
-  .db-logo {
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 2px;
-    color: rgba(255,255,255,0.5);
-    text-transform: uppercase;
-    padding: 0 12px 28px;
-    border-bottom: 1px solid rgba(16, 185, 129, 0.15);
-    margin-bottom: 20px;
-  }
-  .db-logo span { 
-    background: linear-gradient(135deg, #10b981 0%, #8b5cf6 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  .db-nav-label {
-    font-size: 10px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.3);
-    padding: 0 12px;
-    margin: 18px 0 8px;
-  }
-  .db-nav-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 11px 14px;
-    border-radius: 12px;
-    color: rgba(255,255,255,0.5);
-    font-size: 13.5px;
-    font-weight: 500;
-    text-decoration: none;
-    transition: all 0.2s;
-    margin-bottom: 2px;
-  }
-  .db-nav-item:hover { background: rgba(16, 185, 129, 0.1); color: #fff; }
-  .db-nav-item.active {
-    background: linear-gradient(90deg, rgba(16, 185, 129, 0.25) 0%, rgba(139, 92, 246, 0.15) 100%);
-    color: #fff;
-    border-left: 3px solid #10b981;
-  }
-  .db-nav-item svg { width: 17px; height: 17px; flex-shrink: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; min-height: 100vh; }
 
-  .db-help-card {
-    margin-top: auto;
-    background: linear-gradient(135deg, #059669 0%, #7c3aed 100%);
-    border-radius: 16px;
-    padding: 18px;
-    font-size: 12.5px;
-  }
-  .db-help-card h4 { font-weight: 700; margin-bottom: 4px; }
-  .db-help-card p { color: rgba(255,255,255,0.75); line-height: 1.5; font-size: 12px; }
-  .db-help-btn {
-    display: block;
-    margin-top: 12px;
-    text-align: center;
-    background: rgba(255,255,255,0.15);
-    border-radius: 8px;
-    padding: 7px;
-    color: #fff;
-    text-decoration: none;
-    font-size: 11.5px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    transition: background 0.2s;
-  }
-  .db-help-btn:hover { background: rgba(255,255,255,0.25); }
+/* ── PAGE SHELL ── */
+.dash-page {
+  min-height: 100vh;
+  background: var(--bg);
+  /* subtle grid texture */
+  background-image:
+    linear-gradient(rgba(110,231,183,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(110,231,183,0.025) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
 
-  /* ── Main ── */
-  .db-main {
-    margin-left: 220px;
-    flex: 1;
-    padding: 28px 28px 40px;
-    min-height: 100vh;
-    position: relative;
-    overflow-x: hidden;
-  }
+/* ── TOP NAV ── */
+.dash-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  height: 60px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(12,12,15,0.85);
+  backdrop-filter: blur(16px);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.dash-nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+.dash-nav-logomark {
+  width: 28px;
+  height: 28px;
+  border: 1.5px solid var(--accent);
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dash-nav-logomark svg { width: 14px; height: 14px; color: var(--accent); }
+.dash-nav-wordmark {
+  font-family: 'Syne', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.3px;
+}
+.dash-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.dash-nav-link {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.15s, background 0.15s;
+  letter-spacing: 0.1px;
+}
+.dash-nav-link:hover { color: var(--text); background: var(--surface2); }
+.dash-nav-link.active { color: var(--text); }
+.dash-nav-right { display: flex; align-items: center; gap: 10px; }
+.dash-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-decoration: none;
+  border: none;
+}
+.dash-nav-btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+}
+.dash-nav-btn-ghost:hover { border-color: var(--border2); color: var(--text); background: var(--surface2); }
+.dash-nav-btn-accent {
+  background: var(--accent);
+  color: #0c0c0f;
+  font-weight: 600;
+}
+.dash-nav-btn-accent:hover { background: #86efac; }
+.dash-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  border: 1.5px solid var(--accent-mid);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
 
-  /* background glow blobs - updated colors */
-  .db-main::before {
-    content: '';
-    position: fixed;
-    top: -100px; left: 200px;
-    width: 500px; height: 500px;
-    background: radial-gradient(circle, rgba(16, 185, 129, 0.12) 0%, transparent 70%);
-    pointer-events: none;
-    z-index: 0;
-  }
-  .db-main::after {
-    content: '';
-    position: fixed;
-    bottom: -100px; right: 0;
-    width: 400px; height: 400px;
-    background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
-    pointer-events: none;
-    z-index: 0;
-  }
+/* ── MAIN CONTENT ── */
+.dash-main {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 36px 32px 64px;
+}
 
-  .db-inner { position: relative; z-index: 1; }
+/* ── PAGE HEADER ── */
+.dash-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 40px;
+  gap: 20px;
+}
+.dash-header-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.dash-header-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.dash-header-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.dash-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+}
+.dash-subtitle {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 6px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.dash-header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.dash-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border-radius: var(--radius);
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-decoration: none;
+  border: none;
+}
+.dash-action-outline {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+}
+.dash-action-outline:hover { color: var(--text); border-color: var(--border2); background: var(--surface2); }
+.dash-action-primary {
+  background: var(--accent);
+  color: #0c0c0f;
+  font-weight: 600;
+}
+.dash-action-primary:hover { background: #86efac; }
 
-  /* ── Top Bar ── */
-  .db-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 28px;
-  }
-  .db-breadcrumb { font-size: 12px; color: rgba(255,255,255,0.4); }
-  .db-breadcrumb span { color: rgba(255,255,255,0.8); }
-  .db-topbar-right { display: flex; align-items: center; gap: 14px; }
-  .db-search {
-    background: rgba(16, 185, 129, 0.05);
-    border: 1px solid rgba(16, 185, 129, 0.15);
-    border-radius: 40px;
-    padding: 9px 18px;
-    color: rgba(255,255,255,0.5);
-    font-size: 13px;
-    width: 200px;
-    outline: none;
-    font-family: inherit;
-    transition: all 0.2s;
-  }
-  .db-search:focus { border-color: rgba(16, 185, 129, 0.5); color: #fff; }
-  .db-topbar-icon {
-    width: 36px; height: 36px;
-    border-radius: 50%;
-    background: rgba(16, 185, 129, 0.08);
-    border: 1px solid rgba(16, 185, 129, 0.15);
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-  .db-topbar-icon:hover { background: rgba(16, 185, 129, 0.15); }
-  .db-topbar-icon svg { width: 16px; height: 16px; color: rgba(255,255,255,0.6); }
-  .db-signin-btn {
-    background: none;
-    border: none;
-    color: rgba(255,255,255,0.7);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    display: flex; align-items: center; gap: 6px;
-  }
+/* ── STAT CARDS ── */
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 32px;
+}
+.dash-stat {
+  background: var(--surface);
+  padding: 24px 28px;
+  transition: background 0.15s;
+  position: relative;
+}
+.dash-stat:hover { background: var(--surface2); }
+.dash-stat-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.3px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+.dash-stat-value {
+  font-family: 'Syne', sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -1px;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+.dash-stat-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.dash-stat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-green { background: rgba(110,231,183,0.1); color: var(--accent); border: 1px solid rgba(110,231,183,0.2); }
+.badge-yellow { background: rgba(251,191,36,0.1); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
+.badge-neutral { background: var(--surface2); color: var(--muted); border: 1px solid var(--border2); }
 
-  /* ── Stat Cards Row ── */
-  .db-stats-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 18px;
-    margin-bottom: 22px;
-  }
-  .db-stat {
-    background: linear-gradient(127deg, #0d1428 19%, #0a1020 76%);
-    border: 1px solid rgba(16, 185, 129, 0.12);
-    border-radius: 20px;
-    padding: 20px 22px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    position: relative;
-    overflow: hidden;
-    transition: transform 0.2s, box-shadow 0.2s;
-  }
-  .db-stat:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(16, 185, 129, 0.15); }
-  .db-stat-icon-wrap {
-    width: 42px; height: 42px;
-    border-radius: 14px;
-    display: flex; align-items: center; justify-content: center;
-    margin-bottom: 8px;
-    font-size: 20px;
-  }
-  .db-stat-label { font-size: 12px; color: rgba(255,255,255,0.45); font-weight: 500; }
-  .db-stat-value { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
-  .db-stat-delta {
-    font-size: 11.5px;
-    font-weight: 600;
-    padding: 2px 7px;
-    border-radius: 20px;
-    width: fit-content;
-    margin-top: 2px;
-  }
-  .delta-green { background: rgba(16, 185, 129, 0.15); color: #10b981; }
-  .delta-purple { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
-  .delta-blue { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+/* ── GRID LAYOUT ── */
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.dash-grid-3 {
+  display: grid;
+  grid-template-columns: 1.8fr 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.col-span-2 { grid-column: span 2; }
 
-  /* ── Middle Row ── */
-  .db-mid-row {
-    display: grid;
-    grid-template-columns: 1.6fr 1fr 1fr;
-    gap: 18px;
-    margin-bottom: 22px;
-  }
+/* ── CARD ── */
+.dash-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.dash-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0;
+  margin-bottom: 20px;
+}
+.dash-card-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+.dash-card-link {
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.dash-card-link:hover { color: var(--accent); }
+.dash-card-body { padding: 0 24px 24px; }
 
-  .db-card {
-    background: linear-gradient(127deg, #0d1428 19%, #0a1020 76%);
-    border: 1px solid rgba(16, 185, 129, 0.12);
-    border-radius: 20px;
-    padding: 24px;
-    position: relative;
-    overflow: hidden;
-  }
-  .db-card-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: rgba(255,255,255,0.85);
-    margin-bottom: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .db-card-title a {
-    font-size: 11.5px;
-    color: rgba(16, 185, 129, 0.9);
-    text-decoration: none;
-    font-weight: 600;
-  }
+/* ── WELCOME CARD ── */
+.dash-welcome {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.dash-welcome::before {
+  content: '';
+  position: absolute;
+  right: -60px;
+  top: -60px;
+  width: 240px;
+  height: 240px;
+  background: radial-gradient(circle, rgba(110,231,183,0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+.dash-welcome-left {}
+.dash-welcome-greeting {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 4px;
+  letter-spacing: 0.2px;
+}
+.dash-welcome-name {
+  font-family: 'Syne', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.4px;
+  margin-bottom: 8px;
+}
+.dash-welcome-desc { font-size: 13.5px; color: var(--muted); line-height: 1.6; max-width: 380px; }
+.dash-welcome-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
 
-  /* Welcome card */
-  .db-welcome-card {
-    background: linear-gradient(127deg, #0d1428 19%, #0a1020 76%);
-    border: 1px solid rgba(16, 185, 129, 0.12);
-    border-radius: 20px;
-    padding: 28px;
-    display: flex;
-    align-items: center;
-    gap: 28px;
-    position: relative;
-    overflow: hidden;
-  }
-  .db-welcome-card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(ellipse at 70% 50%, rgba(16, 185, 129, 0.12) 0%, transparent 60%);
-    pointer-events: none;
-  }
-  .db-welcome-jellyfish {
-    width: 130px;
-    height: 110px;
-    border-radius: 16px;
-    background: linear-gradient(135deg, #065f46, #1e1b4b);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 60px;
-    flex-shrink: 0;
-    box-shadow: 0 0 40px rgba(16, 185, 129, 0.2);
-    border: 1px solid rgba(16, 185, 129, 0.2);
-  }
-  .db-welcome-text h2 {
-    font-size: 22px;
-    font-weight: 800;
-    margin-bottom: 6px;
-    background: linear-gradient(90deg, #10b981 0%, #8b5cf6 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  .db-welcome-text p {
-    font-size: 13px;
-    color: rgba(255,255,255,0.5);
-    line-height: 1.6;
-    max-width: 260px;
-  }
-  .db-welcome-cta {
-    margin-top: 14px;
-    font-size: 12px;
-    color: rgba(255,255,255,0.6);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-  }
+/* ── MINI CHART ── */
+.dash-sparkline { display: flex; align-items: flex-end; gap: 3px; height: 40px; }
+.dash-sparkline-bar {
+  width: 6px;
+  border-radius: 3px 3px 0 0;
+  background: var(--border2);
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.dash-sparkline-bar.active { background: var(--accent); }
 
-  /* Satisfaction / donut */
-  .db-donut-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-    flex: 1;
-  }
-  .db-donut {
-    position: relative;
-    width: 110px;
-    height: 110px;
-  }
-  .db-donut svg { transform: rotate(-90deg); }
-  .db-donut-label {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-  }
-  .db-donut-label span:first-child {
-    font-size: 22px;
-    font-weight: 800;
-    line-height: 1;
-    background: linear-gradient(135deg, #10b981, #8b5cf6);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  .db-donut-label span:last-child {
-    font-size: 11px;
-    color: rgba(255,255,255,0.4);
-  }
-  .db-donut-scale {
-    display: flex;
-    justify-content: space-between;
-    width: 100%;
-    font-size: 11px;
-    color: rgba(255,255,255,0.35);
-  }
+/* ── EVENT CARDS ── */
+.dash-event-list { display: flex; flex-direction: column; gap: 1px; background: var(--border); border-radius: var(--radius); overflow: hidden; }
+.dash-event-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  background: var(--surface);
+  text-decoration: none;
+  transition: background 0.15s;
+  cursor: pointer;
+}
+.dash-event-item:hover { background: var(--surface2); }
+.dash-event-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-live   { background: var(--accent); box-shadow: 0 0 8px rgba(110,231,183,0.5); }
+.dot-soon   { background: var(--warn); }
+.dot-closed { background: var(--muted2); }
+.dash-event-info { flex: 1; min-width: 0; }
+.dash-event-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+.dash-event-meta { font-size: 12px; color: var(--muted); }
+.dash-event-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+.tag-live   { background: rgba(110,231,183,0.08); color: var(--accent); border: 1px solid rgba(110,231,183,0.15); }
+.tag-soon   { background: rgba(251,191,36,0.08);  color: #fbbf24; border: 1px solid rgba(251,191,36,0.15); }
+.tag-closed { background: var(--surface2); color: var(--muted); border: 1px solid var(--border2); }
 
-  /* Referral / score */
-  .db-score-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-  .db-score-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .db-score-item label { font-size: 11.5px; color: rgba(255,255,255,0.4); display: block; margin-bottom: 2px; }
-  .db-score-item strong { font-size: 18px; font-weight: 800; }
-  .db-score-badge {
-    width: 70px; height: 70px;
-    border-radius: 50%;
-    background: conic-gradient(#10b981 0% 93%, rgba(16, 185, 129, 0.1) 93% 100%);
-    display: flex; align-items: center; justify-content: center;
-    position: relative;
-  }
-  .db-score-badge::before {
-    content: '';
-    position: absolute;
-    inset: 6px;
-    border-radius: 50%;
-    background: #0a0f1a;
-  }
-  .db-score-badge span { position: relative; z-index: 1; font-size: 16px; font-weight: 800; color: #10b981; }
-  .db-score-sub { font-size: 10px; color: rgba(255,255,255,0.3); text-align: center; margin-top: 2px; }
+/* ── ACTIVITY FEED ── */
+.dash-activity { display: flex; flex-direction: column; }
+.dash-activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.dash-activity-item:last-child { border-bottom: none; }
+.dash-activity-item:hover { background: var(--surface2); }
+.dash-activity-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.dash-activity-icon svg { width: 14px; height: 14px; color: var(--muted); }
+.dash-activity-icon.accent-icon { background: var(--accent-dim); border-color: var(--accent-mid); }
+.dash-activity-icon.accent-icon svg { color: var(--accent); }
+.dash-activity-text { flex: 1; min-width: 0; }
+.dash-activity-msg { font-size: 13px; color: var(--text); line-height: 1.5; margin-bottom: 2px; }
+.dash-activity-msg strong { font-weight: 600; }
+.dash-activity-time { font-size: 11.5px; color: var(--muted); }
 
-  /* ── Chart Row ── */
-  .db-chart-row {
-    display: grid;
-    grid-template-columns: 1.6fr 1fr;
-    gap: 18px;
-    margin-bottom: 22px;
-  }
+/* ── QUICK ACTIONS ── */
+.dash-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.dash-action-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  text-decoration: none;
+  transition: all 0.15s;
+  cursor: pointer;
+}
+.dash-action-card:hover {
+  border-color: var(--accent-mid);
+  background: var(--accent-dim);
+}
+.dash-action-card:hover .dash-action-card-icon { border-color: var(--accent-mid); background: var(--accent-dim); }
+.dash-action-card:hover .dash-action-card-icon svg { color: var(--accent); }
+.dash-action-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.dash-action-card-icon svg { width: 16px; height: 16px; color: var(--muted); transition: color 0.15s; }
+.dash-action-card-label { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 1px; }
+.dash-action-card-sub   { font-size: 11.5px; color: var(--muted); }
 
-  /* Simple SVG line chart */
-  .db-chart-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 6px; }
-  .db-chart-header h3 { font-size: 14px; font-weight: 700; }
-  .db-chart-delta { font-size: 11.5px; color: #10b981; font-weight: 600; }
-  .db-chart-sub { font-size: 11.5px; color: rgba(255,255,255,0.35); margin-bottom: 16px; }
-  .db-chart-svg-wrap { width: 100%; }
+/* ── TEAMS TABLE ── */
+.dash-table { width: 100%; border-collapse: collapse; }
+.dash-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0 24px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.dash-table td {
+  padding: 14px 24px;
+  font-size: 13px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.dash-table tr:last-child td { border-bottom: none; }
+.dash-table tr:hover td { background: var(--surface2); }
+.dash-team-name { font-weight: 500; display: flex; align-items: center; gap: 10px; }
+.dash-team-avatar {
+  width: 28px; height: 28px;
+  border-radius: 7px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.dash-member-stack { display: flex; }
+.dash-member-pip {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  background: var(--surface2);
+  margin-left: -6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.dash-member-stack .dash-member-pip:first-child { margin-left: 0; }
+.dash-progress-wrap { display: flex; align-items: center; gap: 10px; }
+.dash-progress {
+  flex: 1;
+  height: 3px;
+  background: var(--border2);
+  border-radius: 2px;
+  overflow: hidden;
+  max-width: 80px;
+}
+.dash-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; }
+.dash-progress-pct { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
 
-  /* Bar chart */
-  .db-bar-chart { display: flex; align-items: flex-end; gap: 8px; height: 100px; margin-top: 8px; }
-  .db-bar { flex: 1; border-radius: 6px 6px 0 0; position: relative; min-width: 12px; transition: opacity 0.2s; }
-  .db-bar:hover { opacity: 0.8; }
+/* ── STATUS DOTS ── */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.status-pill-green  { background: rgba(110,231,183,0.08); color: var(--accent); border: 1px solid rgba(110,231,183,0.15); }
+.status-pill-yellow { background: rgba(251,191,36,0.08);  color: #fbbf24; border: 1px solid rgba(251,191,36,0.15); }
+.status-pill-muted  { background: var(--surface2); color: var(--muted); border: 1px solid var(--border2); }
 
-  /* Active users */
-  .db-active-row {
-    display: flex;
-    gap: 20px;
-    margin-top: 16px;
-  }
-  .db-active-stat { display: flex; flex-direction: column; gap: 2px; }
-  .db-active-stat label { font-size: 10.5px; color: rgba(255,255,255,0.4); display: flex; align-items: center; gap: 5px; }
-  .db-active-dot { width: 8px; height: 8px; border-radius: 50%; }
-  .db-active-stat strong { font-size: 16px; font-weight: 800; }
+/* ── SECTION DIVIDER ── */
+.dash-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+  padding: 0 2px;
+}
 
-  /* ── Bottom Row ── */
-  .db-bottom-row {
-    display: grid;
-    grid-template-columns: 1.5fr 1fr;
-    gap: 18px;
-  }
+/* ── LOADING ── */
+.dash-loading {
+  min-height: 100vh;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--muted);
+}
+.dash-loading-ring {
+  width: 36px; height: 36px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+.dash-loading-label { font-size: 13px; letter-spacing: 0.3px; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Projects table */
-  .db-table { width: 100%; border-collapse: collapse; }
-  .db-table th {
-    font-size: 10.5px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.3);
-    font-weight: 600;
-    padding: 0 12px 12px;
-    text-align: left;
-  }
-  .db-table td {
-    padding: 10px 12px;
-    font-size: 13px;
-    border-top: 1px solid rgba(16, 185, 129, 0.08);
-  }
-  .db-table tr:hover td { background: rgba(16, 185, 129, 0.03); }
-  .db-table .project-name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
-  .db-project-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .db-avatars { display: flex; }
-  .db-avatar {
-    width: 24px; height: 24px;
-    border-radius: 50%;
-    border: 2px solid #0a0f1a;
-    margin-left: -6px;
-    font-size: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 700;
-    color: #fff;
-  }
-  .db-avatars .db-avatar:first-child { margin-left: 0; }
-  .db-progress-bar {
-    height: 4px;
-    border-radius: 4px;
-    background: rgba(255,255,255,0.07);
-    width: 80px;
-    overflow: hidden;
-  }
-  .db-progress-fill { height: 100%; border-radius: 4px; }
-  .db-table-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-  .db-table-meta { font-size: 11.5px; color: rgba(255,255,255,0.35); }
-  .db-table-meta span { color: #10b981; }
+/* ── SVG ICONS (inline, stroke-based) ── */
+.icon { display: block; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
-  /* Orders */
-  .db-order-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 11px 0;
-    border-bottom: 1px solid rgba(16, 185, 129, 0.08);
-  }
-  .db-order-item:last-child { border-bottom: none; }
-  .db-order-icon {
-    width: 34px; height: 34px;
-    border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 15px;
-    flex-shrink: 0;
-  }
-  .db-order-info { flex: 1; min-width: 0; }
-  .db-order-info p { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .db-order-info span { font-size: 11px; color: rgba(255,255,255,0.35); }
-  .db-order-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-  .db-order-header-badge { font-size: 11px; color: #10b981; background: rgba(16, 185, 129, 0.12); padding: 3px 9px; border-radius: 20px; font-weight: 600; }
+/* ── EMPTY STATE ── */
+.dash-empty { padding: 32px 24px; text-align: center; color: var(--muted); font-size: 13px; }
+.dash-empty svg { width: 28px; height: 28px; margin: 0 auto 10px; opacity: 0.3; }
 
-  /* Loading */
-  .db-loading {
-    min-height: 100vh;
-    background: #0a0f1a;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 16px;
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    color: rgba(255,255,255,0.5);
-  }
-  .db-spinner {
-    width: 40px; height: 40px;
-    border: 3px solid rgba(16, 185, 129, 0.2);
-    border-top-color: #10b981;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
+/* ── RESPONSIVE ── */
+@media (max-width: 900px) {
+  .dash-main { padding: 24px 20px 48px; }
+  .dash-stats { grid-template-columns: repeat(2, 1fr); }
+  .dash-grid-3, .dash-grid { grid-template-columns: 1fr; }
+  .col-span-2 { grid-column: span 1; }
+  .dash-nav-links { display: none; }
+  .dash-title { font-size: 22px; }
+}
+@media (max-width: 600px) {
+  .dash-nav { padding: 0 16px; }
+  .dash-main { padding: 20px 16px 48px; }
+  .dash-stats { grid-template-columns: repeat(2, 1fr); }
+  .dash-header { flex-direction: column; gap: 16px; }
+  .dash-welcome { flex-direction: column; align-items: flex-start; gap: 20px; }
+  .dash-actions-grid { grid-template-columns: 1fr; }
+}
 `;
 
-// ─── mini SVG line chart ───────────────────────────────────────────────
-function LineChart({ data, color, height = 80 }) {
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const w = 440, h = height;
-  const xStep = w / (data.length - 1);
+/* ─── ICONS ─── (SVG, no emoji) */
+const Icon = ({ d, size = 16, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" className="icon" style={{ display: "block" }} {...props}>
+    {Array.isArray(d) ? d.map((p, i) => <path key={i} d={p} />) : <path d={d} />}
+  </svg>
+);
+
+const ICONS = {
+  logo:        "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
+  events:      ["M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"],
+  teams:       ["M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2", "M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75", "M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0"],
+  submit:      ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"],
+  posts:       ["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"],
+  profile:     ["M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2", "M12 3m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0"],
+  arrow:       "M5 12h14M12 5l7 7-7 7",
+  arrowRight:  "M9 18l6-6-6-6",
+  plus:        "M12 5v14M5 12h14",
+  bell:        ["M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9", "M13.73 21a2 2 0 0 1-3.46 0"],
+  search:      ["M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0"],
+  team_act:    ["M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2", "M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0", "M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"],
+  file:        ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z", "M14 2v6h6M16 13H8M16 17H8M10 9H8"],
+  zap:         "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
+  trophy:      ["M6 9H3l3-7h12l3 7h-3", "M6 9c0 5.523 2.686 10 6 10s6-4.477 6-10", "M12 19v3M8 22h8"],
+};
+
+/* ─── SVG SPARKLINE CHART ─── */
+function SparkChart({ data, color = "var(--accent)", h = 52 }) {
+  const max = Math.max(...data), min = Math.min(...data), w = 200;
+  const xs = w / (data.length - 1);
   const pts = data.map((v, i) => {
-    const x = i * xStep;
-    const y = h - ((v - min) / (max - min || 1)) * (h - 10) - 5;
-    return `${x},${y}`;
-  });
-  const linePath = `M${pts.join(" L")}`;
-  const areaPath = `M0,${h} L${pts.join(" L")} L${w},${h} Z`;
+    const x = i * xs;
+    const y = h - ((v - min) / (max - min || 1)) * (h - 8) - 4;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" L");
+  const area = `M0,${h} L${pts} L${w},${h} Z`;
+  const id = `sg${Math.random().toString(36).slice(2,6)}`;
   return (
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: h }} preserveAspectRatio="none">
       <defs>
-        <linearGradient id={`grad-${color}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.18" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <path d={areaPath} fill={`url(#grad-${color})`} />
-      <path d={linePath} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={area} fill={`url(#${id})`} />
+      <path d={`M${pts}`} fill="none" stroke={color} strokeWidth="1.5"
+        strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-// ─── Donut ───────────────────────────────────────────────────────────
-function Donut({ pct }) {
-  const r = 44, cx = 55, cy = 55;
-  const circ = 2 * Math.PI * r;
-  const dash = (pct / 100) * circ;
-  return (
-    <div className="db-donut">
-      <svg width="110" height="110" viewBox="0 0 110 110">
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="8" />
-        <circle
-          cx={cx} cy={cy} r={r}
-          fill="none"
-          stroke="url(#donutGrad)"
-          strokeWidth="8"
-          strokeDasharray={`${dash} ${circ}`}
-          strokeLinecap="round"
-        />
-        <defs>
-          <linearGradient id="donutGrad" x1="1" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#4cc9f0" />
-            <stop offset="100%" stopColor="#4361ee" />
-          </linearGradient>
-        </defs>
-      </svg>
-      <div className="db-donut-label">
-        <span>{pct}%</span>
-        <span>Based on likes</span>
-      </div>
-    </div>
-  );
-}
-
-const avatarColors = ["#4361ee", "#7b2ff7", "#f72585", "#4cc9f0", "#48c78e"];
-
+/* ─── MAIN COMPONENT ─── */
 export default function DashboardPage() {
   const [stats, setStats] = useState({ events: { total: 0, live: 0, upcoming: 0 }, teams: 0, submissions: 0, users: 0 });
-  const [featuredEvents, setFeaturedEvents] = useState([]);
-  const [recentActivities, setRecentActivities] = useState([]);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const fetchData = async () => {
+    (async () => {
       try {
-        const [eventsRes, teamsRes, submissionsRes, usersRes] = await Promise.all([
-          axios.get("/events/"),
-          axios.get("/teams/"),
-          axios.get("/submissions/"),
-          axios.get("/users/")
+        const [eR, tR, sR, uR] = await Promise.all([
+          axios.get("/events/"), axios.get("/teams/"),
+          axios.get("/submissions/"), axios.get("/users/"),
         ]);
-        const events = eventsRes.data.results || [];
-        const teams = teamsRes.data.results || teamsRes.data || [];
-        const submissions = submissionsRes.data.results || submissionsRes.data || [];
-        const users = usersRes.data.results || usersRes.data || [];
+        const evts = eR.data.results || [];
+        const teams = tR.data.results || tR.data || [];
+        const subs  = sR.data.results || sR.data || [];
+        const users = uR.data.results || uR.data || [];
         const now = new Date();
-        const liveEvents = events.filter(e => new Date(e.start_date) <= now && new Date(e.end_date) >= now);
-        const upcomingEvents = events.filter(e => new Date(e.start_date) > now);
-        setStats({ events: { total: events.length, live: liveEvents.length, upcoming: upcomingEvents.length }, teams: teams.length, submissions: submissions.length, users: users.length });
-        setFeaturedEvents(events.slice(0, 4));
-        setRecentActivities([
-          { id: 1, type: "team", message: 'New team "Code Warriors" formed', time: "21 DEC, 1:21 PM", icon: "👥", color: "#4361ee" },
-          { id: 2, type: "submission", message: 'Project "AI Assistant" submitted', time: "21 DEC, 11:21 PM", icon: "🚀", color: "#7b2ff7" },
-          { id: 3, type: "event", message: 'Hackathon "TechFest 2025" started', time: "20 DEC, 3:52 PM", icon: "📅", color: "#f72585" },
-          { id: 4, type: "user", message: "New card added for order #3210145", time: "18 DEC, 4:41 PM", icon: "👤", color: "#4cc9f0" },
-          { id: 5, type: "submission", message: 'Unlock packages for Development', time: "18 DEC, 4:41 PM", icon: "📦", color: "#48c78e" }
-        ]);
+        const live     = evts.filter(e => new Date(e.start_date) <= now && new Date(e.end_date) >= now);
+        const upcoming = evts.filter(e => new Date(e.start_date) > now);
+        setStats({ events: { total: evts.length, live: live.length, upcoming: upcoming.length }, teams: teams.length, submissions: subs.length, users: users.length });
+        setEvents(evts.slice(0, 5));
         try { const r = await axios.get("/users/me/"); setUser(r.data); } catch { setUser(null); }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+      } catch (err) { console.error(err); }
+      finally { setLoading(false); }
+    })();
   }, []);
 
-  const chartData = [20, 35, 28, 55, 40, 70, 45, 90, 65, 80, 55, 75];
-  const barData = [
-    { v: 60, c: "rgba(255,255,255,0.12)" },
-    { v: 85, c: "rgba(255,255,255,0.12)" },
-    { v: 45, c: "rgba(255,255,255,0.12)" },
-    { v: 100, c: "#4361ee" },
-    { v: 70, c: "rgba(255,255,255,0.12)" },
-    { v: 55, c: "rgba(255,255,255,0.12)" },
-    { v: 80, c: "rgba(255,255,255,0.12)" },
+  const chartData     = [14, 22, 18, 35, 28, 44, 38, 52, 46, 61, 55, 68];
+  const subChartData  = [8,  12, 9,  20, 15, 28, 22, 35, 30, 42, 38, 48];
+
+  const recentActivity = [
+    { id: 1, icon: "team_act",  accent: true,  msg: <><strong>Code Warriors</strong> registered a new team</>,        time: "2 hours ago" },
+    { id: 2, icon: "file",      accent: false, msg: <><strong>Project Atlas</strong> submitted to TechFest 2025</>,   time: "5 hours ago" },
+    { id: 3, icon: "zap",       accent: true,  msg: <><strong>HackBuild Spring</strong> is now live</>,               time: "1 day ago" },
+    { id: 4, icon: "profile",   accent: false, msg: <><strong>jane_dev</strong> joined the platform</>,               time: "2 days ago" },
+    { id: 5, icon: "trophy",    accent: true,  msg: <><strong>Team Quantum</strong> won Best Innovation award</>,     time: "3 days ago" },
   ];
-  const projects = [
-    { name: "TechFest Hackathon", members: 4, budget: "$14,000", completion: 60, color: "#f72585" },
-    { name: "Add Progress Track", members: 2, budget: "$3,000", completion: 10, color: "#4361ee" },
-    { name: "Fix Platform Errors", members: 3, budget: "Not set", completion: 100, color: "#48c78e" },
-    { name: "Launch Mobile App", members: 5, budget: "$32,000", completion: 100, color: "#7b2ff7" },
-    { name: "New Pricing Page", members: 2, budget: "$400", completion: 25, color: "#4cc9f0" },
+
+  const mockTeams = [
+    { name: "Code Warriors", event: "TechFest 2025",    members: 4, completion: 60,  status: "active" },
+    { name: "Team Quantum",  event: "HackBuild Spring", members: 3, completion: 100, status: "done"   },
+    { name: "Dev Ninjas",    event: "HackBuild Spring", members: 5, completion: 25,  status: "active" },
+    { name: "BuildFast",     event: "OpenHack III",     members: 2, completion: 10,  status: "active" },
   ];
+
+  const eventStatus = (e) => {
+    const now = new Date();
+    if (new Date(e.start_date) > now) return "soon";
+    if (new Date(e.end_date) >= now)  return "live";
+    return "closed";
+  };
 
   if (loading) {
     return (
       <>
-        <style>{styles}</style>
-        <div className="db-loading">
-          <div className="db-spinner" />
-          <p>Loading your dashboard...</p>
+        <style>{css}</style>
+        <div className="dash-loading">
+          <div className="dash-loading-ring" />
+          <span className="dash-loading-label">Loading dashboard</span>
         </div>
       </>
     );
@@ -641,227 +753,249 @@ export default function DashboardPage() {
 
   return (
     <>
-      <style>{styles}</style>
-      <div className="db-root">
-        {/* ── Sidebar ── */}
-        <aside className="db-sidebar">
-          <div className="db-logo"><span>HACKATHON</span> PLATFORM</div>
-          <span className="db-nav-label">Main Pages</span>
-          <Link href="/dashboard" className="db-nav-item active">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
-            Dashboard
+      <style>{css}</style>
+      <div className="dash-page">
+
+        {/* ── NAV ──
+        <nav className="dash-nav">
+          <Link href="/dashboard" className="dash-nav-brand">
+            <div className="dash-nav-logomark">
+              <Icon d={ICONS.logo} size={14} />
+            </div>
+            <span className="dash-nav-wordmark">Hackboard</span>
           </Link>
-          <Link href="/events" className="db-nav-item">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
-            Events
-          </Link>
-          <Link href="/teams" className="db-nav-item">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-            Teams
-          </Link>
-          <Link href="/submissions" className="db-nav-item">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 22 7 22 17 12 22 2 17 2 7 12 2" /><line x1="12" y1="22" x2="12" y2="12" /><polyline points="22 7 12 12 2 7" /></svg>
-            Submissions
-          </Link>
-          <Link href="/posts" className="db-nav-item">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
-            Posts
-          </Link>
-          <span className="db-nav-label">Account Pages</span>
-          <Link href="/profile" className="db-nav-item">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-            Profile
-          </Link>
-          <Link href="/login" className="db-nav-item">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></svg>
-            Sign In
-          </Link>
-          <Link href="/register" className="db-nav-item">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg>
-            Sign Up
-          </Link>
-          <div className="db-help-card">
-            <h4>Need help?</h4>
-            <p>Please check our docs</p>
-            <Link href="/docs" className="db-help-btn">DOCUMENTATION</Link>
+
+          <div className="dash-nav-links">
+            {[
+              { href: "/dashboard",   label: "Overview" },
+              { href: "/events",      label: "Events" },
+              { href: "/teams",       label: "Teams" },
+              { href: "/submissions", label: "Submissions" },
+              { href: "/posts",       label: "Posts" },
+            ].map(l => (
+              <Link key={l.href} href={l.href}
+                className={`dash-nav-link${l.href === "/dashboard" ? " active" : ""}`}>
+                {l.label}
+              </Link>
+            ))}
           </div>
-        </aside>
 
-        {/* ── Main Content ── */}
-        <main className="db-main">
-          <div className="db-inner">
-            {/* Topbar */}
-            <div className="db-topbar">
+          <div className="dash-nav-right">
+            <button className="dash-nav-btn dash-nav-btn-ghost">
+              <Icon d={ICONS.bell} size={14} />
+            </button>
+            <button className="dash-nav-btn dash-nav-btn-ghost">
+              <Icon d={ICONS.search} size={14} />
+            </button>
+            {user ? (
+              <div className="dash-avatar">{(user.username || "U")[0].toUpperCase()}</div>
+            ) : (
+              <>
+                <Link href="/login"    className="dash-nav-btn dash-nav-btn-ghost">Sign in</Link>
+                <Link href="/register" className="dash-nav-btn dash-nav-btn-accent">Register</Link>
+              </>
+            )}
+          </div>
+        </nav>  */}
+        {/* ── CONTENT ── */}
+        <main className="dash-main">
+
+          {/* Page header */}
+          <div className="dash-header">
+            <div>
+              <div className="dash-header-eyebrow">
+                <div className="dash-header-dot" />
+                <span className="dash-header-label">Overview</span>
+              </div>
+              <h1 className="dash-title">
+                {user ? `Welcome back, ${user.username}` : "Platform Dashboard"}
+              </h1>
+              <p className="dash-subtitle">
+                Everything happening across your hackathon platform, at a glance.
+              </p>
+            </div>
+            <div className="dash-header-actions">
+              <Link href="/events" className="dash-action-btn dash-action-outline">
+                Browse events
+              </Link>
+              <Link href="/teams/create" className="dash-action-btn dash-action-primary">
+                <Icon d={ICONS.plus} size={14} />
+                Create team
+              </Link>
+            </div>
+          </div>
+
+          {/* Stat strip */}
+          <div className="dash-stats">
+            {[
+              {
+                label: "Total events",
+                value: stats.events.total,
+                sub: <><span className="dash-stat-badge badge-green">{stats.events.live} live</span><span style={{color:"var(--muted)"}}>·</span><span className="dash-stat-badge badge-yellow">{stats.events.upcoming} upcoming</span></>,
+              },
+              {
+                label: "Registered teams",
+                value: stats.teams,
+                sub: <span className="dash-stat-badge badge-neutral">across all events</span>,
+              },
+              {
+                label: "Submissions",
+                value: stats.submissions,
+                sub: <span className="dash-stat-badge badge-green">+8% this week</span>,
+              },
+              {
+                label: "Platform users",
+                value: stats.users,
+                sub: <span className="dash-stat-badge badge-neutral">total registered</span>,
+              },
+            ].map((s, i) => (
+              <div className="dash-stat" key={i}>
+                <div className="dash-stat-label">{s.label}</div>
+                <div className="dash-stat-value">{s.value}</div>
+                <div className="dash-stat-sub" style={{ flexWrap: "wrap", gap: 6 }}>{s.sub}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Welcome + sparklines */}
+          <div className="dash-welcome">
+            <div className="dash-welcome-left">
+              <div className="dash-welcome-greeting">
+                {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+              </div>
+              <div className="dash-welcome-name">
+                {user ? `Good to see you, ${user.username}` : "Your hackathon hub"}
+              </div>
+              <div className="dash-welcome-desc">
+                {stats.events.live > 0
+                  ? `${stats.events.live} event${stats.events.live > 1 ? "s are" : " is"} live right now. Don't miss the deadline.`
+                  : "No events live right now. Check upcoming events below."}
+              </div>
+            </div>
+            <div className="dash-welcome-right">
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6, letterSpacing: "0.5px", textTransform: "uppercase", fontWeight: 600 }}>Submissions</div>
+                <div style={{ width: 160 }}>
+                  <SparkChart data={subChartData} />
+                </div>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6, letterSpacing: "0.5px", textTransform: "uppercase", fontWeight: 600 }}>Users</div>
+                <div style={{ width: 160 }}>
+                  <SparkChart data={chartData} color="#fbbf24" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Events + Activity */}
+          <div className="dash-grid" style={{ marginBottom: 20 }}>
+            {/* Events */}
+            <div className="dash-card">
+              <div className="dash-card-head">
+                <span className="dash-card-title">Active Events</span>
+                <Link href="/events" className="dash-card-link">
+                  View all <Icon d={ICONS.arrowRight} size={12} />
+                </Link>
+              </div>
+              <div style={{ padding: "0 0 8px" }}>
+                {events.length > 0 ? (
+                  <div className="dash-event-list">
+                    {events.map((ev, i) => {
+                      const st = eventStatus(ev);
+                      return (
+                        <Link href={`/events/${ev.id}`} key={ev.id} className="dash-event-item">
+                          <div className={`dash-event-dot ${st === "live" ? "dot-live" : st === "soon" ? "dot-soon" : "dot-closed"}`} />
+                          <div className="dash-event-info">
+                            <div className="dash-event-name">{ev.name}</div>
+                            <div className="dash-event-meta">
+                              {new Date(ev.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                              {ev.end_date ? ` – ${new Date(ev.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
+                            </div>
+                          </div>
+                          <span className={`dash-event-tag ${st === "live" ? "tag-live" : st === "soon" ? "tag-soon" : "tag-closed"}`}>
+                            {st === "live" ? "Live" : st === "soon" ? "Soon" : "Ended"}
+                          </span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="dash-empty">
+                    <Icon d={ICONS.events[0]} size={28} />
+                    <p>No events yet</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Activity */}
+            <div className="dash-card">
+              <div className="dash-card-head">
+                <span className="dash-card-title">Recent Activity</span>
+              </div>
+              <div className="dash-activity">
+                {recentActivity.map(a => (
+                  <div key={a.id} className="dash-activity-item">
+                    <div className={`dash-activity-icon${a.accent ? " accent-icon" : ""}`}>
+                      <Icon d={ICONS[a.icon]} size={14} />
+                    </div>
+                    <div className="dash-activity-text">
+                      <div className="dash-activity-msg">{a.msg}</div>
+                      <div className="dash-activity-time">{a.time}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Teams table + Quick actions */}
+          <div className="dash-grid">
+            {/* Teams table */}
+            <div className="dash-card">
+              <div className="dash-card-head">
+                <span className="dash-card-title">Teams</span>
+                <Link href="/teams" className="dash-card-link">
+                  View all <Icon d={ICONS.arrowRight} size={12} />
+                </Link>
+              </div>
               <div>
-                <div className="db-breadcrumb">Pages / Dashboard</div>
-                <div style={{ fontSize: 18, fontWeight: 800, marginTop: 2 }}>Dashboard</div>
-              </div>
-              <div className="db-topbar-right">
-                <input className="db-search" placeholder="Type here..." />
-                <button className="db-signin-btn">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 15, height: 15 }}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                  Sign In
-                </button>
-                <div className="db-topbar-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" /></svg>
-                </div>
-                <div className="db-topbar-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-                </div>
-              </div>
-            </div>
-
-            {/* Stats Row */}
-            <div className="db-stats-row">
-              {[
-                { label: "Total Events", value: stats.events.total, delta: `+${stats.events.live} Live`, cls: "delta-green", icon: "📅", bg: "linear-gradient(135deg,#4361ee,#7b2ff7)" },
-                { label: "Total Users", value: stats.users, delta: "+0.1%", cls: "delta-blue", icon: "👤", bg: "linear-gradient(135deg,#f72585,#b5179e)" },
-                { label: "Active Teams", value: stats.teams, delta: `+${stats.events.upcoming} upcoming`, cls: "delta-green", icon: "👥", bg: "linear-gradient(135deg,#4cc9f0,#4361ee)" },
-                { label: "Submissions", value: stats.submissions, delta: "+8%", cls: "delta-red", icon: "📦", bg: "linear-gradient(135deg,#fa709a,#fee140)" },
-              ].map((s, i) => (
-                <div className="db-stat" key={i}>
-                  <div className="db-stat-icon-wrap" style={{ background: s.bg }}>{s.icon}</div>
-                  <div className="db-stat-label">{s.label}</div>
-                  <div className="db-stat-value">{s.value}</div>
-                  <div className={`db-stat-delta ${s.cls}`}>{s.delta}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Middle Row: Welcome + Satisfaction + Referral */}
-            <div className="db-mid-row">
-              {/* Welcome */}
-              <div className="db-welcome-card">
-                <div className="db-welcome-jellyfish">🪼</div>
-                <div className="db-welcome-text">
-                  <h2>Welcome back, {user?.username || "Hacker"}!</h2>
-                  <p>Glad to see you again!<br />Explore hackathons, build amazing projects.</p>
-                  <div className="db-welcome-cta">
-                    <Link href="/events" style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontSize: 12 }}>Browse Events →</Link>
-                  </div>
-                </div>
-              </div>
-
-              {/* Satisfaction */}
-              <div className="db-card">
-                <div className="db-card-title">Satisfaction Rate<span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", fontWeight: 400 }}>From all projects</span></div>
-                <div className="db-donut-wrap">
-                  <Donut pct={95} />
-                  <div className="db-donut-scale"><span>0%</span><span>100%</span></div>
-                </div>
-              </div>
-
-              {/* Referral */}
-              <div className="db-card">
-                <div className="db-card-title">Referral Tracking</div>
-                <div className="db-score-wrap">
-                  <div className="db-score-row">
-                    <div>
-                      <div className="db-score-item"><label>Invited</label><strong>{stats.users} people</strong></div>
-                      <div style={{ height: 14 }} />
-                      <div className="db-score-item"><label>Bonus</label><strong>{stats.teams + stats.submissions}</strong></div>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                      <div className="db-score-badge"><span>9.3</span></div>
-                      <div className="db-score-sub">Total Score</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Chart Row */}
-            <div className="db-chart-row">
-              {/* Line chart */}
-              <div className="db-card">
-                <div className="db-chart-header">
-                  <div>
-                    <h3>Submissions Overview</h3>
-                    <div className="db-chart-sub">(+8% more in 2025)</div>
-                  </div>
-                </div>
-                <div className="db-chart-svg-wrap">
-                  <LineChart data={chartData} color="#4361ee" height={100} />
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
-                  {["Jan", "Mar", "May", "Jul", "Sep", "Nov"].map(m => (
-                    <span key={m} style={{ fontSize: 10, color: "rgba(255,255,255,0.25)" }}>{m}</span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Bar chart + Active users */}
-              <div className="db-card">
-                <div className="db-card-title">
-                  Active Users
-                  <span className="db-chart-delta">+23% than last week</span>
-                </div>
-                <div className="db-bar-chart">
-                  {barData.map((b, i) => (
-                    <div key={i} className="db-bar" style={{ height: `${b.v}%`, background: b.c }} />
-                  ))}
-                </div>
-                <div className="db-active-row">
-                  {[
-                    { label: "Users", val: stats.users.toLocaleString(), color: "#4361ee" },
-                    { label: "Clicks", val: "2.4m", color: "#4cc9f0" },
-                    { label: "Submissions", val: stats.submissions, color: "#48c78e" },
-                    { label: "Events", val: stats.events.total, color: "#f72585" },
-                  ].map((a, i) => (
-                    <div className="db-active-stat" key={i}>
-                      <label><span className="db-active-dot" style={{ background: a.color }} />{a.label}</label>
-                      <strong>{a.val}</strong>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom Row */}
-            <div className="db-bottom-row">
-              {/* Projects table */}
-              <div className="db-card">
-                <div className="db-table-header-row">
-                  <div>
-                    <div className="db-card-title" style={{ marginBottom: 2 }}>Projects</div>
-                    <div className="db-table-meta"><span>30 done</span> this month</div>
-                  </div>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" style={{ width: 18, height: 18, cursor: "pointer" }}><circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" /></svg>
-                </div>
-                <table className="db-table">
+                <table className="dash-table">
                   <thead>
                     <tr>
-                      <th>Companies</th>
+                      <th>Team</th>
+                      <th>Event</th>
                       <th>Members</th>
-                      <th>Budget</th>
-                      <th>Completion</th>
+                      <th>Progress</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {projects.map((p, i) => (
+                    {mockTeams.map((t, i) => (
                       <tr key={i}>
                         <td>
-                          <div className="project-name">
-                            <div className="db-project-dot" style={{ background: p.color }} />
-                            {p.name}
+                          <div className="dash-team-name">
+                            <div className="dash-team-avatar">{t.name[0]}</div>
+                            {t.name}
                           </div>
                         </td>
+                        <td style={{ color: "var(--muted)", fontSize: 12 }}>{t.event}</td>
                         <td>
-                          <div className="db-avatars">
-                            {Array.from({ length: Math.min(p.members, 4) }).map((_, j) => (
-                              <div key={j} className="db-avatar" style={{ background: avatarColors[j % avatarColors.length] }}>
-                                {String.fromCharCode(65 + j)}
-                              </div>
+                          <div className="dash-member-stack">
+                            {Array.from({ length: Math.min(t.members, 3) }).map((_, j) => (
+                              <div key={j} className="dash-member-pip">{String.fromCharCode(65 + j)}</div>
                             ))}
+                            {t.members > 3 && (
+                              <div className="dash-member-pip">+{t.members - 3}</div>
+                            )}
                           </div>
                         </td>
-                        <td style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>{p.budget}</td>
                         <td>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <div className="db-progress-bar">
-                              <div className="db-progress-fill" style={{ width: `${p.completion}%`, background: p.completion === 100 ? "#48c78e" : "#4361ee" }} />
+                          <div className="dash-progress-wrap">
+                            <div className="dash-progress">
+                              <div className="dash-progress-fill" style={{ width: `${t.completion}%` }} />
                             </div>
-                            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{p.completion}%</span>
+                            <span className="dash-progress-pct">{t.completion}%</span>
                           </div>
                         </td>
                       </tr>
@@ -869,27 +1003,38 @@ export default function DashboardPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
 
-              {/* Orders / Recent activity */}
-              <div className="db-card">
-                <div className="db-order-header">
-                  <div>
-                    <div className="db-card-title" style={{ marginBottom: 2 }}>Orders Overview</div>
-                    <span className="db-order-header-badge">+30% this month</span>
-                  </div>
+            {/* Quick actions */}
+            <div className="dash-card">
+              <div className="dash-card-head">
+                <span className="dash-card-title">Quick Actions</span>
+              </div>
+              <div className="dash-card-body">
+                <div className="dash-actions-grid">
+                  {[
+                    { icon: "events",  href: "/events",           label: "Browse Events",   sub: "Find hackathons"       },
+                    { icon: "teams",   href: "/teams/create",     label: "Create Team",     sub: "Start collaborating"   },
+                    { icon: "submit",  href: "/submissions/create",label: "Submit Project",  sub: "Upload your work"      },
+                    { icon: "posts",   href: "/posts",            label: "Community",        sub: "Posts & discussions"   },
+                    { icon: "profile", href: "/profile",          label: "Edit Profile",    sub: "Update your info"      },
+                    { icon: "trophy",  href: "/submissions",      label: "Leaderboard",     sub: "See top submissions"   },
+                  ].map((a, i) => (
+                    <Link key={i} href={a.href} className="dash-action-card">
+                      <div className="dash-action-card-icon">
+                        <Icon d={ICONS[a.icon]} size={16} />
+                      </div>
+                      <div>
+                        <div className="dash-action-card-label">{a.label}</div>
+                        <div className="dash-action-card-sub">{a.sub}</div>
+                      </div>
+                    </Link>
+                  ))}
                 </div>
-                {recentActivities.map(a => (
-                  <div className="db-order-item" key={a.id}>
-                    <div className="db-order-icon" style={{ background: `${a.color}22` }}>{a.icon}</div>
-                    <div className="db-order-info">
-                      <p>{a.message}</p>
-                      <span>{a.time}</span>
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           </div>
+
         </main>
       </div>
     </>

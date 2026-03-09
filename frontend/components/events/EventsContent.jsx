@@ -1,10 +1,9 @@
 "use client";
-
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "@/utils/axios";
-import EventCard from "./EventCard"; // You already have this!
+import EventCard from "./EventCard";
 
 export default function EventsContent() {
   const router = useRouter();
@@ -17,254 +16,180 @@ export default function EventsContent() {
   const [isOrganizer, setIsOrganizer] = useState(false);
   const [error, setError] = useState("");
 
-  // Check for error message from redirect
   useEffect(() => {
-    const errorMsg = searchParams.get('error');
-    if (errorMsg) {
-      setError(errorMsg);
-      setTimeout(() => setError(""), 5000);
-    }
+    const msg = searchParams.get("error");
+    if (msg) { setError(msg); setTimeout(() => setError(""), 5000); }
   }, [searchParams]);
 
   useEffect(() => {
-    const fetchData = async () => {
+    (async () => {
       try {
-        const eventsRes = await axios.get("/events/");
-        setEvents(eventsRes.data.results || []);
-        
-        const token = localStorage.getItem('access');
+        const evRes = await axios.get("/events/");
+        setEvents(evRes.data.results || []);
+        const token = localStorage.getItem("access");
         if (token) {
+          axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
           try {
-            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-            const userRes = await axios.get("/users/me/");
-            setUser(userRes.data);
-            
-            const organizerStatus = 
-              userRes.data.profile?.is_organizer === true || 
-              userRes.data.is_staff || 
-              userRes.data.is_superuser;
-            
-            setIsOrganizer(organizerStatus);
-          } catch (err) {
-            console.error("Error fetching user:", err);
-          }
+            const uRes = await axios.get("/users/me/");
+            setUser(uRes.data);
+            setIsOrganizer(
+              uRes.data.profile?.is_organizer === true ||
+              uRes.data.is_staff || uRes.data.is_superuser
+            );
+          } catch {}
         }
-      } catch (err) {
-        console.error("Error fetching events:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+      } catch (e) { console.error(e); }
+      finally { setLoading(false); }
+    })();
   }, []);
 
-  const filterEvents = (events) => {
-    const now = new Date();
-    
-    return events.filter(event => {
-      if (searchTerm && !event.name.toLowerCase().includes(searchTerm.toLowerCase()) && 
-          !event.description.toLowerCase().includes(searchTerm.toLowerCase())) {
-        return false;
-      }
+  const now = new Date();
+  const filtered = events.filter(e => {
+    const s = new Date(e.start_date), en = new Date(e.end_date);
+    const matchSearch = !searchTerm ||
+      e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      e.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchFilter =
+      filter === "all" ? true :
+      filter === "upcoming" ? s > now :
+      filter === "ongoing"  ? s <= now && en >= now :
+      en < now;
+    return matchSearch && matchFilter;
+  });
 
-      const startDate = new Date(event.start_date);
-      const endDate = new Date(event.end_date);
-
-      switch(filter) {
-        case "upcoming":
-          return startDate > now;
-        case "ongoing":
-          return startDate <= now && endDate >= now;
-        case "past":
-          return endDate < now;
-        default:
-          return true;
-      }
-    });
-  };
-
-  const handleCreateClick = () => {
-    const token = localStorage.getItem('access');
-    
+  const handleCreate = () => {
+    const token = localStorage.getItem("access");
     if (!token) {
-      sessionStorage.setItem('redirectAfterLogin', '/events/create');
-      router.push('/login?message=Please login to create an event');
+      sessionStorage.setItem("redirectAfterLogin", "/events/create");
+      router.push("/login?message=Please login to create an event");
     } else if (!isOrganizer) {
-      setError("Only event organizers can create events. If you're interested in organizing, please contact us.");
+      setError("Only event organizers can create events.");
     } else {
-      router.push('/events/create');
+      router.push("/events/create");
     }
   };
 
-  const filteredEvents = filterEvents(events);
+  const liveCount     = events.filter(e => new Date(e.start_date) <= now && new Date(e.end_date) >= now).length;
+  const upcomingCount = events.filter(e => new Date(e.start_date) > now).length;
 
-  if (loading) {
-    return (
-      <div className="events-loading">
-        <div className="blob blob1"></div>
-        <div className="blob blob2"></div>
-        <div className="blob blob3"></div>
-        <div className="events-spinner"></div>
-        <p>Loading hackathons...</p>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="ev-loading">
+      <div className="ev-spinner" />
+      <span>Loading hackathons…</span>
+    </div>
+  );
 
   return (
-    <div className="events-container">
-      <div className="blob blob1"></div>
-      <div className="blob blob2"></div>
-      <div className="blob blob3"></div>
+    <div className="ev-page">
+     
 
-      <div className="events-card">
-        {/* Header */}
-<div className="events-header-compact">
-  <div className="events-header-main">
-    <div className="events-header-top">
-      <div className="events-title-section">
-        <h1 className="events-title">Hackathons</h1>
-        {isOrganizer && (
-          <div className="organizer-status">
-            <span className="status-dot"></span>
-            <span>Organizer</span>
+      {/* ── PAGE HEADER ── */}
+      <div className="ev-header">
+        <div>
+          <div className="ev-eyebrow">
+            <div className="ev-eyebrow-dot" />
+            <span className="ev-eyebrow-label">Hackathons</span>
           </div>
-        )}
-      </div>
-      
-      <div className="events-header-actions">
-        {!user ? (
-          <button onClick={() => router.push('/login')} className="btn-outline">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
-              <polyline points="10 17 15 12 10 7"></polyline>
-              <line x1="15" y1="12" x2="3" y2="12"></line>
-            </svg>
-            Sign In
-          </button>
-        ) : isOrganizer ? (
-          <button onClick={handleCreateClick} className="btn-primary">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Create Event
-          </button>
-        ) : (
-          <div className="user-profile-mini">
-            <div className="user-avatar">
-              {user?.username?.charAt(0).toUpperCase()}
-            </div>
-            <span className="user-name">{user?.username}</span>
-          </div>
-        )}
-      </div>
-    </div>
-
-    <p className="events-subtitle">
-      {isOrganizer ? (
-        <>
-          Manage your hackathons, review submissions, and engage with 
-          <span className="organizer-highlight"> {events.length} events</span> 
-          {user?.profile?.organization_name && (
-            <> · <span className="organization-name">{user.profile.organization_name}</span></>
-          )}
-        </>
-      ) : (
-        'Discover and join exciting hackathon events from around the world'
-      )}
-    </p>
-  </div>
-
-  {isOrganizer && (
-    <div className="organizer-quick-stats">
-      <div className="stat-item">
-        <span className="stat-value">{events.length}</span>
-        <span className="stat-label">Total Events</span>
-      </div>
-      <div className="stat-divider"></div>
-      <div className="stat-item">
-        <span className="stat-value">
-          {events.filter(e => new Date(e.end_date) > new Date()).length}
-        </span>
-        <span className="stat-label">Active</span>
-      </div>
-      <div className="stat-divider"></div>
-      <div className="stat-item">
-        <span className="stat-value">
-          {events.reduce((acc, e) => acc + (e.teams_count || 0), 0)}
-        </span>
-        <span className="stat-label">Total Teams</span>
-      </div>
-    </div>
-  )}
-</div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="error-message">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
-            </svg>
-            {error}
-          </div>
-        )}
-
-        {/* Search and Filter */}
-        <div className="events-filters">
-          <div className="events-search-wrapper">
-            <svg className="events-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <input
-              type="text"
-              placeholder="Search hackathons..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="events-search-input"
-            />
-          </div>
-
-          <div className="events-filter-tabs">
-            {["all", "upcoming", "ongoing", "past"].map((filterType) => (
-              <button
-                key={filterType}
-                onClick={() => setFilter(filterType)}
-                className={`events-filter-tab ${filter === filterType ? "active" : ""}`}
-              >
-                {filterType.charAt(0).toUpperCase() + filterType.slice(1)}
-              </button>
-            ))}
-          </div>
+          <h1 className="ev-title">
+            {isOrganizer ? "Manage Events" : "Discover Events"}
+          </h1>
+          <p className="ev-subtitle">
+            {isOrganizer
+              ? `${events.length} events · ${liveCount} live · ${upcomingCount} upcoming`
+              : "Find and join hackathon events from around the world"}
+          </p>
         </div>
-
-        {/* Events Grid - Using your existing EventCard component */}
-        {filteredEvents.length === 0 ? (
-          <div className="events-empty">
-            <svg className="events-empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
-            </svg>
-            <p className="events-empty-text">No hackathons found</p>
-            {isOrganizer && (
-              <button onClick={handleCreateClick} className="events-empty-create-btn">
-                Create the First Event
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="events-grid">
-            {filteredEvents.map((event) => (
-              <EventCard key={event.id} event={event} />
-            ))}
-          </div>
-        )}
-
-        
+        <div className="ev-header-right">
+          {user && isOrganizer && (
+            <button onClick={handleCreate} className="ev-btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              New Event
+            </button>
+          )}
+          {!user && (
+            <Link href="/login" className="ev-btn-ghost">Sign In</Link>
+          )}
+        </div>
       </div>
+
+      {/* ── STAT STRIP (organizer only) ── */}
+      {isOrganizer && (
+        <div className="ev-stats">
+          {[
+            { label: "Total Events",  value: events.length },
+            { label: "Live Now",      value: liveCount,     accent: true },
+            { label: "Upcoming",      value: upcomingCount  },
+            { label: "Total Teams",   value: events.reduce((a, e) => a + (e.teams_count || 0), 0) },
+          ].map((s, i) => (
+            <div className="ev-stat" key={i}>
+              <div className={`ev-stat-value${s.accent ? " ev-stat-accent" : ""}`}>{s.value}</div>
+              <div className="ev-stat-label">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── ERROR ── */}
+      {error && (
+        <div className="ev-error">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          {error}
+        </div>
+      )}
+
+      {/* ── TOOLBAR ── */}
+      <div className="ev-toolbar">
+        <div className="ev-search-wrap">
+          <svg className="ev-search-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            className="ev-search"
+            placeholder="Search hackathons…"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <div className="ev-filters">
+          {["all","upcoming","ongoing","past"].map(f => (
+            <button
+              key={f}
+              className={`ev-filter-btn${filter === f ? " active" : ""}`}
+              onClick={() => setFilter(f)}
+            >
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── GRID ── */}
+      {filtered.length === 0 ? (
+        <div className="ev-empty">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.25, marginBottom: 12 }}>
+            <rect x="3" y="4" width="18" height="18" rx="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          <p>No hackathons found</p>
+          {isOrganizer && (
+            <button onClick={handleCreate} className="ev-btn-primary" style={{ marginTop: 16 }}>
+              Create First Event
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="ev-grid">
+          {filtered.map(ev => <EventCard key={ev.id} event={ev} />)}
+        </div>
+      )}
     </div>
   );
 }
+

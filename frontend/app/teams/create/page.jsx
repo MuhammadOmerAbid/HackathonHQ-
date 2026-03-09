@@ -5,13 +5,60 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "../../../utils/axios";
 
+const tmcPageCss = `
+.tmc-page { max-width: 640px; margin: 0 auto; padding: 36px 32px 64px; font-family: 'DM Sans', sans-serif; min-height: calc(100vh - 70px); }
+.tmc-back { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 8px; background: transparent; border: 1px solid #26262e; color: #5c5c6e; font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all .15s; margin-bottom: 28px; }
+.tmc-back:hover { color: #f0f0f3; background: #17171b; }
+.tmc-back svg { width: 15px; height: 15px; }
+.tmc-eyebrow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.tmc-eyebrow-dot { width: 6px; height: 6px; border-radius: 50%; background: #6EE7B7; }
+.tmc-eyebrow-label { font-size: 11px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: #6EE7B7; }
+.tmc-title { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 700; color: #f0f0f3; letter-spacing: -0.4px; margin: 0 0 4px; }
+.tmc-subtitle { font-size: 13.5px; color: #5c5c6e; margin: 0 0 32px; }
+.tmc-card { background: #111114; border: 1px solid #1e1e24; border-radius: 16px; overflow: hidden; }
+.tmc-card-body { padding: 28px; display: flex; flex-direction: column; gap: 20px; }
+.tmc-group { display: flex; flex-direction: column; gap: 7px; }
+.tmc-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.tmc-label { font-size: 12.5px; font-weight: 500; color: #5c5c6e; letter-spacing: 0.2px; }
+.tmc-required { color: #f87171; margin-left: 2px; }
+.tmc-input, .tmc-select, .tmc-textarea { width: 100%; padding: 10px 14px; background: #0c0c0f; border: 1px solid #1e1e24; border-radius: 9px; font-size: 13.5px; color: #f0f0f3; font-family: 'DM Sans', sans-serif; outline: none; transition: border-color .15s; }
+.tmc-input:focus, .tmc-select:focus, .tmc-textarea:focus { border-color: #6EE7B740; }
+.tmc-input:disabled, .tmc-select:disabled, .tmc-textarea:disabled { opacity: 0.45; cursor: not-allowed; }
+.tmc-input::placeholder, .tmc-textarea::placeholder { color: #3a3a48; }
+.tmc-select { cursor: pointer; }
+.tmc-select option { background: #111114; color: #f0f0f3; }
+.tmc-textarea { resize: vertical; min-height: 110px; line-height: 1.6; }
+.tmc-hint { font-size: 11.5px; color: #3a3a48; }
+.tmc-error { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 9px; background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.2); color: #f87171; font-size: 13px; }
+.tmc-error svg { width: 16px; height: 16px; flex-shrink: 0; }
+.tmc-leader-strip { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #0c0c0f; border: 1px solid #1e1e24; border-radius: 9px; }
+.tmc-leader-avatar { width: 34px; height: 34px; border-radius: 9px; background: rgba(110,231,183,.1); border: 1px solid rgba(110,231,183,.2); display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: #6EE7B7; flex-shrink: 0; }
+.tmc-leader-info { flex: 1; }
+.tmc-leader-name { font-size: 13px; font-weight: 500; color: #f0f0f3; display: flex; align-items: center; gap: 8px; }
+.tmc-leader-badge { padding: 1px 7px; border-radius: 100px; font-size: 10px; font-weight: 600; background: rgba(110,231,183,.1); color: #6EE7B7; border: 1px solid rgba(110,231,183,.2); }
+.tmc-leader-sub { font-size: 11.5px; color: #5c5c6e; margin-top: 2px; }
+.tmc-card-footer { display: flex; align-items: center; gap: 10px; padding: 20px 28px; border-top: 1px solid #1e1e24; }
+.tmc-btn-cancel { flex: 1; padding: 10px; border-radius: 9px; background: transparent; border: 1px solid #26262e; color: #5c5c6e; font-size: 13.5px; font-weight: 500; font-family: 'DM Sans', sans-serif; cursor: pointer; text-align: center; text-decoration: none; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+.tmc-btn-cancel:hover { color: #f0f0f3; background: #17171b; }
+.tmc-btn-submit { flex: 2; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; border-radius: 9px; background: #6EE7B7; color: #0c0c0f; font-size: 13.5px; font-weight: 600; font-family: 'DM Sans', sans-serif; border: none; cursor: pointer; transition: background .15s; }
+.tmc-btn-submit:hover:not(:disabled) { background: #86efac; }
+.tmc-btn-submit:disabled { opacity: 0.45; cursor: not-allowed; }
+.tmc-btn-spinner { width: 16px; height: 16px; border: 2px solid rgba(12,12,15,.3); border-top-color: #0c0c0f; border-radius: 50%; animation: spin .7s linear infinite; }
+@media (max-width: 600px) {
+  .tmc-page { padding: 20px 16px 48px; }
+  .tmc-row { grid-template-columns: 1fr; }
+  .tmc-card-footer { flex-direction: column; }
+  .tmc-btn-cancel, .tmc-btn-submit { width: 100%; flex: none; }
+}
+`;
+
 export default function CreateTeamPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     max_members: 4,
-    event: ""
+    event: "",
   });
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -21,30 +68,21 @@ export default function CreateTeamPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Check if user is logged in
-        const token = localStorage.getItem('access');
+        const token = localStorage.getItem("access");
         if (!token) {
-          router.push('/login?redirect=/teams/create&message=Please login to create a team');
+          router.push("/login?redirect=/teams/create&message=Please login to create a team");
           return;
         }
-
-        // Set token in headers
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        
-        // Try to get user info
+        axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
         try {
           const userRes = await axios.get("/users/me/");
           setUser(userRes.data);
         } catch {
-          setUser({ username: 'User' }); // Fallback
+          setUser({ username: "User" });
         }
-
-        // Fetch events for dropdown
         const eventsRes = await axios.get("/events/");
         setEvents(eventsRes.data.results || []);
-        
-        // Check if there are any events
-        if (eventsRes.data.results?.length === 0) {
+        if ((eventsRes.data.results || []).length === 0) {
           setError("No events available to create a team. Please check back later.");
         }
       } catch (err) {
@@ -56,21 +94,17 @@ export default function CreateTeamPage() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
-
     try {
       const res = await axios.post("/teams/", {
         ...formData,
-        event: parseInt(formData.event)
+        event: parseInt(formData.event),
       });
       router.push(`/teams/${res.data.id}`);
     } catch (err) {
@@ -82,158 +116,150 @@ export default function CreateTeamPage() {
   };
 
   return (
-    <div className="create-team-container">
-      {/* Animated background blobs */}
-      <div className="blob blob1"></div>
-      <div className="blob blob2"></div>
-      <div className="blob blob3"></div>
+    <>
+      <style>{tmcPageCss}</style>
+      <div className="tmc-page">
+        {/* Back */}
+        <button onClick={() => router.back()} className="tmc-back">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+          Back to Teams
+        </button>
 
-      <div className="create-team-card">
-        {/* Back button */}
-        <div style={{ marginBottom: '1rem' }}>
-          <button 
-            onClick={() => router.back()} 
-            className="back-button"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="19" y1="12" x2="5" y2="12"></line>
-              <polyline points="12 19 5 12 12 5"></polyline>
-            </svg>
-            Back to Teams
-          </button>
+        {/* Heading */}
+        <div className="tmc-eyebrow">
+          <span className="tmc-eyebrow-dot" />
+          <span className="tmc-eyebrow-label">New Team</span>
         </div>
+        <h1 className="tmc-title">Create a Team</h1>
+        <p className="tmc-subtitle">Fill in the details to form your hackathon squad.</p>
 
-        <div className="create-team-header">
-          <h1 className="create-team-title">Create a New Team</h1>
-          <p className="create-team-subtitle">Fill in the details to form your hackathon team</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="create-team-form">
-          {error && (
-            <div className="form-error">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-              {error}
-            </div>
-          )}
-
-          {/* Team Name */}
-          <div className="form-group">
-            <label htmlFor="name" className="form-label">
-              Team Name <span className="required">*</span>
-            </label>
-            <input
-              type="text"
-              id="name"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              className="form-input"
-              placeholder="e.g., Code Warriors, AI Avengers"
-              required
-              minLength={3}
-              maxLength={50}
-            />
-          </div>
-
-          {/* Event Selection */}
-          <div className="form-group">
-            <label htmlFor="event" className="form-label">
-              Select Event <span className="required">*</span>
-            </label>
-            <select
-              id="event"
-              name="event"
-              value={formData.event}
-              onChange={handleChange}
-              className="form-select"
-              required
-            >
-              <option value="">Select a hackathon event</option>
-              {events.map(event => (
-                <option key={event.id} value={event.id}>
-                  {event.name} ({new Date(event.start_date).toLocaleDateString()})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Team Size */}
-          <div className="form-group">
-            <label htmlFor="max_members" className="form-label">
-              Team Size
-            </label>
-            <select
-              id="max_members"
-              name="max_members"
-              value={formData.max_members}
-              onChange={handleChange}
-              className="form-select"
-            >
-              {[2, 3, 4, 5, 6].map(num => (
-                <option key={num} value={num}>
-                  {num} members
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Team Leader (read-only) */}
-          <div className="form-group">
-            <label className="form-label">Team Leader</label>
-            <div className="leader-info">
-              <div className="leader-avatar">
-                {user?.username?.charAt(0).toUpperCase() || 'Y'}
+        <div className="tmc-card">
+          <div className="tmc-card-body">
+            {error && (
+              <div className="tmc-error">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                {error}
               </div>
-              <div className="leader-details">
-                <div className="leader-name">{user?.username || 'You'}</div>
-                <span className="team-card-badge">Leader</span>
+            )}
+
+            {/* Team Name */}
+            <div className="tmc-group">
+              <label className="tmc-label">
+                Team Name <span className="tmc-required">*</span>
+              </label>
+              <input
+                type="text"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                className="tmc-input"
+                placeholder="e.g., Code Warriors, AI Avengers"
+                required
+                minLength={3}
+                maxLength={50}
+              />
+            </div>
+
+            {/* Event + Team Size in a row */}
+            <div className="tmc-row">
+              <div className="tmc-group">
+                <label className="tmc-label">
+                  Select Event <span className="tmc-required">*</span>
+                </label>
+                <select
+                  name="event"
+                  value={formData.event}
+                  onChange={handleChange}
+                  className="tmc-select"
+                  required
+                >
+                  <option value="">Choose an event</option>
+                  {events.map((event) => (
+                    <option key={event.id} value={event.id}>
+                      {event.name} ({new Date(event.start_date).toLocaleDateString()})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="tmc-group">
+                <label className="tmc-label">Team Size</label>
+                <select
+                  name="max_members"
+                  value={formData.max_members}
+                  onChange={handleChange}
+                  className="tmc-select"
+                >
+                  {[2, 3, 4, 5, 6].map((n) => (
+                    <option key={n} value={n}>
+                      {n} members
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
+
+            {/* Team Leader (read-only) */}
+            <div className="tmc-group">
+              <label className="tmc-label">Team Leader</label>
+              <div className="tmc-leader-strip">
+                <div className="tmc-leader-avatar">
+                  {user?.username?.charAt(0).toUpperCase() || "Y"}
+                </div>
+                <div className="tmc-leader-info">
+                  <div className="tmc-leader-name">
+                    {user?.username || "You"}
+                    <span className="tmc-leader-badge">Leader</span>
+                  </div>
+                  <div className="tmc-leader-sub">Automatically assigned as team leader</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Description */}
+            <div className="tmc-group">
+              <label className="tmc-label">Team Description</label>
+              <textarea
+                name="description"
+                value={formData.description}
+                onChange={handleChange}
+                className="tmc-textarea"
+                placeholder="Describe your team's focus, what skills you're looking for, and your project idea…"
+                rows="5"
+              />
+              <span className="tmc-hint">Help others understand what your team is about.</span>
+            </div>
           </div>
 
-          {/* Description */}
-          <div className="form-group">
-            <label htmlFor="description" className="form-label">
-              Team Description
-            </label>
-            <textarea
-              id="description"
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              className="form-textarea"
-              placeholder="Describe your team's focus, what skills you're looking for, and your project idea..."
-              rows="5"
-            />
-            <p className="form-hint">Help others understand what your team is about</p>
-          </div>
-
-          {/* Form Actions */}
-          <div className="form-actions">
-            <Link href="/teams" className="cancel-btn">
+          {/* Footer */}
+          <div className="tmc-card-footer">
+            <Link href="/teams" className="tmc-btn-cancel">
               Cancel
             </Link>
-            <button 
-              type="submit" 
-              className="submit-btn"
+            <button
+              onClick={handleSubmit}
+              className="tmc-btn-submit"
               disabled={loading || events.length === 0}
             >
               {loading ? (
                 <>
-                  <span className="spinner"></span>
-                  Creating...
+                  <span className="tmc-btn-spinner" />
+                  Creating…
                 </>
               ) : (
-                'Create Team'
+                "Create Team"
               )}
             </button>
           </div>
-        </form>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

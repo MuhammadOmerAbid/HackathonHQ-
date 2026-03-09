@@ -1,35 +1,65 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import api from "../../utils/axios"; // only here, top level
+import api from "../../utils/axios";
 import "../../styles/global.css";
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [pagination, setPagination] = useState({
+    count: 0,
+    next: null,
+    previous: null,
+    currentPage: 1,
+    totalPages: 1
+  });
+
+  const fetchUsers = async (pageUrl = null) => {
+    setIsLoading(true);
+    try {
+      // If pageUrl is provided, use it (for next/prev), otherwise use the base URL
+      const url = pageUrl || "/users/";
+      const res = await api.get(url);
+      console.log("Raw API response:", res.data);
+
+      // Handle paginated response
+      const usersArray = res.data.results || [];
+      const activeUsers = usersArray.filter(user => user.is_active);
+      
+      // If this is the first page, replace users; otherwise append
+      if (pageUrl) {
+        setUsers(prev => [...prev, ...activeUsers]);
+      } else {
+        setUsers(activeUsers);
+      }
+
+      // Update pagination info
+      setPagination({
+        count: res.data.count || 0,
+        next: res.data.next,
+        previous: res.data.previous,
+        currentPage: pageUrl ? pagination.currentPage + 1 : 1,
+        totalPages: res.data.count ? Math.ceil(res.data.count / 5) : 1 // Assuming 5 per page
+      });
+
+    } catch (err) {
+      console.error("Error fetching users:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const res = await api.get("/users/");
-        console.log("Raw API response:", res.data);
-
-        const usersArray = res.data.results || res.data;
-        const activeUsers = usersArray.filter(user => user.is_active);
-        console.log("Filtered active users:", activeUsers);
-
-        setUsers(activeUsers);
-      } catch (err) {
-        console.error("Error fetching users:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     fetchUsers();
   }, []);
 
+  const loadMore = () => {
+    if (pagination.next) {
+      fetchUsers(pagination.next);
+    }
+  };
 
   const filteredUsers = users.filter(user => 
     user.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -70,10 +100,10 @@ export default function UsersPage() {
         {/* Users List */}
         <div>
           <h2 className="register-title" style={{ fontSize: '1.5rem', marginBottom: '1.5rem' }}>
-            All Users {users.length > 0 && `(${users.length})`}
+            All Users {pagination.count > 0 && `(${pagination.count} total, showing ${users.length})`}
           </h2>
           
-          {isLoading ? (
+          {isLoading && users.length === 0 ? (
             <div className="users-loading">
               <div className="register-loader" style={{ width: '40px', height: '40px' }}></div>
               <p style={{ color: 'rgba(255, 255, 255, 0.6)' }}>Loading users...</p>
@@ -89,25 +119,53 @@ export default function UsersPage() {
               </p>
             </div>
           ) : (
-            <div className="users-grid">
-              {filteredUsers.map((user, index) => (
-                <div 
-                  key={user.id} 
-                  className="users-card"
-                  style={{
-                    animation: `fadeIn 0.5s ease-out ${index * 0.05}s both`
-                  }}
-                >
-                  <div className="users-avatar">
-                    {user.username?.charAt(0).toUpperCase()}
+            <>
+              <div className="users-grid">
+                {filteredUsers.map((user, index) => (
+                  <div 
+                    key={user.id} 
+                    className="users-card"
+                    style={{
+                      animation: `fadeIn 0.5s ease-out ${index * 0.05}s both`
+                    }}
+                  >
+                    <div className="users-avatar">
+                      {user.username?.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="users-info">
+                      <h3 className="users-username">{user.username}</h3>
+                      <p className="users-email">{user.email}</p>
+                    </div>
                   </div>
-                  <div className="users-info">
-                    <h3 className="users-username">{user.username}</h3>
-                    <p className="users-email">{user.email}</p>
-                  </div>
+                ))}
+              </div>
+
+              {/* Load More Button */}
+              {pagination.next && (
+                <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+                  <button 
+                    onClick={loadMore}
+                    disabled={isLoading}
+                    className="register-button"
+                    style={{ padding: '0.75rem 2rem', width: 'auto' }}
+                  >
+                    {isLoading ? (
+                      <>
+                        <span className="register-loader"></span>
+                        Loading...
+                      </>
+                    ) : (
+                      'Load More Users'
+                    )}
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+
+              {/* Pagination Info */}
+              <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginTop: '1rem' }}>
+                Page {pagination.currentPage} of {pagination.totalPages}
+              </p>
+            </>
           )}
         </div>
       </div>

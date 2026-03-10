@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import Post, Event, Team, Submission, JudgeFeedback, UserProfile
 from .serializers import (
-    PostSerializer, EventSerializer, TeamSerializer, 
+    PostSerializer, EventSerializer, TeamSerializer,
     SubmissionSerializer, JudgeFeedbackSerializer,
     UserSerializer, RegisterSerializer
 )
@@ -19,39 +19,27 @@ User = get_user_model()
 
 # ========== CUSTOM PERMISSIONS ==========
 class IsOwner(BasePermission):
-    """Allow only the owner to edit/delete"""
     def has_object_permission(self, request, view, obj):
         return obj.owner == request.user
 
 class IsOrganizerOrAdmin(BasePermission):
-    """
-    Custom permission to only allow organizers and admins to create/edit events.
-    """
     def has_permission(self, request, view):
-        # Allow anyone to view events (GET, HEAD, OPTIONS)
         if request.method in permissions.SAFE_METHODS:
             return True
-            
-        # For creating events, check if user is authenticated and has organizer rights
         if not request.user or not request.user.is_authenticated:
             return False
-            
-        # Check if user is staff, superuser, or has organizer profile
         return (
-            request.user.is_staff or 
-            request.user.is_superuser or 
+            request.user.is_staff or
+            request.user.is_superuser or
             (hasattr(request.user, 'profile') and request.user.profile.is_organizer)
         )
-    
+
     def has_object_permission(self, request, view, obj):
-        # Allow anyone to view events
         if request.method in permissions.SAFE_METHODS:
             return True
-            
-        # For editing/deleting, only allow organizer or admin
         return (
-            request.user.is_staff or 
-            request.user.is_superuser or 
+            request.user.is_staff or
+            request.user.is_superuser or
             obj.organizer == request.user
         )
 
@@ -65,15 +53,14 @@ class PostPagination(PageNumberPagination):
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('id')
     serializer_class = UserSerializer
-    
+
     @action(detail=False, methods=['get', 'put', 'patch'], permission_classes=[IsAuthenticated])
     def me(self, request):
-        """Get the current authenticated user"""
         if request.method == 'GET':
             serializer = self.get_serializer(request.user)
             return Response(serializer.data)
         elif request.method in ['PUT', 'PATCH']:
-            serializer = self.get_serializer(request.user, data=request.data, partial=request.method=='PATCH')
+            serializer = self.get_serializer(request.user, data=request.data, partial=request.method == 'PATCH')
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data)
@@ -96,28 +83,24 @@ class PostViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
 
-# ========== EVENT VIEWS (UPDATED WITH ORGANIZER PERMISSION) ==========
+# ========== EVENT VIEWS ==========
 class EventViewSet(viewsets.ModelViewSet):
     queryset = Event.objects.all().order_by('-start_date')
     serializer_class = EventSerializer
-    permission_classes = [IsOrganizerOrAdmin]  # Changed from IsAuthenticated to custom permission
+    permission_classes = [IsOrganizerOrAdmin]
 
     def perform_create(self, serializer):
-        # Automatically set the organizer to the current user
         serializer.save(organizer=self.request.user)
 
     @action(detail=True, methods=["get"])
     def teams(self, request, pk=None):
-        """Get all teams for this event"""
         event = self.get_object()
         serializer = TeamSerializer(event.teams.all(), many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=["get"])
     def submissions(self, request, pk=None):
-        """Get all submissions for this event"""
         event = self.get_object()
-        # Get all teams for this event, then get their submissions
         teams = event.teams.all()
         submissions = Submission.objects.filter(team__in=teams)
         serializer = SubmissionSerializer(submissions, many=True)
@@ -129,20 +112,75 @@ class TeamViewSet(viewsets.ModelViewSet):
     serializer_class = TeamSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_permissions(self):
+        # Allow unauthenticated users to list/retrieve teams
+        if self.action in ['list', 'retrieve']:
+            return [permissions.AllowAny()]
+        return [IsAuthenticated()]
+
     def perform_create(self, serializer):
-        # When creating a team, add the creator as a member and leader
+        # Save the team, then set creator as leader and add as member
         team = serializer.save()
         team.members.add(self.request.user)
-        # You might want to add a leader field to Team model
+        # If your Team model has a `leader` field, set it here:
+        if hasattr(team, 'leader'):
+            team.leader = self.request.user
+            team.save()
 
+    # ── FIX 1: join action ──────────────────────────────────────────
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+    def join(self, request, pk=None):
+        """Let the authenticated user join this team."""
+        team = self.get_object()
+
+        # Already a member?
+        if team.members.filter(id=request.user.id).exists():
+            return Response(
+                {"message": "You are already a member of this team."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Team full?
+        max_members = getattr(team, 'max_members', 4)
+        if team.members.count() >= max_members:
+            return Response(
+                {"message": "This team is full."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        team.members.add(request.user)
+        serializer = self.get_serializer(team)
+        return Response(serializer.data)
+
+    # ── FIX 2: leave action ─────────────────────────────────────────
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+    def leave(self, request, pk=None):
+        """Let the authenticated user leave this team."""
+        team = self.get_object()
+
+        # Not a member?
+        if not team.members.filter(id=request.user.id).exists():
+            return Response(
+                {"message": "You are not a member of this team."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Leader can't leave (they must delete instead)
+        if hasattr(team, 'leader') and team.leader == request.user:
+            return Response(
+                {"message": "You are the team leader. Delete the team or transfer leadership instead."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        team.members.remove(request.user)
+        serializer = self.get_serializer(team)
+        return Response(serializer.data)
+
+    # ── Existing helper actions (kept as-is) ────────────────────────
     @action(detail=True, methods=["post"])
     def add_member(self, request, pk=None):
-        """Add a member to the team"""
         team = self.get_object()
         user_id = request.data.get("user_id")
-        
-        # Check if the requesting user is the team leader (you'd need a leader field)
-        # For now, just add the member
         try:
             user = User.objects.get(id=user_id)
             team.members.add(user)
@@ -152,10 +190,8 @@ class TeamViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def remove_member(self, request, pk=None):
-        """Remove a member from the team"""
         team = self.get_object()
         user_id = request.data.get("user_id")
-        
         try:
             user = User.objects.get(id=user_id)
             team.members.remove(user)
@@ -165,7 +201,6 @@ class TeamViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def members(self, request, pk=None):
-        """Get all members of the team"""
         team = self.get_object()
         serializer = UserSerializer(team.members.all(), many=True)
         return Response(serializer.data)
@@ -181,7 +216,6 @@ class SubmissionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def feedback(self, request, pk=None):
-        """Get all feedback for this submission"""
         submission = self.get_object()
         feedback = submission.feedback.all()
         serializer = JudgeFeedbackSerializer(feedback, many=True)
@@ -189,7 +223,6 @@ class SubmissionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def add_score(self, request, pk=None):
-        """Add or update score for submission"""
         submission = self.get_object()
         score = request.data.get("score")
         if score is not None:
@@ -205,5 +238,4 @@ class JudgeFeedbackViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        # Automatically set the judge to the current user
         serializer.save(judge=self.request.user)

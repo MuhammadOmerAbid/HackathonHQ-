@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "../../utils/axios";
+import TeamCard from "../../components/teams/TeamCard";
 
 const tmPageCss = `
 .tm-page { max-width: 1280px; margin: 0 auto; padding: 36px 32px 64px; font-family: 'DM Sans', sans-serif; min-height: calc(100vh - 70px); }
@@ -118,7 +118,7 @@ export default function TeamsPage() {
     const matchesSearch =
       team.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (team.description?.toLowerCase().includes(searchTerm.toLowerCase()) || false);
-    const isFull = team.members?.length >= (team.max_members || 4);
+    const isFull = (team.members?.length || 0) >= (team.max_members || 4);
     const matchesFilter =
       filter === "all" ? true : filter === "open" ? !isFull : filter === "full" ? isFull : true;
     return matchesSearch && matchesFilter;
@@ -139,8 +139,7 @@ export default function TeamsPage() {
   const fullTeams = totalTeams - openTeams;
   const myTeams = user
     ? teams.filter(
-        (t) =>
-          t.leader?.id === user.id || t.members?.some((m) => m.id === user.id)
+        (t) => (t.leader_details?.id ?? t.leader) === user.id || t.members?.some((m) => m.id === user.id)
       ).length
     : 0;
 
@@ -158,9 +157,17 @@ export default function TeamsPage() {
 
   return (
     <>
+      {/*
+        The <style> tag injects tm-* CSS into the page.
+        TeamCard reads these classes — it has no CSS of its own,
+        relying entirely on the parent page's injected styles.
+        This is intentional: one CSS block, shared by page + component.
+      */}
       <style>{tmPageCss}</style>
+
       <div className="tm-page">
-        {/* Header */}
+
+        {/* ── Header ── */}
         <div className="tm-header">
           <div>
             <div className="tm-eyebrow">
@@ -183,7 +190,7 @@ export default function TeamsPage() {
           </div>
         </div>
 
-        {/* Stats strip */}
+        {/* ── Stats strip ── */}
         <div className="tm-stats">
           <div className="tm-stat">
             <div className="tm-stat-value">{totalTeams}</div>
@@ -203,7 +210,7 @@ export default function TeamsPage() {
           </div>
         </div>
 
-        {/* Toolbar */}
+        {/* ── Toolbar ── */}
         <div className="tm-toolbar">
           <div className="tm-search-wrap">
             <svg className="tm-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -231,7 +238,7 @@ export default function TeamsPage() {
           </div>
         </div>
 
-        {/* Grid or Empty */}
+        {/* ── Grid or Empty ── */}
         {filteredTeams.length === 0 ? (
           <div className="tm-empty">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -254,65 +261,19 @@ export default function TeamsPage() {
           </div>
         ) : (
           <div className="tm-grid">
-            {filteredTeams.map((team) => {
-              const memberCount = team.members?.length || 0;
-              const maxMembers = team.max_members || 4;
-              const isFull = memberCount >= maxMembers;
-              const isLeader = user && team.leader?.id === user.id;
-              const isMember = user && team.members?.some((m) => m.id === user.id);
-
-              return (
-                <Link href={`/teams/${team.id}`} key={team.id} className="tm-card-link">
-                  <div className="tm-card">
-                    <div className="tm-card-top">
-                      <div className="tm-card-avatar">
-                        {team.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="tm-card-info">
-                        <p className="tm-card-name">{team.name}</p>
-                        <p className="tm-card-event">{team.event?.name || "Hackathon Team"}</p>
-                      </div>
-                      <span className={`tm-card-status ${isFull ? "full" : "open"}`}>
-                        {isFull ? "Full" : "Open"}
-                      </span>
-                    </div>
-
-                    <p className="tm-card-desc">
-                      {team.description || "No description provided."}
-                    </p>
-
-                    <div className="tm-card-members">
-                      <div className="tm-pip-stack">
-                        {team.members?.slice(0, 4).map((member, idx) => (
-                          <div key={idx} className="tm-pip" style={{ zIndex: 4 - idx }}>
-                            {member.username?.charAt(0).toUpperCase() || "?"}
-                          </div>
-                        ))}
-                        {memberCount > 4 && (
-                          <div className="tm-pip tm-pip-more">+{memberCount - 4}</div>
-                        )}
-                      </div>
-                      <span className="tm-members-count">
-                        {memberCount}/{maxMembers} members
-                      </span>
-                    </div>
-
-                    <div className="tm-card-footer">
-                      <div className="tm-leader">
-                        <span className="tm-leader-label">Led by</span>
-                        <span className="tm-leader-name">{team.leader?.username || "Unknown"}</span>
-                      </div>
-                      <div style={{ display: "flex", gap: "6px" }}>
-                        {isLeader && <span className="tm-badge tm-badge-leader">Leader</span>}
-                        {isMember && !isLeader && <span className="tm-badge tm-badge-member">Member</span>}
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
+            {filteredTeams.map((team) => (
+              /*
+                TeamCard handles the entire card UI.
+                Props:
+                  team — the full team object from the API
+                  user — the logged-in user (or null), used to show
+                         Leader / Member badges on the card footer
+              */
+              <TeamCard key={team.id} team={team} user={user} />
+            ))}
           </div>
         )}
+
       </div>
     </>
   );

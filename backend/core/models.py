@@ -37,10 +37,18 @@ class UserProfile(models.Model):
 
 class Team(models.Model):
     name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)          # ← add
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="teams")
-    members = models.ManyToManyField(User, related_name="teams")
+    leader = models.ForeignKey(                                     # ← add
+        User,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="led_teams"
+    )
+    max_members = models.PositiveIntegerField(default=4)            # ← add
+    members = models.ManyToManyField(User, related_name="teams", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     def __str__(self):
         return self.name
 

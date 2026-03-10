@@ -170,7 +170,7 @@ export default function TeamDetailPage() {
       <>
         <style>{tmdPageCss}</style>
         <div className="tmd-page">
-          <button onClick={() => router.back()} className="tmd-back">
+          <button onClick={() => router.push("/teams")} className="tmd-back">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="19" y1="12" x2="5" y2="12" />
               <polyline points="12 19 5 12 12 5" />
@@ -199,7 +199,7 @@ export default function TeamDetailPage() {
   const memberCount = team.members_details?.length || 0;
   const maxMembers = team.max_members || 4;
   const isFull = memberCount >= maxMembers;
-  const isLeader = user && team.leader?.id === user.id;
+  const isLeader = user && (team.leader_details?.id ?? team.leader) === user.id;
   const isMember = user && team.members_details?.some((m) => m.id === user.id);
 
   return (
@@ -207,7 +207,7 @@ export default function TeamDetailPage() {
       <style>{tmdPageCss}</style>
       <div className="tmd-page">
         {/* Back */}
-        <button onClick={() => router.back()} className="tmd-back">
+        <button onClick={() => router.push("/teams")} className="tmd-back">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="19" y1="12" x2="5" y2="12" />
             <polyline points="12 19 5 12 12 5" />
@@ -258,7 +258,7 @@ export default function TeamDetailPage() {
           </div>
           <div className="tmd-info-cell">
             <div className="tmd-info-label">Leader</div>
-            <div className="tmd-info-val">{team.leader?.username || "Unknown"}</div>
+            <div className="tmd-info-val">{team.leader_details?.username || team.leader?.username || "Unknown"}</div>
           </div>
           <div className="tmd-info-cell">
             <div className="tmd-info-label">Status</div>
@@ -289,7 +289,7 @@ export default function TeamDetailPage() {
               {team.members_details.map((member, index) => {
                 const safeKey = member?.id ? `member-${member.id}` : `member-index-${index}`;
                 const initial = member?.username ? member.username.charAt(0).toUpperCase() : "?";
-                const isLeaderMember = member?.id === team.leader?.id;
+                const isLeaderMember = member?.id === (team.leader_details?.id ?? team.leader);
 
                 const Inner = () => (
                   <>

@@ -8,7 +8,9 @@ export default function TeamCard({ team, user }) {
   const memberCount = team.members?.length || 0;
   const maxMembers = team.max_members || 4;
   const isFull = memberCount >= maxMembers;
-  const isLeader = user && team.leader?.id === user.id;
+  // leader is a raw ID integer from the API; leader_details is the full user object
+  const leaderUser = team.leader_details || team.leader;
+  const isLeader = user && (team.leader_details?.id ?? team.leader) === user.id;
   const isMember = user && team.members?.some((m) => m.id === user.id);
 
   return (
@@ -59,7 +61,7 @@ export default function TeamCard({ team, user }) {
         <div className="tm-card-footer">
           <div className="tm-leader">
             <span className="tm-leader-label">Led by</span>
-            <span className="tm-leader-name">{team.leader?.username || "Unknown"}</span>
+            <span className="tm-leader-name">{leaderUser?.username || "Unknown"}</span>
           </div>
           <div style={{ display: "flex", gap: "6px" }}>
             {isLeader && <span className="tm-badge tm-badge-leader">Leader</span>}

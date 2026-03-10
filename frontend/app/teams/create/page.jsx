@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "../../../utils/axios";
+import TeamForm from "../../../components/teams/TeamForm";
 
 const tmcPageCss = `
 .tmc-page { max-width: 640px; margin: 0 auto; padding: 36px 32px 64px; font-family: 'DM Sans', sans-serif; min-height: calc(100vh - 70px); }
@@ -92,6 +93,7 @@ export default function CreateTeamPage() {
     fetchData();
   }, [router]);
 
+  // Passed down to TeamForm as the onChange handler
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -117,9 +119,17 @@ export default function CreateTeamPage() {
 
   return (
     <>
+      {/*
+        The <style> tag injects tmc-* CSS into the page.
+        TeamForm reads these classes — it has no CSS of its own,
+        relying entirely on the parent page's injected styles.
+        This is intentional: one CSS block, shared by page + component.
+      */}
       <style>{tmcPageCss}</style>
+
       <div className="tmc-page">
-        {/* Back */}
+
+        {/* ── Back button ── */}
         <button onClick={() => router.back()} className="tmc-back">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="19" y1="12" x2="5" y2="12" />
@@ -128,7 +138,7 @@ export default function CreateTeamPage() {
           Back to Teams
         </button>
 
-        {/* Heading */}
+        {/* ── Page heading ── */}
         <div className="tmc-eyebrow">
           <span className="tmc-eyebrow-dot" />
           <span className="tmc-eyebrow-label">New Team</span>
@@ -136,109 +146,28 @@ export default function CreateTeamPage() {
         <h1 className="tmc-title">Create a Team</h1>
         <p className="tmc-subtitle">Fill in the details to form your hackathon squad.</p>
 
+        {/* ── Card ── */}
         <div className="tmc-card">
           <div className="tmc-card-body">
-            {error && (
-              <div className="tmc-error">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                {error}
-              </div>
-            )}
-
-            {/* Team Name */}
-            <div className="tmc-group">
-              <label className="tmc-label">
-                Team Name <span className="tmc-required">*</span>
-              </label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                className="tmc-input"
-                placeholder="e.g., Code Warriors, AI Avengers"
-                required
-                minLength={3}
-                maxLength={50}
-              />
-            </div>
-
-            {/* Event + Team Size in a row */}
-            <div className="tmc-row">
-              <div className="tmc-group">
-                <label className="tmc-label">
-                  Select Event <span className="tmc-required">*</span>
-                </label>
-                <select
-                  name="event"
-                  value={formData.event}
-                  onChange={handleChange}
-                  className="tmc-select"
-                  required
-                >
-                  <option value="">Choose an event</option>
-                  {events.map((event) => (
-                    <option key={event.id} value={event.id}>
-                      {event.name} ({new Date(event.start_date).toLocaleDateString()})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="tmc-group">
-                <label className="tmc-label">Team Size</label>
-                <select
-                  name="max_members"
-                  value={formData.max_members}
-                  onChange={handleChange}
-                  className="tmc-select"
-                >
-                  {[2, 3, 4, 5, 6].map((n) => (
-                    <option key={n} value={n}>
-                      {n} members
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Team Leader (read-only) */}
-            <div className="tmc-group">
-              <label className="tmc-label">Team Leader</label>
-              <div className="tmc-leader-strip">
-                <div className="tmc-leader-avatar">
-                  {user?.username?.charAt(0).toUpperCase() || "Y"}
-                </div>
-                <div className="tmc-leader-info">
-                  <div className="tmc-leader-name">
-                    {user?.username || "You"}
-                    <span className="tmc-leader-badge">Leader</span>
-                  </div>
-                  <div className="tmc-leader-sub">Automatically assigned as team leader</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Description */}
-            <div className="tmc-group">
-              <label className="tmc-label">Team Description</label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                className="tmc-textarea"
-                placeholder="Describe your team's focus, what skills you're looking for, and your project idea…"
-                rows="5"
-              />
-              <span className="tmc-hint">Help others understand what your team is about.</span>
-            </div>
+            {/*
+              TeamForm renders all the form fields.
+              Props:
+                formData  — controlled form state from this page
+                onChange  — handleChange keeps formData in sync
+                events    — list of events for the dropdown
+                user      — logged-in user, shown in the leader strip
+                error     — error string displayed inside the form
+            */}
+            <TeamForm
+              formData={formData}
+              onChange={handleChange}
+              events={events}
+              user={user}
+              error={error}
+            />
           </div>
 
-          {/* Footer */}
+          {/* ── Footer with action buttons ── */}
           <div className="tmc-card-footer">
             <Link href="/teams" className="tmc-btn-cancel">
               Cancel
@@ -259,6 +188,7 @@ export default function CreateTeamPage() {
             </button>
           </div>
         </div>
+
       </div>
     </>
   );

@@ -1,70 +1,21 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React from "react";
 import Link from "next/link";
-import axios from "../../../utils/axios";
+import SubmissionForm from "../../../components/submissions/SubmissionForm";
 
 export default function CreateSubmissionPage() {
-  const router = useRouter();
-  const [formData, setFormData] = useState({
-    title: "", description: "", summary: "",
-    demo_url: "", repo_url: "", technologies: "",
-    event: "", team: ""
-  });
-  const [events, setEvents] = useState([]);
-  const [teams, setTeams] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [eventsRes, teamsRes] = await Promise.all([
-          axios.get("/events/"),
-          axios.get("/teams/")
-        ]);
-        setEvents(eventsRes.data.results || []);
-        setTeams(teamsRes.data.results || teamsRes.data || []);
-      } catch (err) { console.error("Error fetching data:", err); }
-    };
-    fetchData();
-  }, []);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    try {
-      const submissionData = {
-        ...formData,
-        technologies: formData.technologies.split(',').map(t => t.trim()).filter(t => t)
-      };
-      const res = await axios.post("/submissions/", submissionData);
-      router.push(`/submissions/${res.data.id}`);
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to create submission");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="evc-page">
       <div className="blob blob1" /><div className="blob blob2" /><div className="blob blob3" />
       
       <Link href="/submissions" className="evc-back-btn">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <line x1="19" y1="12" x2="5" y2="12" />
-    <polyline points="12 19 5 12 12 5" />
-  </svg>
-  <span>Back to Submissions</span>
-</Link>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="19" y1="12" x2="5" y2="12" />
+          <polyline points="12 19 5 12 12 5" />
+        </svg>
+        <span>Back to Submissions</span>
+      </Link>
 
       <div className="evc-eyebrow">
         <div className="evc-eyebrow-dot" />
@@ -74,130 +25,160 @@ export default function CreateSubmissionPage() {
       <p className="evc-subtitle">Share your hackathon creation with the world</p>
 
       <div className="evc-card">
-        <form onSubmit={handleSubmit}>
-          <div className="evc-card-body">
-            {error && (
-              <div className="evc-error">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                {error}
-              </div>
-            )}
-
-            <div className="evc-group">
-              <label className="evc-label">Project Title <span className="evc-required">*</span></label>
-              <input
-                type="text"
-                name="title"
-                value={formData.title}
-                onChange={handleChange}
-                className="evc-input"
-                placeholder="e.g., AI-Powered Task Manager"
-                required
-              />
-            </div>
-
-            <div className="evc-row">
-              <div className="evc-group">
-                <label className="evc-label">Event <span className="evc-required">*</span></label>
-                <select name="event" value={formData.event} onChange={handleChange} className="evc-input" required>
-                  <option value="">Choose an event</option>
-                  {events.map(ev => <option key={ev.id} value={ev.id}>{ev.name}</option>)}
-                </select>
-              </div>
-              <div className="evc-group">
-                <label className="evc-label">Team <span className="evc-required">*</span></label>
-                <select name="team" value={formData.team} onChange={handleChange} className="evc-input" required>
-                  <option value="">Choose your team</option>
-                  {teams.map(tm => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div className="evc-group">
-              <label className="evc-label">Short Summary</label>
-              <input
-                type="text"
-                name="summary"
-                value={formData.summary}
-                onChange={handleChange}
-                className="evc-input"
-                placeholder="One-line description of your project"
-              />
-            </div>
-
-            <div className="evc-group">
-              <label className="evc-label">Full Description <span className="evc-required">*</span></label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                className="evc-textarea"
-                placeholder="Describe your project — how it works, what problem it solves, features..."
-                rows="5"
-                required
-              />
-            </div>
-
-            <div className="evc-group">
-              <label className="evc-label">Technologies Used</label>
-              <input
-                type="text"
-                name="technologies"
-                value={formData.technologies}
-                onChange={handleChange}
-                className="evc-input"
-                placeholder="React, Python, TensorFlow... (comma separated)"
-              />
-              <span className="evc-hint">Separate technologies with commas</span>
-            </div>
-
-            <div className="evc-row">
-              <div className="evc-group">
-                <label className="evc-label">Live Demo URL</label>
-                <input
-                  type="url"
-                  name="demo_url"
-                  value={formData.demo_url}
-                  onChange={handleChange}
-                  className="evc-input"
-                  placeholder="https://your-project-demo.com"
-                />
-              </div>
-              <div className="evc-group">
-                <label className="evc-label">Repository URL</label>
-                <input
-                  type="url"
-                  name="repo_url"
-                  value={formData.repo_url}
-                  onChange={handleChange}
-                  className="evc-input"
-                  placeholder="https://github.com/username/project"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="evc-card-footer">
-            <Link href="/submissions" className="evc-btn-cancel">Cancel</Link>
-            <button type="submit" className="evc-btn-submit" disabled={loading}>
-              {loading ? (
-                <><span className="evc-btn-spinner" /> Submitting...</>
-              ) : (
-                <>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                  Submit Project
-                </>
-              )}
-            </button>
-          </div>
-        </form>
+        <SubmissionForm />
       </div>
+
+      <style jsx>{`
+        .evc-page {
+          max-width: 900px;
+          margin: 0 auto;
+          padding: 2rem 1.5rem;
+          min-height: 100vh;
+          background: #0a0a0a;
+          position: relative;
+          font-family: 'DM Sans', sans-serif;
+        }
+        
+        .evc-back-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.75rem;
+          padding: 0.6rem 1.2rem 0.6rem 1rem;
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 30px;
+          color: #5c5c6e;
+          font-size: 0.9rem;
+          font-weight: 500;
+          font-family: 'DM Sans', sans-serif;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          margin-bottom: 1.75rem;
+          text-decoration: none;
+          width: fit-content;
+        }
+        
+        .evc-back-btn:hover {
+          background: #17171b;
+          border-color: #6EE7B7;
+          color: #f0f0f3;
+          transform: translateX(-4px);
+        }
+        
+        .evc-back-btn svg {
+          width: 18px;
+          height: 18px;
+          transition: transform 0.2s ease;
+        }
+        
+        .evc-back-btn:hover svg {
+          transform: translateX(-2px);
+          stroke: #6EE7B7;
+        }
+        
+        .evc-eyebrow {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+        
+        .evc-eyebrow-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #6EE7B7;
+        }
+        
+        .evc-eyebrow-label {
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 1.2px;
+          text-transform: uppercase;
+          color: #6EE7B7;
+        }
+        
+        .evc-title {
+          font-family: 'Syne', sans-serif;
+          font-size: 2.5rem;
+          font-weight: 700;
+          color: #f0f0f3;
+          margin: 0 0 0.5rem 0;
+          letter-spacing: -0.02em;
+        }
+        
+        .evc-subtitle {
+          font-size: 1rem;
+          color: #5c5c6e;
+          margin: 0 0 2rem 0;
+          line-height: 1.6;
+        }
+        
+        .evc-card {
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 24px;
+          padding: 2rem;
+          box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Background blobs */
+        .blob {
+          position: fixed;
+          width: 300px;
+          height: 300px;
+          border-radius: 50%;
+          filter: blur(80px);
+          z-index: 0;
+          pointer-events: none;
+        }
+        
+        .blob1 {
+          top: -100px;
+          right: -100px;
+          background: rgba(110, 231, 183, 0.15);
+        }
+        
+        .blob2 {
+          bottom: -100px;
+          left: -100px;
+          background: rgba(110, 231, 183, 0.1);
+        }
+        
+        .blob3 {
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 400px;
+          height: 400px;
+          background: rgba(110, 231, 183, 0.05);
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+          .evc-page {
+            padding: 1.5rem 1rem;
+          }
+          
+          .evc-title {
+            font-size: 2rem;
+          }
+          
+          .evc-card {
+            padding: 1.5rem;
+          }
+        }
+        
+        @media (max-width: 480px) {
+          .evc-title {
+            font-size: 1.75rem;
+          }
+          
+          .evc-card {
+            padding: 1.25rem;
+          }
+        }
+      `}</style>
     </div>
   );
 }

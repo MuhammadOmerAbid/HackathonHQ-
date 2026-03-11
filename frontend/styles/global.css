@@ -961,6 +961,610 @@ h1, h2, h3, h4, h5, h6 {
   flex-shrink: 0;
 }
 
+/* ============================================
+   ENHANCED DROPDOWN STYLES - Add to global.css
+   ============================================ */
+
+/* ============================================
+   CUSTOM DROPDOWN STYLES - Add to global.css
+   ============================================ */
+
+/* ============================================
+   CUSTOM DROPDOWN STYLES - NARROWER VERSION
+   ============================================ */
+
+.custom-dropdown {
+  position: relative;
+  width: 100%;
+  font-family: 'DM Sans', sans-serif;
+  max-width: 100%; /* Prevents overflow */
+}
+
+.custom-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.75rem 1rem; /* Reduced padding */
+  background: var(--surface2, #17171b);
+  border: 1.5px solid var(--border, #1e1e24);
+  border-radius: 10px; /* Slightly smaller radius */
+  color: var(--text, #f0f0f3);
+  font-size: 0.9rem; /* Slightly smaller font */
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Smaller shadow */
+  min-height: 42px; /* Shorter height */
+  line-height: 1.3;
+}
+
+.custom-dropdown-trigger:hover {
+  border-color: var(--accent, #6EE7B7);
+  background: var(--surface, #111114);
+  box-shadow: 0 4px 8px rgba(110, 231, 183, 0.15);
+}
+
+.custom-dropdown-trigger.open {
+  border-color: var(--accent, #6EE7B7);
+  box-shadow: 0 0 0 2px rgba(110, 231, 183, 0.2); /* Smaller focus ring */
+  background: var(--surface, #111114);
+}
+
+.custom-dropdown-trigger.error {
+  border-color: #f87171;
+  background: rgba(248, 113, 113, 0.05);
+}
+
+.custom-dropdown-trigger.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--surface2, #17171b);
+  border-color: var(--border, #1e1e24);
+}
+
+.custom-dropdown-value {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 0.5rem; /* Add some spacing before arrow */
+}
+
+.custom-dropdown-value.placeholder {
+  color: var(--muted, #5c5c6e);
+  font-weight: 400;
+}
+
+.custom-dropdown-arrow {
+  width: 16px; /* Smaller arrow */
+  height: 16px;
+  color: var(--accent, #6EE7B7);
+  transition: transform 0.3s ease;
+  flex-shrink: 0;
+}
+
+.custom-dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+/* Dropdown Menu - narrower and better positioned */
+.custom-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px); /* Closer to trigger */
+  left: 0;
+  right: 0;
+  max-height: 280px; /* Slightly shorter */
+  overflow-y: auto;
+  background: var(--surface, #111114);
+  border: 1.5px solid var(--border, #1e1e24);
+  border-radius: 10px; /* Smaller radius */
+  box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  animation: dropdownFadeIn 0.2s ease;
+  min-width: fit-content; /* Adjusts to content */
+  width: auto; /* Let it size naturally */
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dropdown Items - more compact */
+.custom-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem; /* Smaller padding */
+  color: var(--text, #f0f0f3);
+  font-size: 0.85rem; /* Smaller font */
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-bottom: 1px solid var(--border, #1e1e24);
+  gap: 0.5rem; /* Add gap between text and check */
+}
+
+.custom-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.custom-dropdown-item:hover {
+  background: var(--surface2, #17171b);
+  color: var(--accent, #6EE7B7);
+  padding-left: 1.25rem; /* Smaller hover shift */
+}
+
+.custom-dropdown-item.selected {
+  background: rgba(110, 231, 183, 0.1);
+  color: var(--accent, #6EE7B7);
+  font-weight: 600;
+  border-left: 2px solid var(--accent, #6EE7B7); /* Thinner border */
+  padding-left: calc(1rem - 2px); /* Adjust for border */
+}
+
+.custom-dropdown-check {
+  width: 14px; /* Smaller check */
+  height: 14px;
+  color: var(--accent, #6EE7B7);
+  flex-shrink: 0;
+}
+
+/* Empty State - more compact */
+.custom-dropdown-empty {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--muted, #5c5c6e);
+  font-size: 0.85rem;
+}
+
+/* Scrollbar Styling - thinner */
+.custom-dropdown-menu::-webkit-scrollbar {
+  width: 4px; /* Thinner scrollbar */
+}
+
+.custom-dropdown-menu::-webkit-scrollbar-track {
+  background: var(--surface2, #17171b);
+  border-radius: 0 10px 10px 0;
+}
+
+.custom-dropdown-menu::-webkit-scrollbar-thumb {
+  background: var(--border2, #26262e);
+  border-radius: 2px;
+}
+
+.custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
+  background: var(--accent, #6EE7B7);
+}
+
+/* Optional: Make the dropdown menu width adjust to content */
+.custom-dropdown-menu {
+  min-width: 100%; /* At least as wide as trigger */
+  max-width: 120%; /* Can be slightly wider if needed */
+}
+
+/* For longer options, ensure they wrap properly */
+.custom-dropdown-item span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px; /* Prevent extremely wide items */
+}
+
+/* Group styling for the form - keep consistent */
+.evc-group {
+  position: relative;
+  width: 100%;
+}
+
+/* Adjust the row to have proper spacing */
+.evc-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem; /* Slightly smaller gap */
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .custom-dropdown-trigger {
+    padding: 0.7rem 0.9rem;
+    font-size: 0.85rem;
+    min-height: 40px;
+  }
+  
+  .custom-dropdown-item {
+    padding: 0.5rem 0.9rem;
+    font-size: 0.8rem;
+  }
+  
+  .custom-dropdown-menu {
+    max-height: 250px;
+  }
+}
+
+/* ============================================
+   ENHANCED INFO STRIP STYLES - ADD THIS TO YOUR global.css
+   ============================================ */
+
+/* Enhanced Info Strip Container */
+.evd-info-strip-enhanced {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+/* Info Card Base Styles */
+.evd-info-card {
+  background: var(--surface, #111114);
+  border: 1px solid var(--border, #1e1e24);
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Hover Effect */
+.evd-info-card:hover {
+  border-color: var(--accent, #6EE7B7);
+  background: var(--surface2, #17171b);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Icon Container */
+.evd-info-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(110, 231, 183, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.evd-info-card:hover .evd-info-icon {
+  background: rgba(110, 231, 183, 0.15);
+}
+
+/* Icon SVG */
+.evd-info-icon svg {
+  width: 24px;
+  height: 24px;
+  color: var(--accent, #6EE7B7);
+  transition: all 0.2s ease;
+}
+
+/* Content Container */
+.evd-info-content {
+  flex: 1;
+  min-width: 0; /* Prevents text overflow */
+}
+
+/* Label */
+.evd-info-content .evd-info-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted, #5c5c6e);
+  margin-bottom: 0.25rem;
+}
+
+/* Value */
+.evd-info-content .evd-info-val {
+  font-family: 'Syne', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text, #f0f0f3);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Link Cards (clickable) */
+.evd-info-link {
+  cursor: pointer;
+  position: relative;
+}
+
+.evd-info-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+  pointer-events: none;
+}
+
+.evd-info-link:hover::after {
+  border-color: var(--accent, #6EE7B7);
+}
+
+.evd-info-link .evd-info-val {
+  color: var(--accent, #6EE7B7);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: all 0.2s ease;
+}
+
+.evd-info-link:hover .evd-info-val {
+  transform: translateX(4px);
+}
+
+/* Score Value Styling */
+.evd-info-val span {
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 400;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .evd-info-strip-enhanced {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+
+  .evd-info-card {
+    padding: 1rem;
+  }
+
+  .evd-info-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .evd-info-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .evd-info-content .evd-info-val {
+    font-size: 0.9rem;
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
+@media (max-width: 480px) {
+  .evd-info-strip-enhanced {
+    grid-template-columns: 1fr;
+  }
+
+  .evd-info-card {
+    padding: 0.875rem 1.25rem;
+  }
+}
+
+/* Optional: Add a subtle gradient background for the first card */
+.evd-info-card:first-child {
+  background: linear-gradient(145deg, var(--surface, #111114), var(--surface2, #17171b));
+}
+
+/* Animation for cards appearing */
+.evd-info-card {
+  animation: cardFadeIn 0.3s ease-out forwards;
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.evd-info-card:nth-child(1) { animation-delay: 0.05s; }
+.evd-info-card:nth-child(2) { animation-delay: 0.1s; }
+.evd-info-card:nth-child(3) { animation-delay: 0.15s; }
+.evd-info-card:nth-child(4) { animation-delay: 0.2s; }
+
+@keyframes cardFadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================
+   FEEDBACK SECTION STYLES - ADD TO global.css
+   ============================================ */
+
+/* Feedback List Container */
+.evd-feedback-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem;
+}
+
+/* Individual Feedback Item */
+.evd-feedback-item {
+  background: var(--surface, #111114);
+  border: 1px solid var(--border, #1e1e24);
+  border-radius: 16px;
+  padding: 1.5rem;
+  transition: all 0.2s ease;
+}
+
+.evd-feedback-item:hover {
+  border-color: var(--accent, #6EE7B7);
+  box-shadow: 0 4px 20px rgba(110, 231, 183, 0.1);
+}
+
+/* Feedback Header */
+.evd-feedback-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.evd-feedback-judge {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.evd-feedback-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent-dim), rgba(110, 231, 183, 0.2));
+  border: 1px solid var(--accent-mid);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Syne', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.evd-feedback-judge-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.evd-feedback-judge-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.evd-feedback-date {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Score Badge */
+.evd-feedback-score-badge {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 30px;
+  padding: 0.5rem 1rem;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+
+.evd-feedback-score-value {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.evd-feedback-score-max {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Progress Bar Container - FIXED */
+.evd-feedback-progress-container {
+  margin: 1.25rem 0;
+  width: 100%;
+}
+
+.evd-feedback-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--border2, #26262e);
+  border-radius: 30px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.evd-feedback-progress-fill {
+  height: 100%;
+  border-radius: 30px;
+  transition: width 0.3s ease;
+}
+
+/* Progress Labels */
+.evd-feedback-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0 0.25rem;
+}
+
+/* Feedback Comment */
+.evd-feedback-comment {
+  background: var(--surface2, #17171b);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-top: 0.5rem;
+}
+
+.evd-feedback-comment p {
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+/* Empty State Enhancement */
+.evd-empty {
+  padding: 4rem 2rem;
+  text-align: center;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.evd-empty svg {
+  color: var(--border2);
+  opacity: 0.5;
+}
+
+.evd-empty h4 {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.1rem;
+  color: var(--text);
+  margin: 0;
+}
+
+.evd-empty p {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .evd-feedback-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .evd-feedback-score-badge {
+    align-self: flex-start;
+  }
+
+  .evd-feedback-progress-labels {
+    font-size: 0.6rem;
+  }
+}
+
 /* ── evd-* (Event Detail) ── */
 .evd-page { max-width: 1000px; margin: 0 auto; padding: 36px 32px 64px; font-family: 'DM Sans', sans-serif; min-height: calc(100vh - 70px); }
 .evd-loading { min-height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #5c5c6e; font-size: 13px; }
@@ -1036,7 +1640,7 @@ h1, h2, h3, h4, h5, h6 {
 .evc-subtitle { font-size: 13.5px; color: #5c5c6e; margin: 0 0 32px; }
 .evc-card { background: #111114; border: 1px solid #1e1e24; border-radius: 16px; overflow: hidden; }
 .evc-card-body { padding: 28px; display: flex; flex-direction: column; gap: 22px; }
-.evc-group { display: flex; flex-direction: column; gap: 7px; }
+
 .evc-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .evc-label { font-size: 12.5px; font-weight: 500; color: #5c5c6e; letter-spacing: 0.2px; }
 .evc-required { color: #f87171; margin-left: 2px; }

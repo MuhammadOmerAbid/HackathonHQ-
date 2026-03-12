@@ -1,32 +1,51 @@
 "use client";
-
+ 
 import React from "react";
 import Link from "next/link";
 import SubmissionForm from "../../../components/submissions/SubmissionForm";
-
+ 
 export default function CreateSubmissionPage() {
   return (
-    <div className="evc-page">
-      <div className="blob blob1" /><div className="blob blob2" /><div className="blob blob3" />
-      
-      <Link href="/submissions" className="evc-back-btn">
+    <>
+      {/* This full-page backdrop kills any green tint bleeding from layout */}
+      <div style={{
+        position: "fixed",
+        inset: 0,
+        background: "#0c0c0f",
+        zIndex: 0,
+        pointerEvents: "none"
+      }} />
+ 
+      <div style={{
+        position: "relative",
+        zIndex: 1,
+        maxWidth: "900px",
+        margin: "0 auto",
+        padding: "36px 32px 64px",
+        fontFamily: "'DM Sans', sans-serif",
+        minHeight: "calc(100vh - 70px)"
+      }}>
+ 
+        <Link href="/submissions" className="evc-back-btn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <line x1="19" y1="12" x2="5" y2="12" />
           <polyline points="12 19 5 12 12 5" />
         </svg>
         <span>Back to Submissions</span>
       </Link>
-
-      <div className="evc-eyebrow">
-        <div className="evc-eyebrow-dot" />
-        <span className="evc-eyebrow-label">New Project</span>
-      </div>
-      <h1 className="evc-title">Submit Your Project</h1>
-      <p className="evc-subtitle">Share your hackathon creation with the world</p>
-
-      <div className="evc-card">
-        <SubmissionForm />
-      </div>
+ 
+        <div className="evc-eyebrow">
+          <div className="evc-eyebrow-dot" />
+          <span className="evc-eyebrow-label">New Project</span>
+        </div>
+        <h1 className="evc-title">Submit Your Project</h1>
+        <p className="evc-subtitle">Share your hackathon creation with the world</p>
+ 
+        <div className="evc-card">
+          <SubmissionForm />
+        </div>
+       
+    
 
       <style jsx>{`
         .evc-page {
@@ -180,5 +199,6 @@ export default function CreateSubmissionPage() {
         }
       `}</style>
     </div>
+    </>
   );
 }

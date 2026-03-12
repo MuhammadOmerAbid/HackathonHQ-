@@ -181,56 +181,60 @@ export default function SubmissionForm({
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!validateForm()) {
-      // Scroll to first error
-      const firstError = document.querySelector('[data-error="true"]');
-      if (firstError) {
-        firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-      return;
+  e.preventDefault();
+  
+  if (!validateForm()) {
+    const firstError = document.querySelector('[data-error="true"]');
+    if (firstError) {
+      firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
+    return;
+  }
 
-    setLoading(true);
-    setError("");
+  setLoading(true);
+  setError("");
+  
+  try {
+    const payload = {
+      title: formData.title,
+      description: formData.description,
+      summary: formData.summary,
+      demo_url: formData.demo_url,
+      repo_url: formData.repo_url,
+      event: parseInt(formData.event),
+      team: parseInt(formData.team),
+      technologies: formData.technologies
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean)
+    };
     
-    try {
-      const payload = {
-        title: formData.title,
-        description: formData.description,
-        summary: formData.summary,
-        demo_url: formData.demo_url,
-        repo_url: formData.repo_url,
-        event: parseInt(formData.event),
-        team: parseInt(formData.team),
-        technologies: formData.technologies
-          .split(',')
-          .map(t => t.trim())
-          .filter(Boolean)
-      };
-      
-      console.log("Submitting payload:", payload);
+    console.log("Submitting payload:", payload);
 
-      let res;
-      if (initialData.id) {
-        res = await axios.patch(`/submissions/${initialData.id}/`, payload);
-      } else {
-        res = await axios.post("/submissions/", payload);
-      }
-      
-      if (onSuccess) {
-        onSuccess(res.data);
-      } else {
-        router.push(`/submissions/${res.data.id}`);
-      }
-    } catch (err) {
-      console.error("Submission error:", err);
-      setError(err.response?.data?.message || err.response?.data?.detail || "Failed to save submission");
-    } finally {
-      setLoading(false);
+    let res;
+    if (initialData.id) {
+      res = await axios.patch(`/submissions/${initialData.id}/`, payload);
+    } else {
+      res = await axios.post("/submissions/", payload);
     }
-  };
+    
+    // 🔥 FIX: Fetch the complete submission with expanded event and team data
+    console.log("Submission created, fetching full data with expand...");
+    const fullSubmissionRes = await axios.get(`/submissions/${res.data.id}/?expand=event,team,team.members,team.leader`);
+    console.log("Full submission data:", fullSubmissionRes.data);
+    
+    if (onSuccess) {
+      onSuccess(fullSubmissionRes.data);
+    } else {
+      router.push(`/submissions/${fullSubmissionRes.data.id}`);
+    }
+  } catch (err) {
+    console.error("Submission error:", err);
+    setError(err.response?.data?.message || err.response?.data?.detail || "Failed to save submission");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const hasTeams = userTeams.length > 0;
   const hasEvents = events.length > 0;

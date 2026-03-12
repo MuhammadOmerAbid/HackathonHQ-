@@ -1,42 +1,37 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import User
 from .models import Post, Event, Team, Submission, JudgeFeedback, UserProfile
 
 User = get_user_model()
 
-# ========== USER PROFILE SERIALIZER ==========
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        fields = ['id', 'is_organizer', 'organization_name', 'created_at']
+        fields = ['id', 'is_organizer', 'is_judge', 'organization_name', 'created_at']
 
-# ========== USER SERIALIZER ==========
 class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
-
+    
     class Meta:
         model = User
         fields = ["id", "username", "email", "first_name", "last_name",
                   "is_active", "is_staff", "is_superuser", "profile"]
 
-# ========== POST SERIALIZER ==========
 class PostSerializer(serializers.ModelSerializer):
     owner = serializers.ReadOnlyField(source='owner.username')
     owner_details = UserSerializer(source='owner', read_only=True)
-
+    
     class Meta:
         model = Post
         fields = ['id', 'title', 'content', 'owner', 'owner_details', 'created_at']
 
-# ========== REGISTER SERIALIZER ==========
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
-
+    
     class Meta:
         model = User
         fields = ["username", "email", "password"]
-
+    
     def create(self, validated_data):
         user = User.objects.create_user(
             username=validated_data["username"],
@@ -46,54 +41,97 @@ class RegisterSerializer(serializers.ModelSerializer):
         UserProfile.objects.create(user=user)
         return user
 
-# ========== EVENT SERIALIZER ==========
 class EventSerializer(serializers.ModelSerializer):
     organizer_details = UserSerializer(source='organizer', read_only=True)
     organizer_username = serializers.ReadOnlyField(source='organizer.username')
-
+    teams_count = serializers.SerializerMethodField()
+    
     class Meta:
         model = Event
         fields = ['id', 'name', 'description', 'start_date', 'end_date',
-                  'is_premium', 'organizer', 'organizer_username', 'organizer_details']
+                  'is_premium', 'organizer', 'organizer_username', 'organizer_details',
+                  'teams_count']
         read_only_fields = ['organizer']
+    
+    def get_teams_count(self, obj):
+        return obj.teams.count()
 
-# ========== TEAM SERIALIZER ==========
 class TeamSerializer(serializers.ModelSerializer):
     members_details = UserSerializer(source='members', many=True, read_only=True)
     event_name = serializers.ReadOnlyField(source='event.name')
-
-    # FIX: expose leader as a nested object so the frontend can read leader.id and leader.username
     leader_details = UserSerializer(source='leader', read_only=True)
-
+    submissions_count = serializers.SerializerMethodField()
+    
     class Meta:
         model = Team
         fields = [
             'id', 'name', 'description', 'max_members', 'event', 'event_name',
-            'leader', 'leader_details',          # ← added
-            'members', 'members_details',
-            'created_at',
+            'leader', 'leader_details', 'members', 'members_details',
+            'created_at', 'submissions_count'
         ]
-        read_only_fields = ['members', 'leader']  # both set automatically in view
+        read_only_fields = ['members', 'leader']
+    
+    def get_submissions_count(self, obj):
+        return obj.submissions.count()
 
-# ========== SUBMISSION SERIALIZER ==========
 class SubmissionSerializer(serializers.ModelSerializer):
+    # Team details
     team_details = TeamSerializer(source='team', read_only=True)
     team_name = serializers.ReadOnlyField(source='team.name')
-
+    
+    # Event via team
+    event_name = serializers.ReadOnlyField(source='team.event.name')
+    event = serializers.SerializerMethodField()
+    
+    # Submitted by
+    submitted_by_username = serializers.ReadOnlyField(source='submitted_by.username')
+    submitted_by_details = UserSerializer(source='submitted_by', read_only=True)
+    
+    # Feedback stats
+    feedback_count = serializers.SerializerMethodField()
+    average_score = serializers.SerializerMethodField()
+    
     class Meta:
         model = Submission
-        fields = ['id', 'team', 'team_details', 'team_name', 'title', 'description',
-                  'file', 'created_at', 'score']
-        read_only_fields = ['score']
+        fields = [
+            'id',
+            'team', 'team_details', 'team_name',
+            'event', 'event_name',
+            'submitted_by', 'submitted_by_username', 'submitted_by_details',
+            'title', 'description',
+            'file', 'created_at', 'score',
+            'is_reviewed', 'is_winner',
+            'winner_place', 'winner_prize',
+            'feedback_count', 'average_score',
+        ]
+        read_only_fields = ['score', 'submitted_by', 'is_reviewed']
 
-# ========== JUDGE FEEDBACK SERIALIZER ==========
+    def get_event(self, obj):
+        event = obj.team.event if obj.team else None
+        if not event:
+            return None
+        return {
+            'id': event.id,
+            'name': event.name,
+            'start_date': event.start_date,
+            'end_date': event.end_date,
+        }
+    
+    def get_feedback_count(self, obj):
+        return obj.feedback.count()
+    
+    def get_average_score(self, obj):
+        if obj.feedback.exists():
+            return sum(f.score for f in obj.feedback.all()) / obj.feedback.count()
+        return None
+
 class JudgeFeedbackSerializer(serializers.ModelSerializer):
     judge_details = UserSerializer(source='judge', read_only=True)
     judge_username = serializers.ReadOnlyField(source='judge.username')
     submission_title = serializers.ReadOnlyField(source='submission.title')
-
+    
     class Meta:
         model = JudgeFeedback
         fields = ['id', 'submission', 'submission_title', 'judge', 'judge_details',
-                  'judge_username', 'score', 'comment', 'created_at']
+                  'judge_username', 'score', 'comment', 'created_at', 'updated_at']
         read_only_fields = ['judge']

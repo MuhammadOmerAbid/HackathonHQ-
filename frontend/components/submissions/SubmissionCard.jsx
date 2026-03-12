@@ -12,22 +12,22 @@ export default function SubmissionCard({ submission }) {
   
   const status = getStatus();
 
-  // Format date nicely
+  // ✅ Use flat string fields from serializer, fallback to nested object
+  const teamName = submission.team_name || submission.team?.name || "—";
+  const teamMemberCount = submission.team_details?.members?.length ?? submission.team?.members?.length ?? null;
+  const eventName = submission.event_name || submission.event?.name || "—";
+  const submittedBy = submission.submitted_by_username || submission.submitted_by?.username || null;
+
   const formatDate = (dateString) => {
     const date = new Date(dateString || Date.now());
-    return date.toLocaleDateString("en-US", { 
-      month: "short", 
-      day: "numeric", 
-      year: "numeric" 
-    });
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   };
 
-  // Get event date range if available
   const getEventDateRange = () => {
-    if (!submission.event) return null;
-    const start = submission.event.start_date ? new Date(submission.event.start_date) : null;
-    const end = submission.event.end_date ? new Date(submission.event.end_date) : null;
-    
+    const event = submission.event;
+    if (!event) return null;
+    const start = event.start_date ? new Date(event.start_date) : null;
+    const end = event.end_date ? new Date(event.end_date) : null;
     if (start && end) {
       return `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${end.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
     }
@@ -48,26 +48,31 @@ export default function SubmissionCard({ submission }) {
         
         <div className="submissions-card-team-info">
           <p className="submissions-card-team">
-            <span className="submissions-card-team-label">Team:</span> {submission.team?.name || "—"}
-            {submission.team?.members && (
+            <span className="submissions-card-team-label">Team:</span> {teamName}
+            {teamMemberCount !== null && (
               <span className="submissions-card-member-count">
-                ({submission.team.members.length} {submission.team.members.length === 1 ? 'member' : 'members'})
+                ({teamMemberCount} {teamMemberCount === 1 ? "member" : "members"})
               </span>
             )}
           </p>
-          
+
           <p className="submissions-card-event">
-            <span className="submissions-card-event-label">Event:</span> {submission.event?.name || "—"}
+            <span className="submissions-card-event-label">Event:</span> {eventName}
             {eventDateRange && (
-              <span className="submissions-card-event-date">
-                {eventDateRange}
-              </span>
+              <span className="submissions-card-event-date">{eventDateRange}</span>
             )}
           </p>
+
+          {submittedBy && (
+            <p className="submissions-card-team">
+              <span className="submissions-card-team-label">By:</span>
+              <span style={{ color: "var(--accent)" }}>{submittedBy}</span>
+            </p>
+          )}
         </div>
         
         <p className="submissions-card-description">
-          {submission.summary || submission.description?.substring(0, 120) + "..." || "No description provided."}
+          {submission.summary || (submission.description ? submission.description.substring(0, 120) + "..." : "No description provided.")}
         </p>
 
         {submission.technologies?.length > 0 && (
@@ -83,13 +88,8 @@ export default function SubmissionCard({ submission }) {
 
         <div className="submissions-card-footer">
           <span className="submissions-card-date">
-            <svg 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2"
-              style={{ width: '14px', height: '14px', display: 'inline-block', marginRight: '4px' }}
-            >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              style={{ width: "14px", height: "14px", display: "inline-block", marginRight: "4px" }}>
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
             </svg>
@@ -99,7 +99,7 @@ export default function SubmissionCard({ submission }) {
             {submission.demo_url && (
               <span className="submissions-link-icon" title="Live Demo" onClick={(e) => {
                 e.preventDefault();
-                window.open(submission.demo_url, '_blank');
+                window.open(submission.demo_url, "_blank");
               }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10" />
@@ -111,7 +111,7 @@ export default function SubmissionCard({ submission }) {
             {submission.repo_url && (
               <span className="submissions-link-icon" title="Repository" onClick={(e) => {
                 e.preventDefault();
-                window.open(submission.repo_url, '_blank');
+                window.open(submission.repo_url, "_blank");
               }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
@@ -183,16 +183,11 @@ export default function SubmissionCard({ submission }) {
           margin-bottom: 1rem;
           padding-bottom: 0.75rem;
           border-bottom: 1px solid rgba(255,255,255,0.05);
-        }
-        .submissions-card-team {
-          font-size: 0.85rem;
-          color: rgba(255,255,255,0.7);
-          margin: 0 0 0.25rem 0;
           display: flex;
-          align-items: center;
+          flex-direction: column;
           gap: 0.25rem;
-          flex-wrap: wrap;
         }
+        .submissions-card-team,
         .submissions-card-event {
           font-size: 0.85rem;
           color: rgba(255,255,255,0.7);

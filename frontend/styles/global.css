@@ -1188,6 +1188,50 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+.evd-organizer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  background: rgba(255,255,255,0.02);
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+.evd-organizer-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.95rem;
+}
+
+.evd-organizer-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted, #5c5c6e);
+  min-width: 45px;
+}
+
+.evd-organizer-value {
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.evd-organizer-badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  background: rgba(110, 231, 183, 0.1);
+  border: 1px solid rgba(110, 231, 183, 0.2);
+  border-radius: 4px;
+  color: #6EE7B7;
+}
+
 /* ============================================
    ENHANCED INFO STRIP STYLES - ADD THIS TO YOUR global.css
    ============================================ */
@@ -1817,3 +1861,4 @@ h1, h2, h3, h4, h5, h6 {
   .event-detail-info-grid { grid-template-columns: 1fr; }
   .event-detail-cta { flex-direction: column; }
 }
+

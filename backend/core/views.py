@@ -13,9 +13,15 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.permissions import BasePermission
 from rest_framework import filters
 from rest_framework.pagination import PageNumberPagination
-from django.contrib.auth.models import User
 
 User = get_user_model()
+
+# ========== HELPERS ==========
+def is_judge(user):
+    return hasattr(user, 'profile') and user.profile.is_judge
+
+def is_organizer(user):
+    return user.is_staff or user.is_superuser or (hasattr(user, 'profile') and user.profile.is_organizer)
 
 # ========== CUSTOM PERMISSIONS ==========
 class IsOwner(BasePermission):
@@ -28,11 +34,7 @@ class IsOrganizerOrAdmin(BasePermission):
             return True
         if not request.user or not request.user.is_authenticated:
             return False
-        return (
-            request.user.is_staff or
-            request.user.is_superuser or
-            (hasattr(request.user, 'profile') and request.user.profile.is_organizer)
-        )
+        return is_organizer(request.user)
 
     def has_object_permission(self, request, view, obj):
         if request.method in permissions.SAFE_METHODS:
@@ -43,16 +45,37 @@ class IsOrganizerOrAdmin(BasePermission):
             obj.organizer == request.user
         )
 
+class IsJudge(BasePermission):
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and is_judge(request.user)
+
+class IsOrganizerUser(BasePermission):
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and is_organizer(request.user)
+
 # ========== PAGINATION ==========
 class PostPagination(PageNumberPagination):
     page_size = 5
     page_size_query_param = 'page_size'
     max_page_size = 20
 
+class StandardPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 # ========== USER VIEWS ==========
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('id')
     serializer_class = UserSerializer
+    pagination_class = StandardPagination  # Add this line
+
+    def get_permissions(self):
+        if self.action == 'me':
+            return [IsAuthenticated()]
+        if self.action in ['make_judge', 'remove_judge', 'list', 'retrieve']:
+            return [IsAuthenticated()]
+        return [IsAuthenticated()]
 
     @action(detail=False, methods=['get', 'put', 'patch'], permission_classes=[IsAuthenticated])
     def me(self, request):
@@ -65,6 +88,49 @@ class UserViewSet(viewsets.ModelViewSet):
                 serializer.save()
                 return Response(serializer.data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def make_judge(self, request, pk=None):
+        """Make a user a judge. Organizers/admins only."""
+        if not is_organizer(request.user):
+            return Response({"error": "Only organizers can assign judge roles."}, status=status.HTTP_403_FORBIDDEN)
+
+        target_user = self.get_object()
+
+        # Cannot make yourself a judge
+        if target_user == request.user:
+            return Response({"error": "You cannot make yourself a judge."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Cannot make a judge if they're on any team
+        if target_user.teams.exists():
+            return Response({"error": f"{target_user.username} is on a team. Remove them from all teams first."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Cannot make a judge if they have submissions
+        if target_user.submissions_made.exists():
+            return Response({"error": f"{target_user.username} has existing submissions. Cannot make a participant a judge."}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile, _ = UserProfile.objects.get_or_create(user=target_user)
+        profile.is_judge = True
+        profile.save()
+
+        return Response({"success": f"{target_user.username} is now a judge.", "user": UserSerializer(target_user).data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def remove_judge(self, request, pk=None):
+        """Remove judge role. Organizers/admins only."""
+        if not is_organizer(request.user):
+            return Response({"error": "Only organizers can remove judge roles."}, status=status.HTTP_403_FORBIDDEN)
+
+        target_user = self.get_object()
+        profile, _ = UserProfile.objects.get_or_create(user=target_user)
+
+        if not profile.is_judge:
+            return Response({"error": f"{target_user.username} is not a judge."}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile.is_judge = False
+        profile.save()
+
+        return Response({"success": f"Judge role removed from {target_user.username}.", "user": UserSerializer(target_user).data})
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -113,70 +179,55 @@ class TeamViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
-        # Allow unauthenticated users to list/retrieve teams
         if self.action in ['list', 'retrieve']:
             return [permissions.AllowAny()]
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
-        # Save the team, then set creator as leader and add as member
+        user = self.request.user
+        # Judges cannot join teams
+        if is_judge(user):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Judges cannot create or join teams.")
         team = serializer.save()
-        team.members.add(self.request.user)
-        # If your Team model has a `leader` field, set it here:
+        team.members.add(user)
         if hasattr(team, 'leader'):
-            team.leader = self.request.user
+            team.leader = user
             team.save()
 
-    # ── FIX 1: join action ──────────────────────────────────────────
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def join(self, request, pk=None):
-        """Let the authenticated user join this team."""
         team = self.get_object()
 
-        # Already a member?
-        if team.members.filter(id=request.user.id).exists():
-            return Response(
-                {"message": "You are already a member of this team."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # Judges cannot join teams
+        if is_judge(request.user):
+            return Response({"message": "Judges cannot join teams."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Team full?
+        if team.members.filter(id=request.user.id).exists():
+            return Response({"message": "You are already a member of this team."}, status=status.HTTP_400_BAD_REQUEST)
+
         max_members = getattr(team, 'max_members', 4)
         if team.members.count() >= max_members:
-            return Response(
-                {"message": "This team is full."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"message": "This team is full."}, status=status.HTTP_400_BAD_REQUEST)
 
         team.members.add(request.user)
         serializer = self.get_serializer(team)
         return Response(serializer.data)
 
-    # ── FIX 2: leave action ─────────────────────────────────────────
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def leave(self, request, pk=None):
-        """Let the authenticated user leave this team."""
         team = self.get_object()
 
-        # Not a member?
         if not team.members.filter(id=request.user.id).exists():
-            return Response(
-                {"message": "You are not a member of this team."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"message": "You are not a member of this team."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Leader can't leave (they must delete instead)
         if hasattr(team, 'leader') and team.leader == request.user:
-            return Response(
-                {"message": "You are the team leader. Delete the team or transfer leadership instead."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"message": "You are the team leader. Delete the team or transfer leadership instead."}, status=status.HTTP_400_BAD_REQUEST)
 
         team.members.remove(request.user)
         serializer = self.get_serializer(team)
         return Response(serializer.data)
 
-    # ── Existing helper actions (kept as-is) ────────────────────────
     @action(detail=True, methods=["post"])
     def add_member(self, request, pk=None):
         team = self.get_object()
@@ -212,13 +263,75 @@ class SubmissionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        serializer.save()
+        user = self.request.user
+        # Judges cannot submit
+        if is_judge(user):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Judges cannot submit projects.")
+        serializer.save(submitted_by=user)
 
-    @action(detail=True, methods=["get"])
+    @action(detail=True, methods=["get", "post", "put"])
     def feedback(self, request, pk=None):
         submission = self.get_object()
-        feedback = submission.feedback.all()
-        serializer = JudgeFeedbackSerializer(feedback, many=True)
+
+        if request.method == "GET":
+            # Permission: judge, organizer, admin OR team member of this submission
+            user = request.user
+            is_team_member = submission.team.members.filter(id=user.id).exists()
+            can_view = is_judge(user) or is_organizer(user) or is_team_member
+
+            if not can_view:
+                return Response(
+                    {"error": "You do not have permission to view feedback on this submission."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            feedbacks = submission.feedback.all().order_by('-created_at')
+            serializer = JudgeFeedbackSerializer(feedbacks, many=True)
+            return Response(serializer.data)
+
+        elif request.method in ["POST", "PUT"]:
+            # Only judges and organizers can submit feedback
+            if not (is_judge(request.user) or is_organizer(request.user)):
+                return Response(
+                    {"error": "Only judges can submit feedback."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # Check if already submitted feedback — update instead
+            existing = submission.feedback.filter(judge=request.user).first()
+            
+            if existing and request.method == "POST":
+                return Response(
+                    {"error": "You already submitted feedback. Use PUT to update."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if existing:
+                serializer = JudgeFeedbackSerializer(existing, data=request.data, partial=True)
+            else:
+                serializer = JudgeFeedbackSerializer(data=request.data)
+
+            if serializer.is_valid():
+                serializer.save(judge=request.user, submission=submission)
+                # Auto-update submission score and is_reviewed
+                submission.update_score()
+                return Response(serializer.data, status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=["post"], url_path='mark-winner')
+    def mark_winner(self, request, pk=None):
+        """Mark a submission as a winner. Organizers/admins only."""
+        if not is_organizer(request.user):
+            return Response({"error": "Only organizers can mark winners."}, status=status.HTTP_403_FORBIDDEN)
+
+        submission = self.get_object()
+        submission.is_winner = request.data.get('is_winner', True)
+        submission.is_reviewed = True
+        submission.winner_place = request.data.get('winner_place', '')
+        submission.winner_prize = request.data.get('winner_prize', '')
+        submission.save()
+        serializer = self.get_serializer(submission)
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
@@ -230,6 +343,7 @@ class SubmissionViewSet(viewsets.ModelViewSet):
             submission.save()
             return Response({"status": "score updated", "score": score})
         return Response({"error": "score required"}, status=status.HTTP_400_BAD_REQUEST)
+    
 
 # ========== JUDGE FEEDBACK VIEWS ==========
 class JudgeFeedbackViewSet(viewsets.ModelViewSet):
@@ -237,5 +351,28 @@ class JudgeFeedbackViewSet(viewsets.ModelViewSet):
     serializer_class = JudgeFeedbackSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        # Judges and organizers/admins can see all feedback
+        if is_judge(user) or is_organizer(user):
+            return JudgeFeedback.objects.all().order_by('-created_at')
+        # Regular users only see feedback on their own team's submissions
+        return JudgeFeedback.objects.filter(
+            submission__team__members=user
+        ).order_by('-created_at')
+
     def perform_create(self, serializer):
         serializer.save(judge=self.request.user)
+
+    def update(self, request, *args, **kwargs):
+        feedback = self.get_object()
+        # Only the judge who wrote it (or admin) can edit
+        if feedback.judge != request.user and not request.user.is_staff:
+            return Response({"error": "You can only edit your own feedback."}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        feedback = self.get_object()
+        if feedback.judge != request.user and not request.user.is_staff:
+            return Response({"error": "You can only delete your own feedback."}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)

@@ -13,7 +13,6 @@ class Post(models.Model):
     def __str__(self):
         return self.title
 
-#for hackathon plateform
 class Event(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField()
@@ -25,10 +24,10 @@ class Event(models.Model):
     def __str__(self):
         return self.name
 
-# Add this new model for user profiles
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     is_organizer = models.BooleanField(default=False)
+    is_judge = models.BooleanField(default=False)
     organization_name = models.CharField(max_length=200, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
@@ -37,15 +36,13 @@ class UserProfile(models.Model):
 
 class Team(models.Model):
     name = models.CharField(max_length=255)
-    description = models.TextField(blank=True, null=True)          # ← add
+    description = models.TextField(blank=True, null=True)
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="teams")
-    leader = models.ForeignKey(                                     # ← add
-        User,
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name="led_teams"
+    leader = models.ForeignKey(
+        User, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="led_teams"
     )
-    max_members = models.PositiveIntegerField(default=4)            # ← add
+    max_members = models.PositiveIntegerField(default=4)
     members = models.ManyToManyField(User, related_name="teams", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -53,15 +50,45 @@ class Team(models.Model):
         return self.name
 
 class Submission(models.Model):
+    WINNER_PLACE_CHOICES = [
+        ('1st', '1st Place'),
+        ('2nd', '2nd Place'),
+        ('3rd', '3rd Place'),
+        ('honorable_mention', 'Honorable Mention'),
+    ]
+
     team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="submissions")
+    submitted_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="submissions_made"
+    )
     title = models.CharField(max_length=255)
     description = models.TextField()
     file = models.FileField(upload_to="submissions/", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     score = models.FloatField(default=0)
-    
+    is_reviewed = models.BooleanField(default=False)
+    is_winner = models.BooleanField(default=False)
+    winner_place = models.CharField(
+        max_length=20, blank=True, null=True, choices=WINNER_PLACE_CHOICES
+    )
+    winner_prize = models.CharField(max_length=255, blank=True, null=True)
+
     def __str__(self):
         return self.title
+    
+    def update_score(self):
+        """Calculate average score from all feedback"""
+        feedbacks = self.feedback.all()
+        if feedbacks.exists():
+            total = sum(f.score for f in feedbacks)
+            self.score = total / feedbacks.count()
+            self.is_reviewed = True
+        else:
+            self.score = 0
+            self.is_reviewed = False
+        self.save()
+        return self.score
 
 class JudgeFeedback(models.Model):
     submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name="feedback")
@@ -69,6 +96,7 @@ class JudgeFeedback(models.Model):
     score = models.FloatField()
     comment = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         unique_together = ("submission", "judge")

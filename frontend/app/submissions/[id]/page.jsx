@@ -133,62 +133,89 @@ export default function SubmissionDetailPage() {
   }, [id]);
 
   const handleSubmitFeedback = async (e) => {
-  e.preventDefault();
-  if (!feedbackText.trim()) {
-    setError("Please enter a comment");
-    return;
-  }
-  
-  setSubmittingFeedback(true);
-  setError("");
-  
-  try {
-    // The backend expects the submission ID in the payload
-    const payload = {
-      submission: parseInt(id), // Add the submission ID
-      comment: feedbackText.trim(),
-      score: Number(feedbackScore)
-    };
-    
-    console.log("Sending feedback payload:", payload);
-    
-    const res = await axios.post(`/submissions/${id}/feedback/`, payload);
-    
-    console.log("Feedback response:", res.data);
-    
-    // Add the new feedback to the list
-    setFeedback(prev => Array.isArray(prev) ? [...prev, res.data] : [res.data]);
-    
-    // Reset form
-    setFeedbackText("");
-    setFeedbackScore(5);
-    
-  } catch (err) {
-    console.error("Feedback submission error:", err);
-    
-    // Better error parsing
-    if (err.response?.data) {
-      const errorData = err.response.data;
-      if (typeof errorData === 'string') {
-        setError(errorData);
-      } else if (errorData.detail) {
-        setError(errorData.detail);
-      } else if (errorData.message) {
-        setError(errorData.message);
-      } else {
-        // Handle field errors
-        const fieldErrors = Object.entries(errorData)
-          .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-          .join('; ');
-        setError(fieldErrors || "Failed to submit feedback");
-      }
-    } else {
-      setError("Network error. Please try again.");
+    e.preventDefault();
+    if (!feedbackText.trim()) {
+      setError("Please enter a comment");
+      return;
     }
-  } finally {
-    setSubmittingFeedback(false);
-  }
-};
+    
+    setSubmittingFeedback(true);
+    setError("");
+    
+    try {
+      // The backend expects the submission ID in the payload
+      const payload = {
+        submission: parseInt(id), // Add the submission ID
+        comment: feedbackText.trim(),
+        score: Number(feedbackScore)
+      };
+      
+      console.log("Sending feedback payload:", payload);
+      
+      const res = await axios.post(`/submissions/${id}/feedback/`, payload);
+      
+      console.log("Feedback response:", res.data);
+      
+      // Add the new feedback to the list
+      setFeedback(prev => Array.isArray(prev) ? [...prev, res.data] : [res.data]);
+      
+      // Reset form
+      setFeedbackText("");
+      setFeedbackScore(5);
+      
+    } catch (err) {
+      console.error("Feedback submission error:", err);
+      
+      // Better error parsing
+      if (err.response?.data) {
+        const errorData = err.response.data;
+        if (typeof errorData === 'string') {
+          setError(errorData);
+        } else if (errorData.detail) {
+          setError(errorData.detail);
+        } else if (errorData.message) {
+          setError(errorData.message);
+        } else {
+          // Handle field errors
+          const fieldErrors = Object.entries(errorData)
+            .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+            .join('; ');
+          setError(fieldErrors || "Failed to submit feedback");
+        }
+      } else {
+        setError("Network error. Please try again.");
+      }
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
+
+  const handleDeleteFeedback = async (feedbackId) => {
+    if (!confirm("Are you sure you want to delete this feedback?")) return;
+    
+    setSubmittingFeedback(true);
+    setError("");
+    
+    try {
+      await axios.delete(`/submissions/${id}/feedback/`, {
+        data: { feedback_id: feedbackId }
+      });
+      
+      // Remove the deleted feedback from state
+      setFeedback(prev => prev.filter(f => f.id !== feedbackId));
+      
+    } catch (err) {
+      console.error("Error deleting feedback:", err);
+      
+      if (err.response?.data?.error) {
+        setError(err.response.data.error);
+      } else {
+        setError("Failed to delete feedback");
+      }
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
 
   const handleMarkWinner = async () => {
     if (!confirm("Mark this submission as a winner?")) return;
@@ -512,45 +539,89 @@ export default function SubmissionDetailPage() {
 
             {feedback.length > 0 ? (
               <div className="evd-feedback-list">
-                {feedback.map((item) => (
-                  <div key={item.id} className="evd-feedback-item">
-                    <div className="evd-feedback-header">
-                      <div className="evd-feedback-judge">
-                        <div className="evd-feedback-avatar">
-                          {item.judge?.username?.charAt(0).toUpperCase() || "J"}
+                {feedback.map((item) => {
+                  // Check if current user can delete this feedback
+                  const canDelete = 
+                    item.judge?.id === authUser?.id || // The judge who wrote it
+                    isOrganizer || // Organizer
+                    authUser?.is_staff || // Staff
+                    authUser?.is_superuser; // Admin
+                  
+                  return (
+                    <div key={item.id} className="evd-feedback-item">
+                      <div className="evd-feedback-header">
+                        <div className="evd-feedback-judge">
+                          <div className="evd-feedback-avatar">
+                            {item.judge?.username?.charAt(0).toUpperCase() || "J"}
+                          </div>
+                          <div className="evd-feedback-judge-info">
+                            <span className="evd-feedback-judge-name">{item.judge?.username || "Judge"}</span>
+                            <span className="evd-feedback-date">
+                              {item.created_at ? new Date(item.created_at).toLocaleDateString("en-US", { 
+                                month: "short", day: "numeric", year: "numeric" 
+                              }) : "Date unavailable"}
+                            </span>
+                          </div>
                         </div>
-                        <div className="evd-feedback-judge-info">
-                          <span className="evd-feedback-judge-name">{item.judge?.username || "Judge"}</span>
-                          <span className="evd-feedback-date">
-                            {item.created_at ? new Date(item.created_at).toLocaleDateString("en-US", { 
-                              month: "short", day: "numeric", year: "numeric" 
-                            }) : "Date unavailable"}
-                          </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                          <div className="evd-feedback-score-badge">
+                            <span className="evd-feedback-score-value">{item.score}</span>
+                            <span className="evd-feedback-score-max">/10</span>
+                          </div>
+                          
+                          {/* Delete button - only shown to authorized users */}
+                          {canDelete && (
+                            <button
+                              onClick={() => handleDeleteFeedback(item.id)}
+                              className="evd-feedback-delete-btn"
+                              title="Delete feedback"
+                              style={{
+                                background: "transparent",
+                                border: "1px solid rgba(248,113,113,0.3)",
+                                borderRadius: "6px",
+                                color: "#f87171",
+                                width: "32px",
+                                height: "32px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                cursor: "pointer",
+                                fontSize: "1rem",
+                                transition: "all 0.2s ease"
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = "rgba(248,113,113,0.1)";
+                                e.currentTarget.style.borderColor = "#f87171";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = "transparent";
+                                e.currentTarget.style.borderColor = "rgba(248,113,113,0.3)";
+                              }}
+                            >
+                              🗑️
+                            </button>
+                          )}
                         </div>
                       </div>
-                      <div className="evd-feedback-score-badge">
-                        <span className="evd-feedback-score-value">{item.score}</span>
-                        <span className="evd-feedback-score-max">/10</span>
+                      <div className="evd-feedback-progress-container">
+                        <div className="evd-feedback-progress-bar">
+                          <div className="evd-feedback-progress-fill" style={{
+                            width: `${((item.score || 0) / 10) * 100}%`,
+                            background: item.score >= 8 ? "linear-gradient(90deg, var(--accent), #4ade80)" :
+                              item.score >= 5 ? "linear-gradient(90deg, #fbbf24, var(--accent))" :
+                                "linear-gradient(90deg, #f87171, #fbbf24)"
+                          }} />
+                        </div>
+                        <div className="evd-feedback-progress-labels">
+                          <span>Needs Work</span><span>Good</span><span>Excellent</span>
+                        </div>
+                      </div>
+                      <div className="evd-feedback-comment">
+                        <p>{item.comment || "No comment provided."}</p>
                       </div>
                     </div>
-                    <div className="evd-feedback-progress-container">
-                      <div className="evd-feedback-progress-bar">
-                        <div className="evd-feedback-progress-fill" style={{
-                          width: `${((item.score || 0) / 10) * 100}%`,
-                          background: item.score >= 8 ? "linear-gradient(90deg, var(--accent), #4ade80)" :
-                            item.score >= 5 ? "linear-gradient(90deg, #fbbf24, var(--accent))" :
-                              "linear-gradient(90deg, #f87171, #fbbf24)"
-                        }} />
-                      </div>
-                      <div className="evd-feedback-progress-labels">
-                        <span>Needs Work</span><span>Good</span><span>Excellent</span>
-                      </div>
-                    </div>
-                    <div className="evd-feedback-comment">
-                      <p>{item.comment || "No comment provided."}</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="evd-empty">

@@ -68,7 +68,7 @@ class StandardPagination(PageNumberPagination):
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('id')
     serializer_class = UserSerializer
-    pagination_class = StandardPagination  # Add this line
+    pagination_class = StandardPagination
 
     def get_permissions(self):
         if self.action == 'me':
@@ -270,31 +270,28 @@ class SubmissionViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Judges cannot submit projects.")
         serializer.save(submitted_by=user)
 
-    @action(detail=True, methods=["get", "post", "put"])
+    @action(detail=True, methods=["get", "post", "put", "delete"])
     def feedback(self, request, pk=None):
         submission = self.get_object()
 
+        # GET - any authenticated user can view feedback (transparency)
         if request.method == "GET":
-            # Permission: judge, organizer, admin OR team member of this submission
-            user = request.user
-            is_team_member = submission.team.members.filter(id=user.id).exists()
-            can_view = is_judge(user) or is_organizer(user) or is_team_member
-
-            if not can_view:
+            if not request.user.is_authenticated:
                 return Response(
-                    {"error": "You do not have permission to view feedback on this submission."},
-                    status=status.HTTP_403_FORBIDDEN
+                    {"error": "Authentication required"},
+                    status=status.HTTP_401_UNAUTHORIZED
                 )
-
+            
+            # Everyone can view feedback
             feedbacks = submission.feedback.all().order_by('-created_at')
             serializer = JudgeFeedbackSerializer(feedbacks, many=True)
             return Response(serializer.data)
 
+        # POST/PUT - only judges, organizers, and admins can submit/edit feedback
         elif request.method in ["POST", "PUT"]:
-            # Only judges and organizers can submit feedback
-            if not (is_judge(request.user) or is_organizer(request.user)):
+            if not (is_judge(request.user) or is_organizer(request.user) or request.user.is_staff or request.user.is_superuser):
                 return Response(
-                    {"error": "Only judges can submit feedback."},
+                    {"error": "Only judges, organizers, and admins can submit feedback."},
                     status=status.HTTP_403_FORBIDDEN
                 )
 
@@ -307,10 +304,15 @@ class SubmissionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
+            # Make sure submission ID is in the data if needed
+            data = request.data.copy()
+            if 'submission' not in data:
+                data['submission'] = submission.id
+            
             if existing:
-                serializer = JudgeFeedbackSerializer(existing, data=request.data, partial=True)
+                serializer = JudgeFeedbackSerializer(existing, data=data, partial=True)
             else:
-                serializer = JudgeFeedbackSerializer(data=request.data)
+                serializer = JudgeFeedbackSerializer(data=data)
 
             if serializer.is_valid():
                 serializer.save(judge=request.user, submission=submission)
@@ -318,6 +320,34 @@ class SubmissionViewSet(viewsets.ModelViewSet):
                 submission.update_score()
                 return Response(serializer.data, status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # DELETE - only the judge who wrote it, organizers, or admins can delete
+        elif request.method == "DELETE":
+            feedback_id = request.data.get('feedback_id')
+            if not feedback_id:
+                return Response(
+                    {"error": "feedback_id required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                feedback = JudgeFeedback.objects.get(id=feedback_id, submission=submission)
+            except JudgeFeedback.DoesNotExist:
+                return Response(
+                    {"error": "Feedback not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Allow if: user is the judge who wrote it, OR user is organizer, OR user is admin/staff
+            if not (feedback.judge == request.user or is_organizer(request.user) or request.user.is_staff or request.user.is_superuser):
+                return Response(
+                    {"error": "You don't have permission to delete this feedback."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            feedback.delete()
+            submission.update_score()  # Recalculate score after deletion
+            return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"], url_path='mark-winner')
     def mark_winner(self, request, pk=None):
@@ -343,7 +373,6 @@ class SubmissionViewSet(viewsets.ModelViewSet):
             submission.save()
             return Response({"status": "score updated", "score": score})
         return Response({"error": "score required"}, status=status.HTTP_400_BAD_REQUEST)
-    
 
 # ========== JUDGE FEEDBACK VIEWS ==========
 class JudgeFeedbackViewSet(viewsets.ModelViewSet):

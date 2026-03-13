@@ -103,3 +103,41 @@ class JudgeFeedback(models.Model):
     
     def __str__(self):
         return f"Feedback for {self.submission.title} by {self.judge.username}"
+
+class Activity(models.Model):
+    ACTIVITY_TYPES = [
+        # Team Activities
+        ('team_join', 'Joined Team'),
+        ('team_create', 'Created Team'),
+        ('team_leave', 'Left Team'),
+        
+        # Submission Activities
+        ('submission', 'Submitted Project'),
+        ('feedback', 'Received Feedback'),
+        ('winner', 'Won Hackathon'),
+        
+        # NEW: Role Change Activities
+        ('became_judge', 'Became a Judge'),
+        ('became_organizer', 'Became an Organizer'),
+        ('role_removed', 'Role Removed'),
+        ('password_change', 'Password Changed'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='activities')
+    type = models.CharField(max_length=50, choices=ACTIVITY_TYPES)
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    is_important = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    # Optional relations for linking
+    team = models.ForeignKey('Team', null=True, blank=True, on_delete=models.SET_NULL)
+    submission = models.ForeignKey('Submission', null=True, blank=True, on_delete=models.SET_NULL)
+    event = models.ForeignKey('Event', null=True, blank=True, on_delete=models.SET_NULL)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.get_type_display()} - {self.created_at}"

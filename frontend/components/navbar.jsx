@@ -228,50 +228,50 @@ export default function LiquidGlassNavbar() {
                 </button>
 
                 {showDropdown && (
-                  <div className="glass-dropdown">
-                    <Link href="/profile" className="glass-dropdown-item" onClick={() => setShowDropdown(false)}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="12" cy="7" r="4"></circle>
-                      </svg>
-                      Profile
-                    </Link>
-                    {isJudge && (
-                      <Link href="/judge/dashboard" className="glass-dropdown-item" onClick={() => setShowDropdown(false)}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                        </svg>
-                        Judge Dashboard
-                      </Link>
-                    )}
-                    {isOrganizer && (
-                      <Link href="/organizer/users" className="glass-dropdown-item" onClick={() => setShowDropdown(false)}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                          <circle cx="9" cy="7" r="4"></circle>
-                          <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
-                        </svg>
-                        Manage Users
-                      </Link>
-                    )}
-                    <Link href="/settings" className="glass-dropdown-item" onClick={() => setShowDropdown(false)}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="3"></circle>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H5.78a1.65 1.65 0 0 0-1.51 1 1.65 1.65 0 0 0 .33 1.82l.09.1A10 10 0 0 0 12 17.66a10 10 0 0 0 6.22-2.46l.09-.1z"></path>
-                      </svg>
-                      Settings
-                    </Link>
-                    <div className="glass-dropdown-divider"></div>
-                    <button onClick={handleLogout} className="glass-dropdown-item logout">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                        <polyline points="16 17 21 12 16 7"></polyline>
-                        <line x1="21" y1="12" x2="9" y2="12"></line>
-                      </svg>
-                      Logout
-                    </button>
-                  </div>
-                )}
+  <div className="glass-dropdown">
+    <Link href="/profile" className="glass-dropdown-item" onClick={() => setShowDropdown(false)}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+        <circle cx="12" cy="7" r="4"></circle>
+      </svg>
+      Profile
+    </Link>
+    {isJudge && (
+      <Link href="/judge/dashboard" className="glass-dropdown-item" onClick={() => setShowDropdown(false)}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        </svg>
+        Judge Dashboard
+      </Link>
+    )}
+    {isOrganizer && (
+      <Link href="/organizer/users" className="glass-dropdown-item" onClick={() => setShowDropdown(false)}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        Manage Users
+      </Link>
+    )}
+    <Link href="/profile?tab=settings" className="glass-dropdown-item" onClick={() => setShowDropdown(false)}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H5.78a1.65 1.65 0 0 0-1.51 1 1.65 1.65 0 0 0 .33 1.82l.09.1A10 10 0 0 0 12 17.66a10 10 0 0 0 6.22-2.46l.09-.1z"></path>
+      </svg>
+      Settings
+    </Link>
+    <div className="glass-dropdown-divider"></div>
+    <button onClick={handleLogout} className="glass-dropdown-item logout">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+        <polyline points="16 17 21 12 16 7"></polyline>
+        <line x1="21" y1="12" x2="9" y2="12"></line>
+      </svg>
+      Logout
+    </button>
+  </div>
+)}
               </div>
             ) : (
               <div className="glass-auth-buttons">

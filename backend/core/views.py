@@ -1,11 +1,11 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Post, Event, Team, Submission, JudgeFeedback, UserProfile
+from .models import Post, Event, Team, Submission, JudgeFeedback, UserProfile, Activity
 from .serializers import (
     PostSerializer, EventSerializer, TeamSerializer,
     SubmissionSerializer, JudgeFeedbackSerializer,
-    UserSerializer, RegisterSerializer
+    UserSerializer, RegisterSerializer, ActivitySerializer
 )
 from django.contrib.auth import get_user_model
 from rest_framework import generics
@@ -73,9 +73,20 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'me':
             return [IsAuthenticated()]
-        if self.action in ['make_judge', 'remove_judge', 'list', 'retrieve']:
+        if self.action in ['make_judge', 'remove_judge', 'list', 'retrieve', 'activities', 'change_password', 'verify_password', 'delete_account']:
             return [IsAuthenticated()]
         return [IsAuthenticated()]
+    
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def activities(self, request):
+        """Get all activities for the logged-in user"""
+        try:
+            activities = Activity.objects.filter(user=request.user).order_by('-created_at')[:50]
+            serializer = ActivitySerializer(activities, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            print(f"Error fetching activities: {e}")
+            return Response([])
 
     @action(detail=False, methods=['get', 'put', 'patch'], permission_classes=[IsAuthenticated])
     def me(self, request):
@@ -97,21 +108,21 @@ class UserViewSet(viewsets.ModelViewSet):
 
         target_user = self.get_object()
 
-        # Cannot make yourself a judge
         if target_user == request.user:
             return Response({"error": "You cannot make yourself a judge."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Cannot make a judge if they're on any team
         if target_user.teams.exists():
             return Response({"error": f"{target_user.username} is on a team. Remove them from all teams first."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Cannot make a judge if they have submissions
         if target_user.submissions_made.exists():
             return Response({"error": f"{target_user.username} has existing submissions. Cannot make a participant a judge."}, status=status.HTTP_400_BAD_REQUEST)
 
         profile, _ = UserProfile.objects.get_or_create(user=target_user)
         profile.is_judge = True
         profile.save()
+
+        from .utils.activity_helpers import create_judge_activity
+        create_judge_activity(target_user, made_by=request.user)
 
         return Response({"success": f"{target_user.username} is now a judge.", "user": UserSerializer(target_user).data})
 
@@ -130,7 +141,85 @@ class UserViewSet(viewsets.ModelViewSet):
         profile.is_judge = False
         profile.save()
 
+        from .utils.activity_helpers import create_role_removed_activity
+        create_role_removed_activity(target_user, 'judge', removed_by=request.user)
+
         return Response({"success": f"Judge role removed from {target_user.username}.", "user": UserSerializer(target_user).data})
+    
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def verify_password(self, request):
+        """Verify user's password before deleting account"""
+        user = request.user
+        password = request.data.get('password')
+        
+        if not password:
+            return Response(
+                {"error": "Password required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if user.check_password(password):
+            return Response({"success": "Password verified"})
+        else:
+            return Response(
+                {"error": "Incorrect password"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def change_password(self, request):
+        """Change user password"""
+        user = request.user
+        data = request.data
+        
+        current_password = data.get('current_password')
+        new_password = data.get('new_password')
+        
+        if not current_password or not new_password:
+            return Response(
+                {"error": "Current password and new password are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not user.check_password(current_password):
+            return Response(
+                {"error": "Current password is incorrect"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user.set_password(new_password)
+        user.save()
+        
+        try:
+            from .utils.activity_helpers import create_password_change_activity
+            create_password_change_activity(user)
+        except ImportError:
+            pass  # Activity helper not available
+        
+        return Response({"success": "Password changed successfully"})
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def delete_account(self, request):
+        """Delete the authenticated user's account"""
+        user = request.user
+        
+        # Check if user has teams
+        if user.teams.exists():
+            return Response(
+                {"error": "Cannot delete account while still in teams. Leave all teams first."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if user has submissions
+        if user.submissions_made.exists():
+            return Response(
+                {"error": "Cannot delete account with existing submissions."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Delete the user
+        user.delete()
+        return Response({"success": "Account deleted successfully"}, status=status.HTTP_200_OK)
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -185,7 +274,6 @@ class TeamViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        # Judges cannot join teams
         if is_judge(user):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Judges cannot create or join teams.")
@@ -194,12 +282,14 @@ class TeamViewSet(viewsets.ModelViewSet):
         if hasattr(team, 'leader'):
             team.leader = user
             team.save()
+        
+        from .utils.activity_helpers import create_team_activity
+        create_team_activity(user, team, 'team_create')
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def join(self, request, pk=None):
         team = self.get_object()
 
-        # Judges cannot join teams
         if is_judge(request.user):
             return Response({"message": "Judges cannot join teams."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -211,6 +301,10 @@ class TeamViewSet(viewsets.ModelViewSet):
             return Response({"message": "This team is full."}, status=status.HTTP_400_BAD_REQUEST)
 
         team.members.add(request.user)
+        
+        from .utils.activity_helpers import create_team_activity
+        create_team_activity(request.user, team, 'team_join')
+        
         serializer = self.get_serializer(team)
         return Response(serializer.data)
 
@@ -225,6 +319,10 @@ class TeamViewSet(viewsets.ModelViewSet):
             return Response({"message": "You are the team leader. Delete the team or transfer leadership instead."}, status=status.HTTP_400_BAD_REQUEST)
 
         team.members.remove(request.user)
+        
+        from .utils.activity_helpers import create_team_activity
+        create_team_activity(request.user, team, 'team_leave')
+        
         serializer = self.get_serializer(team)
         return Response(serializer.data)
 
@@ -264,17 +362,18 @@ class SubmissionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        # Judges cannot submit
         if is_judge(user):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Judges cannot submit projects.")
-        serializer.save(submitted_by=user)
+        submission = serializer.save(submitted_by=user)
+        
+        from .utils.activity_helpers import create_submission_activity
+        create_submission_activity(user, submission)
 
     @action(detail=True, methods=["get", "post", "put", "delete"])
     def feedback(self, request, pk=None):
         submission = self.get_object()
 
-        # GET - any authenticated user can view feedback (transparency)
         if request.method == "GET":
             if not request.user.is_authenticated:
                 return Response(
@@ -282,12 +381,10 @@ class SubmissionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             
-            # Everyone can view feedback
             feedbacks = submission.feedback.all().order_by('-created_at')
             serializer = JudgeFeedbackSerializer(feedbacks, many=True)
             return Response(serializer.data)
 
-        # POST/PUT - only judges, organizers, and admins can submit/edit feedback
         elif request.method in ["POST", "PUT"]:
             if not (is_judge(request.user) or is_organizer(request.user) or request.user.is_staff or request.user.is_superuser):
                 return Response(
@@ -295,7 +392,6 @@ class SubmissionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_403_FORBIDDEN
                 )
 
-            # Check if already submitted feedback — update instead
             existing = submission.feedback.filter(judge=request.user).first()
             
             if existing and request.method == "POST":
@@ -304,7 +400,6 @@ class SubmissionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Make sure submission ID is in the data if needed
             data = request.data.copy()
             if 'submission' not in data:
                 data['submission'] = submission.id
@@ -315,13 +410,16 @@ class SubmissionViewSet(viewsets.ModelViewSet):
                 serializer = JudgeFeedbackSerializer(data=data)
 
             if serializer.is_valid():
-                serializer.save(judge=request.user, submission=submission)
-                # Auto-update submission score and is_reviewed
+                feedback = serializer.save(judge=request.user, submission=submission)
                 submission.update_score()
+                
+                from .utils.activity_helpers import create_feedback_activity
+                for member in submission.team.members.all():
+                    create_feedback_activity(member, feedback)
+                
                 return Response(serializer.data, status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        # DELETE - only the judge who wrote it, organizers, or admins can delete
         elif request.method == "DELETE":
             feedback_id = request.data.get('feedback_id')
             if not feedback_id:
@@ -338,7 +436,6 @@ class SubmissionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Allow if: user is the judge who wrote it, OR user is organizer, OR user is admin/staff
             if not (feedback.judge == request.user or is_organizer(request.user) or request.user.is_staff or request.user.is_superuser):
                 return Response(
                     {"error": "You don't have permission to delete this feedback."},
@@ -346,12 +443,11 @@ class SubmissionViewSet(viewsets.ModelViewSet):
                 )
             
             feedback.delete()
-            submission.update_score()  # Recalculate score after deletion
+            submission.update_score()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"], url_path='mark-winner')
     def mark_winner(self, request, pk=None):
-        """Mark a submission as a winner. Organizers/admins only."""
         if not is_organizer(request.user):
             return Response({"error": "Only organizers can mark winners."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -361,6 +457,11 @@ class SubmissionViewSet(viewsets.ModelViewSet):
         submission.winner_place = request.data.get('winner_place', '')
         submission.winner_prize = request.data.get('winner_prize', '')
         submission.save()
+        
+        from .utils.activity_helpers import create_winner_activity
+        for member in submission.team.members.all():
+            create_winner_activity(member, submission)
+        
         serializer = self.get_serializer(submission)
         return Response(serializer.data)
 
@@ -382,10 +483,8 @@ class JudgeFeedbackViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        # Judges and organizers/admins can see all feedback
         if is_judge(user) or is_organizer(user):
             return JudgeFeedback.objects.all().order_by('-created_at')
-        # Regular users only see feedback on their own team's submissions
         return JudgeFeedback.objects.filter(
             submission__team__members=user
         ).order_by('-created_at')
@@ -395,7 +494,6 @@ class JudgeFeedbackViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         feedback = self.get_object()
-        # Only the judge who wrote it (or admin) can edit
         if feedback.judge != request.user and not request.user.is_staff:
             return Response({"error": "You can only edit your own feedback."}, status=status.HTTP_403_FORBIDDEN)
         return super().update(request, *args, **kwargs)

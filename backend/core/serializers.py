@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Post, Event, Team, Submission, JudgeFeedback, UserProfile
+from .models import Post, Event, Team, Submission, JudgeFeedback, UserProfile, Activity
 
 User = get_user_model()
 
@@ -135,3 +135,10 @@ class JudgeFeedbackSerializer(serializers.ModelSerializer):
         fields = ['id', 'submission', 'submission_title', 'judge', 'judge_details',
                   'judge_username', 'score', 'comment', 'created_at', 'updated_at']
         read_only_fields = ['judge']
+
+# ========== NEW ACTIVITY SERIALIZER ==========
+class ActivitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Activity
+        fields = ['id', 'type', 'title', 'description', 'metadata', 
+                  'is_important', 'created_at', 'team', 'submission', 'event']

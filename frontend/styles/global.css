@@ -455,9 +455,38 @@ h1, h2, h3, h4, h5, h6 {
 .tm-title { font-family: 'Syne', sans-serif; font-size: 30px; font-weight: 700; color: #f0f0f3; letter-spacing: -0.5px; line-height: 1.1; }
 .tm-subtitle { font-size: 14px; color: #5c5c6e; margin-top: 6px; line-height: 1.6; }
 .tm-header-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.tm-btn-primary { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 10px; font-size: 13.5px; font-weight: 600; font-family: 'DM Sans', sans-serif; background: #6EE7B7; color: #0c0c0f; border: none; cursor: pointer; transition: background .15s; text-decoration: none; }
-.tm-btn-primary:hover { background: #86efac; }
-.tm-btn-primary svg { width: 16px; height: 16px; }
+.tm-btn-primary { 
+  display: inline-flex; 
+  align-items: center; 
+  justify-content: center;
+  gap: 0.5rem; 
+  padding: 0.6rem 1.5rem; 
+  border-radius: 100px; /* Changed from 10px to 100px for pill shape */
+  font-size: 0.9rem; 
+  font-weight: 600; 
+  font-family: 'DM Sans', sans-serif; 
+  background: #6EE7B7; 
+  color: #0c0c0f; 
+  border: 1px solid #4fb88b; /* Added border for definition */
+  cursor: pointer; 
+  transition: all 0.2s ease; 
+  text-decoration: none; 
+  line-height: 1.4;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(110, 231, 183, 0.2);
+}
+.tm-btn-primary:hover { 
+  background: #86efac; 
+  border-color: #3a9e75;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(110, 231, 183, 0.3);
+}
+.tm-btn-primary svg { 
+  width: 18px; 
+  height: 18px; 
+  display: block;
+  flex-shrink: 0;
+}
 .tm-btn-ghost { display: inline-flex; align-items: center; gap: 7px; padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; font-family: 'DM Sans', sans-serif; background: transparent; color: #5c5c6e; border: 1px solid #26262e; cursor: pointer; transition: all .15s; text-decoration: none; }
 .tm-btn-ghost:hover { color: #f0f0f3; background: #17171b; }
 
@@ -689,50 +718,90 @@ h1, h2, h3, h4, h5, h6 {
 .ev-stat-accent { color: #6EE7B7; }
 .ev-stat-label { font-size: 11px; font-weight: 500; color: #5c5c6e; text-transform: uppercase; letter-spacing: 0.7px; }
 .ev-error { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 10px; background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.2); color: #f87171; font-size: 13px; margin-bottom: 20px; }
-.ev-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-.ev-search-wrap {
-  position: relative;
+/* ── TOOLBAR (Circular version) ── */
+.ev-toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.ev-search-wrap {
+  position: relative;
+  flex: 1;
+  max-width: 360px;
 }
 .ev-search-ico {
   position: absolute;
-  left: 12px;
+  left: 13px;
   top: 50%;
   transform: translateY(-50%);
   width: 16px;
   height: 16px;
-  color: var(--muted);
+  color: #5c5c6e;
   pointer-events: none;
   z-index: 2;
 }
 
 .ev-search {
   width: 100%;
-  padding: 0.6rem 1rem 0.6rem 2.5rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  color: var(--text);
-  font-size: 0.9rem;
-  line-height: 1.5;
-  transition: all 0.2s ease;
+  padding: 9px 14px 9px 36px;
+  background: #111114;
+  border: 1px solid #1e1e24;
+  border-radius: 100px;  /* Circular search bar */
+  font-size: 13.5px;
+  color: #f0f0f3;
+  font-family: 'DM Sans', sans-serif;
+  outline: none;
+  transition: border-color .15s;
 }
 
 .ev-search:focus {
-  border-color: var(--accent);
+  border-color: #6EE7B7;
   outline: none;
-  box-shadow: 0 0 0 2px rgba(110, 231, 183, 0.1);
 }
 
 .ev-search::placeholder {
-  color: var(--muted);
+  color: #5c5c6e;
   opacity: 0.7;
 }
-.ev-filters { display: flex; gap: 4px; background: #111114; border: 1px solid #1e1e24; border-radius: 10px; padding: 4px; }
-.ev-filter-btn { padding: 6px 14px; border: none; border-radius: 7px; font-size: 12.5px; font-weight: 500; font-family: 'DM Sans', sans-serif; color: #5c5c6e; background: transparent; cursor: pointer; transition: all .15s; }
-.ev-filter-btn:hover { color: #f0f0f3; background: #17171b; }
-.ev-filter-btn.active { background: #6EE7B7; color: #0c0c0f; font-weight: 600; }
+
+/* ── Circular Filter Buttons ── */
+.ev-filters {
+  display: flex;
+  gap: 4px;
+  background: #111114;
+  border: 1px solid #1e1e24;
+  border-radius: 100px;  /* Makes the container circular */
+  padding: 4px;
+}
+
+.ev-filter-btn {
+  padding: 6px 16px;  /* Wider padding for better pill shape */
+  border: none;
+  border-radius: 100px;  /* Circular buttons */
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: 'DM Sans', sans-serif;
+  color: #5c5c6e;
+  background: transparent;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+
+.ev-filter-btn:hover {
+  color: #f0f0f3;
+  background: #17171b;
+}
+
+.ev-filter-btn.active {
+  background: #6EE7B7;
+  color: #0c0c0f;
+  font-weight: 600;
+}
+
 .ev-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; margin-top: 1.5rem; background: transparent; border: none; }
 .ev-empty { padding: 56px 24px; text-align: center; color: #5c5c6e; font-size: 13px; display: flex; flex-direction: column; align-items: center; background: #111114; border: 1px solid #1e1e24; border-radius: 14px; }
 .ev-card { background: #111114; padding: 22px 24px; display: flex; flex-direction: column; transition: all 0.3s ease; cursor: pointer; height: 100%; border: 1px solid #1e1e24; border-radius: 16px; }
@@ -752,19 +821,7 @@ h1, h2, h3, h4, h5, h6 {
 .ev-desc { font-size: 13px; color: #5c5c6e; line-height: 1.6; margin: 0 0 16px; flex: 1; }
 .ev-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 14px; border-top: 1px solid #1e1e24; }
 .ev-date, .ev-teams { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: #3a3a48; }
-/* Fix button icon alignment */
-.ev-btn-primary,
-.evd-btn-primary,
-.evc-btn-submit,
-.tm-btn-primary,
-.tmd-btn-primary,
-.dash-btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  line-height: 1;
-}
+
 
 .evc-btn-submit svg,
 .evd-btn-primary svg,

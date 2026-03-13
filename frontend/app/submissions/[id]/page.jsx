@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import axios from "../../../utils/axios";
 import { useAuth } from "@/context/AuthContext";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 // Safe access helper
 const safeGet = (obj, path, defaultValue = null) => {
@@ -243,13 +244,8 @@ export default function SubmissionDetailPage() {
   };
 
   if (loading) {
-    return (
-      <div className="evd-loading">
-        <div className="evd-spinner" />
-        <p>Loading submission...</p>
-      </div>
-    );
-  }
+      return <LoadingSpinner message="Loading submissions..." />;
+    }
 
   if (error && !submission) {
     return (

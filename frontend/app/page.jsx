@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import axios from "../utils/axios";
 import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
 
 /* ─────────────────────────────────────────────────────────────
    DESIGN SYSTEM (keep your existing ICONS and SparkChart here)
@@ -66,6 +67,7 @@ export default function DashboardPage() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
   const fetchData = async () => {
@@ -153,6 +155,73 @@ export default function DashboardPage() {
   }
 
   return (
+    <>
+      <style jsx>{`
+      /* ── Circular Action Buttons ── */
+.dash-action-outline-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.5rem;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 100px;  /* Circular shape */
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 500;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  white-space: nowrap;
+  backdrop-filter: blur(5px);
+}
+
+.dash-action-outline-circle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #6EE7B7;
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(110, 231, 183, 0.15);
+}
+
+.dash-action-primary-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.5rem;
+  background: #6EE7B7;
+  border: 1px solid #4fb88b;
+  border-radius: 100px;  /* Circular shape */
+  color: #0c0c0f;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(110, 231, 183, 0.2);
+}
+
+.dash-action-primary-circle:hover {
+  background: #86efac;
+  border-color: #3a9e75;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(110, 231, 183, 0.3);
+}
+
+.dash-action-primary-circle svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  flex-shrink: 0;
+  stroke: #0c0c0f;
+}
+
+      `}</style>
     <div className="dash-page">
       <main className="dash-main">
         {/* Page header */}
@@ -170,14 +239,20 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="dash-header-actions">
-            <Link href="/events" className="dash-action-btn dash-action-outline">
-              Browse events
-            </Link>
-            <Link href="/teams/create" className="dash-action-btn dash-action-primary">
-              <Icon d={ICONS.plus} size={14} />
-              Create team
-            </Link>
-          </div>
+  <button 
+    onClick={() => router.push('/events')} 
+    className="dash-action-outline-circle"
+  >
+    Browse events
+  </button>
+  <button 
+    onClick={() => router.push('/teams/create')} 
+    className="dash-action-primary-circle"
+  >
+    <Icon d={ICONS.plus} size={16} />
+    Create team
+  </button>
+</div>
         </div>
 
         {/* Stat strip */}
@@ -391,5 +466,6 @@ export default function DashboardPage() {
         </div>
       </main>
     </div>
+    </>
   );
 }

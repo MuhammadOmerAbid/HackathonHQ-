@@ -1,15 +1,12 @@
 import { Suspense } from 'react';
 import EventsContent from '@/components/events/EventsContent';
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 export default function EventsPage() {
   return (
     <Suspense fallback={
       <div className="events-loading">
-        <div className="blob blob1"></div>
-        <div className="blob blob2"></div>
-        <div className="blob blob3"></div>
-        <div className="events-spinner"></div>
-        <p>Loading hackathons...</p>
+        <LoadingSpinner message="Loading hackathons..." />;
       </div>
     }>
       <EventsContent />

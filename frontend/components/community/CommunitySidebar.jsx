@@ -1,145 +1,310 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-
-export default function CommunitySidebar({ events = [], trending = [], topUsers = [], onTagClick }) {
-  const router = useRouter();
-
-  const now = new Date();
-  const liveEvents = events.filter(ev => {
-    const s = new Date(ev.start_date || ev.start);
-    const e = new Date(ev.end_date   || ev.end);
-    return s <= now && e >= now;
-  }).slice(0, 3);
-
-  const upcomingEvents = events.filter(ev => {
-    const s = new Date(ev.start_date || ev.start);
-    return s > now;
-  }).slice(0, 2);
-
+export default function CommunitySidebar({
+  user,
+  trendingTags = [],
+  suggestedUsers = [],
+  liveEvents = [],
+  upcomingEvents = [],
+  onTagClick,
+  onUserClick,
+}) {
   return (
-    <aside className="cs-sidebar">
-
+    <div style={styles.sidebar}>
       {/* Live Events */}
       {liveEvents.length > 0 && (
-        <div className="cs-panel">
-          <h3 className="cs-panel-title">
-            <span className="cs-live-dot" />
-            Live Now
-          </h3>
-          {liveEvents.map(ev => (
-            <div key={ev.id} className="cs-event-item" onClick={() => router.push(`/events/${ev.id}`)}>
-              <div className="cs-event-name">{ev.name}</div>
-              <div className="cs-event-meta">
-                Ends {new Date(ev.end_date || ev.end).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+        <div style={styles.card}>
+          <div style={styles.cardHeader}>
+            <span style={styles.liveDot} />
+            <h3 style={styles.cardTitle}>Live Now</h3>
+          </div>
+          <div style={styles.eventList}>
+            {liveEvents.map((event) => (
+              <div key={event.id} style={styles.eventItem}>
+                <div style={styles.eventName}>{event.name}</div>
+                <div style={styles.eventMeta}>
+                  Ends {new Date(event.end_date || event.end).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Upcoming */}
-      {upcomingEvents.length > 0 && (
-        <div className="cs-panel">
-          <h3 className="cs-panel-title">Upcoming Events</h3>
-          {upcomingEvents.map(ev => (
-            <div key={ev.id} className="cs-event-item upcoming" onClick={() => router.push(`/events/${ev.id}`)}>
-              <div className="cs-event-name">{ev.name}</div>
-              <div className="cs-event-meta">
-                Starts {new Date(ev.start_date || ev.start).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Trending tags */}
-      {trending.length > 0 && (
-        <div className="cs-panel">
-          <h3 className="cs-panel-title">Trending Tags</h3>
-          <div className="cs-tags-cloud">
-            {trending.map((t, i) => (
-              <button key={t.tag || t} className={`cs-trend-tag size-${Math.min(i, 4)}`} onClick={() => onTagClick?.(t.tag || t)}>
-                #{t.tag || t}
-                {t.count && <span className="cs-trend-count">{t.count}</span>}
+      {/* Trending Tags */}
+      {trendingTags.length > 0 && (
+        <div style={styles.card}>
+          <h3 style={styles.cardTitle}>Trending Tags</h3>
+          <div style={styles.tagsList}>
+            {trendingTags.map((tag, index) => (
+              <button
+                key={tag.tag || tag}
+                style={styles.tagButton}
+                onClick={() => onTagClick?.(tag.tag || tag)}
+              >
+                <span style={styles.tagName}>#{tag.tag || tag}</span>
+                {tag.count && <span style={styles.tagCount}>{tag.count}</span>}
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Top contributors */}
-      {topUsers.length > 0 && (
-        <div className="cs-panel">
-          <h3 className="cs-panel-title">Top Contributors</h3>
-          {topUsers.slice(0, 5).map((u, i) => (
-            <div key={u.id} className="cs-user-row" onClick={() => router.push(`/users/${u.id}`)}>
-              <span className="cs-user-rank">#{i + 1}</span>
-              <div className="cs-user-avatar">{u.username?.[0]?.toUpperCase()}</div>
-              <div className="cs-user-info">
-                <div className="cs-user-name">{u.username}</div>
-                <div className="cs-user-stat">{u.posts_count || 0} posts · {u.likes_received || 0} likes</div>
+      {/* Suggested Users */}
+      {suggestedUsers.length > 0 && (
+        <div style={styles.card}>
+          <h3 style={styles.cardTitle}>Suggested</h3>
+          <div style={styles.userList}>
+            {suggestedUsers.map((suggestedUser) => (
+              <div key={suggestedUser.id} style={styles.userRow}>
+                <div style={styles.userAvatar} onClick={() => onUserClick?.(suggestedUser)}>
+                  {suggestedUser.username?.[0]?.toUpperCase()}
+                </div>
+                <div style={styles.userInfo} onClick={() => onUserClick?.(suggestedUser)}>
+                  <div style={styles.userName}>{suggestedUser.username}</div>
+                  <div style={styles.userStats}>
+                    {suggestedUser.posts_count || 0} posts
+                  </div>
+                </div>
+                {user && suggestedUser.id !== user.id && (
+                  <button style={styles.followButton}>
+                    Follow
+                  </button>
+                )}
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
-      <style jsx>{`
-        .cs-sidebar { display: flex; flex-direction: column; gap: 14px; }
-        .cs-panel {
-          background: #111114; border: 1px solid #1e1e24; border-radius: 14px;
-          padding: 18px; overflow: hidden;
-        }
-        .cs-panel-title {
-          display: flex; align-items: center; gap: 7px;
-          font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700;
-          color: #f0f0f3; margin: 0 0 14px; letter-spacing: -0.2px;
-        }
-        .cs-live-dot {
-          width: 7px; height: 7px; border-radius: 50%; background: #6EE7B7;
-          box-shadow: 0 0 8px rgba(110,231,183,0.6); animation: pulse 2s infinite;
-          flex-shrink: 0;
-        }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+      {/* Upcoming Events */}
+      {upcomingEvents.length > 0 && (
+        <div style={styles.card}>
+          <h3 style={styles.cardTitle}>Upcoming</h3>
+          <div style={styles.eventList}>
+            {upcomingEvents.map((event) => (
+              <div key={event.id} style={styles.eventItem}>
+                <div style={styles.eventName}>{event.name}</div>
+                <div style={styles.eventMeta}>
+                  {new Date(event.start_date || event.start).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-        /* Events */
-        .cs-event-item {
-          padding: 10px 12px; border-radius: 10px; cursor: pointer;
-          transition: all .15s; border: 1px solid transparent; margin-bottom: 6px;
-        }
-        .cs-event-item:last-child { margin-bottom: 0; }
-        .cs-event-item:hover { background: #17171b; border-color: rgba(110,231,183,0.15); }
-        .cs-event-item.upcoming:hover { border-color: rgba(251,191,36,0.15); }
-        .cs-event-name { font-size: 13px; font-weight: 600; color: #f0f0f3; margin-bottom: 3px; }
-        .cs-event-meta { font-size: 11.5px; color: #5c5c6e; }
-
-        /* Tags */
-        .cs-tags-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
-        .cs-trend-tag {
-          display: inline-flex; align-items: center; gap: 5px;
-          padding: 4px 11px; border-radius: 100px; font-size: 12.5px; font-weight: 500;
-          background: #17171b; border: 1px solid #1e1e24; color: #888;
-          cursor: pointer; transition: all .15s; font-family: 'DM Sans', sans-serif;
-        }
-        .cs-trend-tag:hover { color: #6EE7B7; background: rgba(110,231,183,0.06); border-color: rgba(110,231,183,0.2); }
-        .cs-trend-tag.size-0 { font-size: 13.5px; color: #6EE7B7; background: rgba(110,231,183,0.06); border-color: rgba(110,231,183,0.15); }
-        .cs-trend-tag.size-1 { font-size: 13px; color: #aaa; }
-        .cs-trend-count { font-size: 10px; color: #3a3a48; }
-
-        /* Users */
-        .cs-user-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; cursor: pointer; border-radius: 8px; transition: all .15s; }
-        .cs-user-row:hover .cs-user-name { color: #6EE7B7; }
-        .cs-user-rank { font-size: 12px; font-weight: 700; color: #3a3a48; min-width: 20px; }
-        .cs-user-avatar {
-          width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
-          background: rgba(110,231,183,0.08); border: 1px solid rgba(110,231,183,0.15);
-          display: flex; align-items: center; justify-content: center;
-          font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700; color: #6EE7B7;
-        }
-        .cs-user-name { font-size: 13px; font-weight: 600; color: #f0f0f3; transition: color .15s; }
-        .cs-user-stat { font-size: 11px; color: #5c5c6e; }
-      `}</style>
-    </aside>
+      {/* Footer */}
+      <div style={styles.footer}>
+        <div style={styles.footerLinks}>
+          <a href="#" style={styles.footerLink}>About</a>
+          <span style={styles.footerDot}>•</span>
+          <a href="#" style={styles.footerLink}>Guidelines</a>
+          <span style={styles.footerDot}>•</span>
+          <a href="#" style={styles.footerLink}>Support</a>
+        </div>
+        <p style={styles.copyright}>© 2024 HackForge Community</p>
+      </div>
+    </div>
   );
 }
+
+const styles = {
+  sidebar: {
+    position: 'sticky',
+    top: '24px',
+    height: 'fit-content',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  card: {
+    background: '#111114',
+    border: '1px solid #1e1e24',
+    borderRadius: '18px',
+    padding: '20px',
+    backdropFilter: 'blur(10px)',
+  },
+  cardHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '16px',
+  },
+  cardTitle: {
+    fontFamily: "'Syne', sans-serif",
+    fontSize: '15px',
+    fontWeight: 700,
+    color: '#f0f0f3',
+    margin: 0,
+  },
+  liveDot: {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    background: '#6EE7B7',
+    boxShadow: '0 0 12px rgba(110,231,183,0.8)',
+    animation: 'pulse 2s infinite',
+  },
+  eventList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  eventItem: {
+    padding: '8px 0',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    borderBottom: '1px solid rgba(30,30,36,0.5)',
+    ':last-child': {
+      borderBottom: 'none',
+    },
+    ':hover': {
+      '& $eventName': {
+        color: '#6EE7B7',
+      },
+    },
+  },
+  eventName: {
+    fontSize: '13px',
+    fontWeight: 600,
+    color: '#f0f0f3',
+    marginBottom: '4px',
+  },
+  eventMeta: {
+    fontSize: '11px',
+    color: '#888',
+  },
+  tagsList: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
+  },
+  tagButton: {
+    display: 'inlineFlex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '6px 14px',
+    background: '#17171b',
+    border: '1px solid #1e1e24',
+    borderRadius: '100px',
+    color: '#888',
+    fontSize: '12px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    ':hover': {
+      background: 'rgba(110,231,183,0.08)',
+      borderColor: 'rgba(110,231,183,0.3)',
+      color: '#6EE7B7',
+    },
+  },
+  tagName: {
+    fontWeight: 500,
+  },
+  tagCount: {
+    fontSize: '10px',
+    color: '#5c5c6e',
+    marginLeft: '2px',
+  },
+  userList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+  },
+  userRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  userAvatar: {
+    width: '40px',
+    height: '40px',
+    borderRadius: '50%',
+    background: 'rgba(110,231,183,0.08)',
+    border: '1px solid rgba(110,231,183,0.15)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontFamily: "'Syne', sans-serif",
+    fontSize: '14px',
+    fontWeight: 700,
+    color: '#6EE7B7',
+    cursor: 'pointer',
+    flexShrink: 0,
+    transition: 'all 0.2s ease',
+    ':hover': {
+      background: 'rgba(110,231,183,0.15)',
+    },
+  },
+  userInfo: {
+    flex: 1,
+    minWidth: 0,
+    cursor: 'pointer',
+  },
+  userName: {
+    fontSize: '13px',
+    fontWeight: 600,
+    color: '#f0f0f3',
+    marginBottom: '2px',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  userStats: {
+    fontSize: '11px',
+    color: '#888',
+  },
+  followButton: {
+    padding: '5px 12px',
+    background: 'transparent',
+    border: '1px solid #6EE7B7',
+    borderRadius: '100px',
+    color: '#6EE7B7',
+    fontSize: '11px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    ':hover': {
+      background: '#6EE7B7',
+      color: '#0c0c0f',
+    },
+  },
+  footer: {
+    padding: '16px',
+    textAlign: 'center',
+  },
+  footerLinks: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    marginBottom: '8px',
+    flexWrap: 'wrap',
+  },
+  footerLink: {
+    fontSize: '11px',
+    color: '#5c5c6e',
+    textDecoration: 'none',
+    transition: 'color 0.2s ease',
+    ':hover': {
+      color: '#6EE7B7',
+    },
+  },
+  footerDot: {
+    color: '#3a3a48',
+    fontSize: '11px',
+  },
+  copyright: {
+    fontSize: '10px',
+    color: '#3a3a48',
+    margin: 0,
+  },
+};

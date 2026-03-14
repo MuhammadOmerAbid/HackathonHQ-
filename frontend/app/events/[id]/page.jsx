@@ -90,7 +90,7 @@ export default function EventDetailPage() {
             {event.is_premium && <span className="evd-premium">PRO</span>}
           </h1>
           <p className="evd-organizer">
-            Organized by {event.organizer?.username || "HackForge"}
+            Organized by {event.organizer?.username || "HackathonHQ"}
           </p>
         </div>
         <div className={`evd-status-pill ${status.cls}`}>

@@ -45,7 +45,7 @@ export default function EventCard({ event }) {
         {/* Title + organizer */}
         <h3 className="ec-name">{event.name}</h3>
         <p className="ec-organizer">
-          by {event.organizer?.username || event.organizer_username || "HackForge"}
+          by {event.organizer?.username || event.organizer_username || "HackathonHQ"}
         </p>
 
         {/* Description */}

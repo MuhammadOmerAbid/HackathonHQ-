@@ -6,7 +6,7 @@ import "../styles/global.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "HackForge - Build Something Amazing",
+  title: "HackathonHQ - Build Something Amazing",
   description: "Join hackathons, form teams, and build innovative projects",
 };
 

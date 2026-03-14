@@ -101,12 +101,13 @@ export default function EventsContent() {
         </div>
         <div className="ev-header-right">
           {user && isOrganizer && (
-            <button onClick={handleCreate} className="ev-btn-primary">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-              New Event
-            </button>
+            <button onClick={handleCreate} className="ev-btn-primary-circle">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <line x1="12" y1="5" x2="12" y2="19"/>
+    <line x1="5" y1="12" x2="19" y2="12"/>
+  </svg>
+  <span>New Event</span>
+</button>
           )}
           {!user && (
             <Link href="/login" className="ev-btn-ghost">Sign In</Link>
@@ -114,22 +115,56 @@ export default function EventsContent() {
         </div>
       </div>
 
-      {/* ── STAT STRIP (organizer only) ── */}
       {isOrganizer && (
-        <div className="ev-stats">
-          {[
-            { label: "Total Events",  value: events.length },
-            { label: "Live Now",      value: liveCount,     accent: true },
-            { label: "Upcoming",      value: upcomingCount  },
-            { label: "Total Teams",   value: events.reduce((a, e) => a + (e.teams_count || 0), 0) },
-          ].map((s, i) => (
-            <div className="ev-stat" key={i}>
-              <div className={`ev-stat-value${s.accent ? " ev-stat-accent" : ""}`}>{s.value}</div>
-              <div className="ev-stat-label">{s.label}</div>
-            </div>
-          ))}
+  <div className="ev-stats-cards">
+    {[
+      { 
+        label: "Total Events",  
+        value: events.length,
+        icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+      },
+      { 
+        label: "Live Now",      
+        value: liveCount,     
+        accent: true,
+        icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                <circle cx="12" cy="12" r="10"/>
+                <polygon points="10 8 16 12 10 16 10 8"/>
+              </svg>
+      },
+      { 
+        label: "Upcoming",      
+        value: upcomingCount,
+        icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+      },
+      { 
+        label: "Total Teams",   
+        value: events.reduce((a, e) => a + (e.teams_count || 0), 0),
+        icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+      },
+    ].map((s, i) => (
+      <div className="ev-stat-card" key={i}>
+        <div className="ev-stat-icon">{s.icon}</div>
+        <div className="ev-stat-body">
+          <div className={`ev-stat-value${s.accent ? " accent" : ""}`}>{s.value}</div>
+          <div className="ev-stat-label">{s.label}</div>
         </div>
-      )}
+      </div>
+    ))}
+  </div>
+)}
 
       {/* ── ERROR ── */}
       {error && (

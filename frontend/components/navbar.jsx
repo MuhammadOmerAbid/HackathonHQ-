@@ -154,8 +154,8 @@ export default function LiquidGlassNavbar() {
             style={{ backgroundColor: "rgba(10, 10, 10, 0.15)" }}
           >
             <Link href="/" className="glass-logo">
-              <Image src="/logo.png" alt="HackForge Logo" width={32} height={32} className="glass-logo-image" priority />
-              <Image src="/HackForge.png" alt="HackForge" width={120} height={32} className="glass-logo-text-image" priority />
+              <Image src="/logo.png" alt="HackathonHQ Logo" width={32} height={32} className="glass-logo-image" priority />
+              <Image src="/HackathonHQ.png" alt="HackathonHQ" width={120} height={32} className="glass-logo-text-image" priority />
             </Link>
             <div className="glass-nav-placeholder"></div>
           </div>
@@ -177,8 +177,8 @@ export default function LiquidGlassNavbar() {
           }}
         >
           <Link href="/" className="glass-logo">
-            <Image src="/logo.png" alt="HackForge Logo" width={32} height={32} className="glass-logo-image" priority />
-            <Image src="/HackForge.png" alt="HackForge" width={120} height={32} className="glass-logo-text-image" priority />
+            <Image src="/logo.png" alt="HackathonHQ Logo" width={32} height={32} className="glass-logo-image" priority />
+            <Image src="/HackathonHQ.png" alt="HackathonHQ" width={120} height={32} className="glass-logo-text-image" priority />
           </Link>
 
           <div className="glass-nav">

@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 
 export default function JudgeDashboardPage() {
   const router = useRouter();
-  const { user, isJudge } = useAuth();
+  const { user, isJudge, loading: authLoading } = useAuth();
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -19,13 +19,13 @@ export default function JudgeDashboardPage() {
   });
 
   useEffect(() => {
-    // Redirect if not judge
-    if (!isJudge && !loading) {
+    if (authLoading) return;
+    if (!isJudge) {
       router.push("/");
       return;
     }
     fetchData();
-  }, [isJudge]);
+  }, [isJudge, authLoading]);
 
   const fetchData = async () => {
     try {

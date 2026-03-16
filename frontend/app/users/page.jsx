@@ -283,7 +283,7 @@ export default function UsersPage() {
                   >
                     <td className="users-table-user">
                       <div className="users-table-avatar">
-                        {user.username?.[0]?.toUpperCase()}
+                        {user.avatar ? <img src={user.avatar} alt="" /> : user.username?.[0]?.toUpperCase()}
                         {user.is_active && <span className="users-table-active" />}
                       </div>
                       <div>
@@ -594,6 +594,12 @@ export default function UsersPage() {
           font-weight: 700;
           color: #6EE7B7;
           flex-shrink: 0;
+          overflow: hidden;
+        }
+        .users-table-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
         .users-table-active {
           position: absolute;

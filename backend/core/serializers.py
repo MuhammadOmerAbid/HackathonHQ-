@@ -1,29 +1,266 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Post, Event, Team, Submission, JudgeFeedback, UserProfile, Activity, Follow
+from .models import (
+    Post, Event, Team, Submission, JudgeFeedback,
+    UserProfile, Activity, Follow, Tag, PostLike, PostRepost,
+    Conversation, ConversationParticipant, Message
+)
 
 User = get_user_model()
 
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        fields = ['id', 'is_organizer', 'is_judge', 'organization_name', 'bio', 'cover_image', 'created_at']
+        fields = [
+            'id', 'is_organizer', 'is_judge', 'organization_name', 'location',
+            'bio', 'avatar', 'cover_image',
+            'github_url', 'linkedin_url', 'twitter_url', 'website_url',
+            'last_active', 'suspended_until', 'banned_until', 'ban_reason',
+            'created_at'
+        ]
 
 class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
+    is_organizer = serializers.SerializerMethodField()
+    is_judge = serializers.SerializerMethodField()
+    organization_name = serializers.SerializerMethodField()
+    bio = serializers.SerializerMethodField()
+    location = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
+    cover_image = serializers.SerializerMethodField()
+    github_url = serializers.SerializerMethodField()
+    linkedin_url = serializers.SerializerMethodField()
+    twitter_url = serializers.SerializerMethodField()
+    website_url = serializers.SerializerMethodField()
+    last_active = serializers.SerializerMethodField()
+    suspended_until = serializers.SerializerMethodField()
+    banned_until = serializers.SerializerMethodField()
+    ban_reason = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = ["id", "username", "email", "first_name", "last_name",
-                  "is_active", "is_staff", "is_superuser", "profile"]
+                  "is_active", "is_staff", "is_superuser",
+                  "profile",
+                  "is_organizer", "is_judge", "organization_name", "bio", "location",
+                  "avatar", "cover_image",
+                  "github_url", "linkedin_url", "twitter_url", "website_url",
+                  "last_active", "suspended_until", "banned_until", "ban_reason",
+                  "date_joined"]
+
+    def get_is_organizer(self, obj):
+        try:
+            return bool(getattr(obj.profile, 'is_organizer', False)) or obj.is_staff or obj.is_superuser
+        except:
+            return obj.is_staff or obj.is_superuser
+
+    def get_is_judge(self, obj):
+        try:
+            return bool(getattr(obj.profile, 'is_judge', False))
+        except:
+            return False
+
+    def get_organization_name(self, obj):
+        try:
+            return getattr(obj.profile, 'organization_name', None)
+        except:
+            return None
+
+    def get_bio(self, obj):
+        try:
+            return getattr(obj.profile, 'bio', None)
+        except:
+            return None
+
+    def get_location(self, obj):
+        try:
+            return getattr(obj.profile, 'location', None)
+        except:
+            return None
+
+    def get_avatar(self, obj):
+        try:
+            avatar = getattr(obj.profile, 'avatar', None)
+            if not avatar:
+                return None
+            request = self.context.get('request')
+            return request.build_absolute_uri(avatar.url) if request else avatar.url
+        except:
+            return None
+
+    def get_cover_image(self, obj):
+        try:
+            cover = getattr(obj.profile, 'cover_image', None)
+            if not cover:
+                return None
+            request = self.context.get('request')
+            return request.build_absolute_uri(cover.url) if request else cover.url
+        except:
+            return None
+
+    def get_github_url(self, obj):
+        try:
+            return getattr(obj.profile, 'github_url', None)
+        except:
+            return None
+
+    def get_linkedin_url(self, obj):
+        try:
+            return getattr(obj.profile, 'linkedin_url', None)
+        except:
+            return None
+
+    def get_twitter_url(self, obj):
+        try:
+            return getattr(obj.profile, 'twitter_url', None)
+        except:
+            return None
+
+    def get_website_url(self, obj):
+        try:
+            return getattr(obj.profile, 'website_url', None)
+        except:
+            return None
+
+    def get_last_active(self, obj):
+        try:
+            return getattr(obj.profile, 'last_active', None)
+        except:
+            return None
+
+    def get_suspended_until(self, obj):
+        try:
+            return getattr(obj.profile, 'suspended_until', None)
+        except:
+            return None
+
+    def get_banned_until(self, obj):
+        try:
+            return getattr(obj.profile, 'banned_until', None)
+        except:
+            return None
+
+    def get_ban_reason(self, obj):
+        try:
+            return getattr(obj.profile, 'ban_reason', None)
+        except:
+            return None
 
 class PostSerializer(serializers.ModelSerializer):
-    owner = serializers.ReadOnlyField(source='owner.username')
-    owner_details = UserSerializer(source='owner', read_only=True)
+    author = UserSerializer(source='owner', read_only=True)
+    tags = serializers.SerializerMethodField()
+    tags_input = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True, write_only=True
+    )
+    event = serializers.SerializerMethodField()
+    event_input = serializers.PrimaryKeyRelatedField(
+        queryset=Event.objects.all(), required=False, allow_null=True, write_only=True
+    )
+    parent = serializers.PrimaryKeyRelatedField(
+        queryset=Post.objects.all(), required=False, allow_null=True
+    )
+    likes_count = serializers.SerializerMethodField()
+    reposts_count = serializers.SerializerMethodField()
+    comments_count = serializers.SerializerMethodField()
+    liked_by = serializers.SerializerMethodField()
+    reposted_by = serializers.SerializerMethodField()
     
     class Meta:
         model = Post
-        fields = ['id', 'title', 'content', 'owner', 'owner_details', 'created_at']
+        fields = [
+            'id', 'title', 'content', 'created_at',
+            'post_type', 'is_pinned', 'pinned_at', 'scheduled_for', 'is_deleted',
+            'author', 'parent', 'event',
+            'tags', 'tags_input', 'event_input',
+            'likes_count', 'reposts_count', 'comments_count',
+            'liked_by', 'reposted_by'
+        ]
+
+    def get_tags(self, obj):
+        return [t.name for t in obj.tags.all()]
+
+    def _get_tags_input(self, validated_data):
+        tags = validated_data.pop('tags_input', None)
+        if tags is None:
+            tags = self.initial_data.get('tags')
+        if tags is None:
+            return None
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.split(',') if t.strip()]
+        return tags
+
+    def _set_tags(self, instance, tags):
+        if tags is None:
+            return
+        clean = []
+        for t in tags:
+            if not t:
+                continue
+            name = str(t).strip().lower()
+            if name and name not in clean:
+                clean.append(name)
+        tag_objs = []
+        for name in clean:
+            tag_obj, _ = Tag.objects.get_or_create(name=name)
+            tag_objs.append(tag_obj)
+        instance.tags.set(tag_objs)
+
+    def get_event(self, obj):
+        if not obj.event:
+            return None
+        return {
+            'id': obj.event.id,
+            'name': obj.event.name,
+            'start_date': obj.event.start_date,
+            'end_date': obj.event.end_date
+        }
+
+    def get_likes_count(self, obj):
+        return obj.likes.count()
+
+    def get_reposts_count(self, obj):
+        return obj.reposts.count()
+
+    def get_comments_count(self, obj):
+        return obj.replies.filter(is_deleted=False).count()
+
+    def get_liked_by(self, obj):
+        return list(obj.likes.values_list('user_id', flat=True))
+
+    def get_reposted_by(self, obj):
+        return list(obj.reposts.values_list('user_id', flat=True))
+
+    def create(self, validated_data):
+        if 'event_input' in validated_data:
+            validated_data['event'] = validated_data.pop('event_input')
+        if 'event' not in validated_data:
+            event_id = self.initial_data.get('event')
+            if event_id:
+                try:
+                    validated_data['event'] = Event.objects.get(pk=event_id)
+                except Event.DoesNotExist:
+                    pass
+        tags = self._get_tags_input(validated_data)
+        if 'post_type' in validated_data and validated_data.get('post_type') is None:
+            validated_data['post_type'] = Post.POST_TYPE_POST
+        instance = super().create(validated_data)
+        self._set_tags(instance, tags)
+        return instance
+
+    def update(self, instance, validated_data):
+        if 'event_input' in validated_data:
+            validated_data['event'] = validated_data.pop('event_input')
+        if 'event' not in validated_data:
+            event_id = self.initial_data.get('event')
+            if event_id:
+                try:
+                    validated_data['event'] = Event.objects.get(pk=event_id)
+                except Event.DoesNotExist:
+                    pass
+        tags = self._get_tags_input(validated_data)
+        instance = super().update(instance, validated_data)
+        self._set_tags(instance, tags)
+        return instance
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -154,6 +391,15 @@ class UserDirectorySerializer(serializers.ModelSerializer):
     is_organizer = serializers.SerializerMethodField()
     is_judge = serializers.SerializerMethodField()
     organization_name = serializers.SerializerMethodField()
+    bio = serializers.SerializerMethodField()
+    location = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
+    cover_image = serializers.SerializerMethodField()
+    github_url = serializers.SerializerMethodField()
+    linkedin_url = serializers.SerializerMethodField()
+    twitter_url = serializers.SerializerMethodField()
+    website_url = serializers.SerializerMethodField()
+    last_active = serializers.SerializerMethodField()
     
     class Meta:
         model = User
@@ -164,6 +410,9 @@ class UserDirectorySerializer(serializers.ModelSerializer):
             'posts_count', 'followers_count', 'following_count',
             'is_following',
             'is_organizer', 'is_judge', 'organization_name',
+            'bio', 'location', 'avatar', 'cover_image',
+            'github_url', 'linkedin_url', 'twitter_url', 'website_url',
+            'last_active',
             'date_joined'
         ]
     
@@ -216,3 +465,119 @@ class UserDirectorySerializer(serializers.ModelSerializer):
             return getattr(obj.profile, 'organization_name', None)
         except:
             return None
+
+    def get_bio(self, obj):
+        try:
+            return getattr(obj.profile, 'bio', None)
+        except:
+            return None
+
+    def get_location(self, obj):
+        try:
+            return getattr(obj.profile, 'location', None)
+        except:
+            return None
+
+    def get_avatar(self, obj):
+        try:
+            avatar = getattr(obj.profile, 'avatar', None)
+            if not avatar:
+                return None
+            request = self.context.get('request')
+            return request.build_absolute_uri(avatar.url) if request else avatar.url
+        except:
+            return None
+
+    def get_cover_image(self, obj):
+        try:
+            cover = getattr(obj.profile, 'cover_image', None)
+            if not cover:
+                return None
+            request = self.context.get('request')
+            return request.build_absolute_uri(cover.url) if request else cover.url
+        except:
+            return None
+
+    def get_github_url(self, obj):
+        try:
+            return getattr(obj.profile, 'github_url', None)
+        except:
+            return None
+
+    def get_linkedin_url(self, obj):
+        try:
+            return getattr(obj.profile, 'linkedin_url', None)
+        except:
+            return None
+
+    def get_twitter_url(self, obj):
+        try:
+            return getattr(obj.profile, 'twitter_url', None)
+        except:
+            return None
+
+    def get_website_url(self, obj):
+        try:
+            return getattr(obj.profile, 'website_url', None)
+        except:
+            return None
+
+    def get_last_active(self, obj):
+        try:
+            return getattr(obj.profile, 'last_active', None)
+        except:
+            return None
+
+
+class TeamSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Team
+        fields = ['id', 'name']
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    sender = UserSerializer(read_only=True)
+
+    class Meta:
+        model = Message
+        fields = ['id', 'sender', 'content', 'created_at']
+
+
+class ConversationSerializer(serializers.ModelSerializer):
+    participants = UserSerializer(many=True, read_only=True)
+    other_user = serializers.SerializerMethodField()
+    last_message = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
+    team = TeamSummarySerializer(read_only=True)
+
+    class Meta:
+        model = Conversation
+        fields = ['id', 'is_team', 'team', 'participants', 'other_user', 'last_message', 'unread_count', 'updated_at']
+
+    def get_other_user(self, obj):
+        if obj.is_team:
+            return None
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return None
+        for p in obj.participants.all():
+            if p.id != request.user.id:
+                return UserSerializer(p, context=self.context).data
+        return None
+
+    def get_last_message(self, obj):
+        last = obj.messages.order_by('-created_at').first()
+        return MessageSerializer(last, context=self.context).data if last else None
+
+    def get_unread_count(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return 0
+        try:
+            link = ConversationParticipant.objects.get(conversation=obj, user=request.user)
+        except ConversationParticipant.DoesNotExist:
+            return 0
+        qs = obj.messages.exclude(sender=request.user)
+        if link.last_read_at:
+            qs = qs.filter(created_at__gt=link.last_read_at)
+        return qs.count()

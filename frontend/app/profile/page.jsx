@@ -12,7 +12,7 @@ import SettingsCard from "@/components/profile/SettingsCard";
 export default function ProfilePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isJudge, isOrganizer, logout } = useAuth();
+  const { user, isJudge, isOrganizer, logout, checkAuth } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || "profile");
@@ -22,7 +22,17 @@ export default function ProfilePage() {
     first_name: "",
     last_name: "",
     organization_name: "",
+    bio: "",
+    location: "",
+    github_url: "",
+    linkedin_url: "",
+    twitter_url: "",
+    website_url: "",
+    avatar: "",
+    cover_image: "",
   });
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [coverFile, setCoverFile] = useState(null);
   const [stats, setStats] = useState({
     teams: 0,
     submissions: 0,
@@ -30,6 +40,7 @@ export default function ProfilePage() {
     member_since: "",
   });
   const [message, setMessage] = useState({ type: "", text: "" });
+  const [lockInfo, setLockInfo] = useState({ isLocked: false, type: "", until: null, reason: "" });
   const [passwordData, setPasswordData] = useState({
     current_password: "",
     new_password: "",
@@ -54,13 +65,35 @@ export default function ProfilePage() {
       
       const userRes = await axios.get("/users/me/");
       const userData = userRes.data;
+
+      const suspendedUntil = userData.suspended_until || userData.profile?.suspended_until;
+      const bannedUntil = userData.banned_until || userData.profile?.banned_until;
+      const banReason = userData.ban_reason || userData.profile?.ban_reason;
+      if (userData.is_active === false && (suspendedUntil || bannedUntil)) {
+        setLockInfo({
+          isLocked: true,
+          type: bannedUntil ? "banned" : "suspended",
+          until: bannedUntil || suspendedUntil,
+          reason: banReason || ""
+        });
+      } else {
+        setLockInfo({ isLocked: false, type: "", until: null, reason: "" });
+      }
       
       setProfileData({
         username: userData.username || "",
         email: userData.email || "",
         first_name: userData.first_name || "",
         last_name: userData.last_name || "",
-        organization_name: userData.profile?.organization_name || "",
+        organization_name: userData.organization_name || userData.profile?.organization_name || "",
+        bio: userData.bio || userData.profile?.bio || "",
+        location: userData.location || userData.profile?.location || "",
+        github_url: userData.github_url || userData.profile?.github_url || "",
+        linkedin_url: userData.linkedin_url || userData.profile?.linkedin_url || "",
+        twitter_url: userData.twitter_url || userData.profile?.twitter_url || "",
+        website_url: userData.website_url || userData.profile?.website_url || "",
+        avatar: userData.avatar || userData.profile?.avatar || "",
+        cover_image: userData.cover_image || userData.profile?.cover_image || "",
       });
 
       try {
@@ -106,19 +139,50 @@ export default function ProfilePage() {
     setProfileData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleAvatarChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    setAvatarFile(file);
+  };
+
+  const handleCoverChange = (e) => {
+    const file = e.target.files?.[0] || null;
+    setCoverFile(file);
+  };
+
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     setSaving(true);
     setMessage({ type: "", text: "" });
 
     try {
-      await axios.patch("/users/me/", {
-        first_name: profileData.first_name,
-        last_name: profileData.last_name,
-        email: profileData.email,
+      const formData = new FormData();
+      formData.append("first_name", profileData.first_name || "");
+      formData.append("last_name", profileData.last_name || "");
+      formData.append("email", profileData.email || "");
+      formData.append("organization_name", profileData.organization_name || "");
+      formData.append("bio", profileData.bio || "");
+      formData.append("location", profileData.location || "");
+      formData.append("github_url", profileData.github_url || "");
+      formData.append("linkedin_url", profileData.linkedin_url || "");
+      formData.append("twitter_url", profileData.twitter_url || "");
+      formData.append("website_url", profileData.website_url || "");
+
+      if (avatarFile) {
+        formData.append("avatar", avatarFile);
+      }
+      if (coverFile) {
+        formData.append("cover_image", coverFile);
+      }
+
+      await axios.patch("/users/me/", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
 
       setMessage({ type: "success", text: "Profile updated successfully!" });
+      setAvatarFile(null);
+      setCoverFile(null);
+      await checkAuth();
+      fetchProfileData();
       setTimeout(() => setMessage({ type: "", text: "" }), 3000);
     } catch (err) {
       console.error("Error updating profile:", err);
@@ -184,7 +248,7 @@ export default function ProfilePage() {
   }
 };
 
-  const handleDeleteAccount = async (password, setDeleteError) => {
+  const handleDeleteAccount = async (password, reason, setDeleteError) => {
   if (!password) {
     setDeleteError("Password is required");
     return false;
@@ -200,7 +264,7 @@ export default function ProfilePage() {
     
     console.log("Password verified, deleting account...");
     // Then delete account using the new endpoint
-    await axios.post("/users/delete_account/");
+    await axios.post("/users/delete_account/", { reason: reason || "" });
     
     console.log("Account deleted, logging out...");
     // Show success message before logout
@@ -221,7 +285,7 @@ export default function ProfilePage() {
     } else if (err.response?.status === 400) {
       setMessage({ 
         type: "error", 
-        text: err.response?.data?.error || "Cannot delete account. Please leave all teams first." 
+        text: err.response?.data?.error || "Cannot delete account. Please resolve team leadership or pending submissions." 
       });
     } else if (err.response?.status === 401) {
       setMessage({ type: "error", text: "Your session has expired. Please login again." });
@@ -285,6 +349,18 @@ export default function ProfilePage() {
           </div>
         )}
 
+        {lockInfo.isLocked && (
+          <div className="profile-lock-banner">
+            <strong>Account {lockInfo.type}</strong>
+            {lockInfo.until && (
+              <span>
+                Until {new Date(lockInfo.until).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              </span>
+            )}
+            {lockInfo.reason && <span className="profile-lock-reason">{lockInfo.reason}</span>}
+          </div>
+        )}
+
         {/* Main Content */}
         <div className="profile-content">
           {/* Sidebar Component */}
@@ -303,8 +379,9 @@ export default function ProfilePage() {
             {activeTab === "profile" && (
               <ProfileInfoCard
                 profileData={profileData}
-                isOrganizer={isOrganizer}
                 onInputChange={handleInputChange}
+                onAvatarChange={handleAvatarChange}
+                onCoverChange={handleCoverChange}
                 onSubmit={handleSaveProfile}
                 saving={saving}
               />
@@ -428,6 +505,23 @@ export default function ProfilePage() {
           background: rgba(239,68,68,0.1);
           border: 1px solid rgba(239,68,68,0.2);
           color: #f87171;
+        }
+
+        .profile-lock-banner {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+          padding: 1rem;
+          border-radius: 12px;
+          margin-bottom: 1.5rem;
+          background: rgba(248,113,113,0.08);
+          border: 1px solid rgba(248,113,113,0.25);
+          color: #f87171;
+          font-size: 0.9rem;
+        }
+
+        .profile-lock-reason {
+          color: rgba(248,113,113,0.9);
         }
 
         @keyframes slideIn {

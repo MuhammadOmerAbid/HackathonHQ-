@@ -49,7 +49,7 @@ export default function UserCard({ user, currentUser, onFollow, onMessage }) {
   return (
     <div className="user-card" onClick={() => router.push(`/users/${user.id}`)}>
       <div className="user-card-avatar">
-        {user.username?.[0]?.toUpperCase()}
+        {user.avatar ? <img src={user.avatar} alt="" /> : user.username?.[0]?.toUpperCase()}
         {user.is_active && <span className="user-card-active" />}
       </div>
       
@@ -156,6 +156,12 @@ export default function UserCard({ user, currentUser, onFollow, onMessage }) {
           font-weight: 700;
           color: #6EE7B7;
           flex-shrink: 0;
+          overflow: hidden;
+        }
+        .user-card-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
         .user-card-active {
           position: absolute;

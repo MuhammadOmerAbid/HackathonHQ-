@@ -77,7 +77,11 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
             className="post-avatar"
             onClick={handleAuthorClick}
           >
-            {post.author?.username?.[0]?.toUpperCase() || '?'}
+            {post.author?.avatar ? (
+              <img src={post.author.avatar} alt="" />
+            ) : (
+              post.author?.username?.[0]?.toUpperCase() || '?'
+            )}
           </div>
         </div>
 
@@ -286,6 +290,12 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
           color: #6EE7B7;
           cursor: pointer;
           transition: all 0.2s ease;
+          overflow: hidden;
+        }
+        .post-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
         .post-avatar:hover {
           transform: scale(1.05);

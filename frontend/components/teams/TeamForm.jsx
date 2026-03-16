@@ -78,7 +78,7 @@ export default function TeamForm({ formData, onChange, events, user, error }) {
         <label className="tmc-label">Team Leader</label>
         <div className="tmc-leader-strip">
           <div className="tmc-leader-avatar">
-            {user?.username?.charAt(0).toUpperCase() || "Y"}
+            {user?.avatar ? <img src={user.avatar} alt="" /> : user?.username?.charAt(0).toUpperCase() || "Y"}
           </div>
           <div className="tmc-leader-info">
             <div className="tmc-leader-name">

@@ -65,7 +65,7 @@ export default function EventDetailPage() {
   );
 
   const status = getStatus();
-  const totalParticipants = teams.reduce((a, t) => a + (t.members?.length || 0), 0);
+  const totalParticipants = teams.reduce((a, t) => a + (t.members_details?.length || t.members?.length || 0), 0);
 
   return (
     <div className="evd-page">
@@ -178,14 +178,16 @@ export default function EventDetailPage() {
                     <div className="evd-team-avatar">{team.name.charAt(0).toUpperCase()}</div>
                     <span className="evd-team-name">{team.name}</span>
                     <div className="evd-member-stack">
-                      {team.members?.slice(0, 4).map((m, i) => (
-                        <div key={i} className="evd-member-pip">{m.username?.charAt(0).toUpperCase()}</div>
+                      {(team.members_details || team.members || []).slice(0, 4).map((m, i) => (
+                        <div key={m.id ?? i} className="evd-member-pip">
+                          {m.avatar ? <img src={m.avatar} alt="" /> : (m.username?.charAt(0).toUpperCase() || "?")}
+                        </div>
                       ))}
-                      {team.members?.length > 4 && (
-                        <div className="evd-member-pip">+{team.members.length - 4}</div>
+                      {(team.members_details || team.members || []).length > 4 && (
+                        <div className="evd-member-pip">+{(team.members_details || team.members || []).length - 4}</div>
                       )}
                     </div>
-                    <span className="evd-team-count">{team.members?.length || 0} members</span>
+                    <span className="evd-team-count">{team.members_details?.length || team.members?.length || 0} members</span>
                   </Link>
                 ))}
               </div>

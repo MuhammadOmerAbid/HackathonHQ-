@@ -6,7 +6,15 @@ function MsgBubble({ msg, isMe }) {
   const t = new Date(msg.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
   return (
     <div className={`mb${isMe?" mb-me":""}`}>
-      {!isMe && <div className="mb-avi">{msg.sender?.username?.[0]?.toUpperCase()}</div>}
+      {!isMe && (
+        <div className="mb-avi">
+          {msg.sender?.avatar ? (
+            <img src={msg.sender.avatar} alt="" />
+          ) : (
+            msg.sender?.username?.[0]?.toUpperCase()
+          )}
+        </div>
+      )}
       <div className="mb-bub">
         <p className="mb-txt">{msg.content}</p>
         <span className="mb-t">{t}</span>
@@ -29,7 +37,13 @@ function ConvoRow({ convo, meId, active, onClick }) {
   };
   return (
     <div className={`cr${active?" cr-on":""}`} onClick={onClick}>
-      <div className="cr-avi">{other?.username?.[0]?.toUpperCase()||"?"}</div>
+      <div className="cr-avi">
+        {other?.avatar ? (
+          <img src={other.avatar} alt="" />
+        ) : (
+          other?.username?.[0]?.toUpperCase()||"?"
+        )}
+      </div>
       <div className="cr-info">
         <div className="cr-top">
           <span className="cr-name">{other?.username||"Unknown"}</span>
@@ -73,6 +87,17 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
       fetchUnreadCount();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(() => {
+      fetchUnreadCount();
+      if (isOpen) {
+        fetchConvos(true);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [currentUser?.id, isOpen]);
 
   useEffect(() => {
     if (initialRecipient && isOpen) {
@@ -148,13 +173,13 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
-  const fetchConvos = async () => {
-    setLoadC(true);
+  const fetchConvos = async (silent=false) => {
+    if (!silent) setLoadC(true);
     try { 
       const r = await axios.get("/messages/conversations/"); 
       setConvos(r.data.results||r.data||[]); 
     } catch(e){console.error(e)}
-    finally{setLoadC(false);}
+    finally{if (!silent) setLoadC(false);}
   };
 
   const fetchUnreadCount = async () => {
@@ -255,7 +280,11 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
             {view === "chat" ? (
               <>
                 <div className="dm-header-avatar">
-                  {other?.username?.[0]?.toUpperCase()}
+                  {other?.avatar ? (
+                    <img src={other.avatar} alt="" />
+                  ) : (
+                    other?.username?.[0]?.toUpperCase()
+                  )}
                 </div>
                 <span className="dm-header-name">{other?.username}</span>
               </>
@@ -292,7 +321,9 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
                 <div className="dm-search-results">
                   {sRes.map(u => (
                     <div key={u.id} className="dm-search-row" onClick={() => startConvo(u)}>
-                      <div className="dm-search-avatar">{u.username?.[0]?.toUpperCase()}</div>
+                      <div className="dm-search-avatar">
+                        {u.avatar ? <img src={u.avatar} alt="" /> : u.username?.[0]?.toUpperCase()}
+                      </div>
                       <span className="dm-search-name">{u.username}</span>
                       <svg className="dm-search-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <polyline points="9 18 15 12 9 6" />
@@ -512,6 +543,12 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
           font-size: 13px;
           font-weight: 700;
           color: #6EE7B7;
+          overflow: hidden;
+        }
+        .dm-header-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
         .dm-header-name {
           font-size: 15px;
@@ -614,6 +651,12 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
           font-size: 12px;
           font-weight: 700;
           color: #6EE7B7;
+          overflow: hidden;
+        }
+        .dm-search-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
         .dm-search-name {
           flex: 1;
@@ -799,6 +842,12 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
           font-weight: 700;
           color: #6EE7B7;
           flex-shrink: 0;
+          overflow: hidden;
+        }
+        .mb-avi img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
         .mb-bub {
           padding: 10px 14px;
@@ -865,6 +914,12 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
           font-weight: 700;
           color: #6EE7B7;
           flex-shrink: 0;
+          overflow: hidden;
+        }
+        .cr-avi img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
         .cr-info {
           flex: 1;

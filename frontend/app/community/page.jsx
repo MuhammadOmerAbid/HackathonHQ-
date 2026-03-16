@@ -22,6 +22,7 @@ export default function CommunityPage() {
   const [liveEvents, setLiveEvents] = useState([]);
   const [onlineCount, setOnlineCount] = useState(0);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [postsLoading, setPostsLoading] = useState(false);
   
   
    const [dmRecipient, setDmRecipient] = useState(null);
@@ -35,10 +36,39 @@ export default function CommunityPage() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    if (loading) return;
+    fetchPosts(feedType);
+  }, [feedType, loading, user?.id]);
+
+  const buildPostsUrl = (mode) => {
+    const params = new URLSearchParams();
+    params.set("ordering", "-created_at");
+    if (mode === "announcements") params.set("post_type", "announcement");
+    if (mode === "results") params.set("post_type", "result");
+    if (mode === "following") params.set("following", "1");
+    return `/posts/?${params.toString()}`;
+  };
+
+  const fetchPosts = async (mode = feedType, silent = false) => {
+    if (!user) {
+      setPosts([]);
+      return;
+    }
+    if (!silent) setPostsLoading(true);
+    try {
+      const res = await axios.get(buildPostsUrl(mode));
+      setPosts(res.data.results || res.data || []);
+    } catch (err) {
+      console.error("Error fetching posts:", err);
+    } finally {
+      if (!silent) setPostsLoading(false);
+    }
+  };
+
   const fetchInitialData = async () => {
     try {
-      const [postsRes, userRes, tagsRes, usersRes, eventsRes, notifRes] = await Promise.all([
-        axios.get("/posts/?expand=author,event&ordering=-created_at"),
+      const [userRes, tagsRes, usersRes, eventsRes, notifRes] = await Promise.all([
         axios.get("/users/me/").catch(() => null),
         axios.get("/posts/trending-tags/").catch(() => null),
         axios.get("/users/active/?limit=8").catch(() => null),
@@ -46,7 +76,6 @@ export default function CommunityPage() {
         axios.get("/notifications/unread/count/").catch(() => null),
       ]);
 
-      setPosts(postsRes.data.results || postsRes.data || []);
       setUser(userRes?.data || null);
       
       if (tagsRes?.data) {
@@ -144,7 +173,7 @@ export default function CommunityPage() {
 
   const filteredPosts = posts.filter(post => {
     if (feedType === "for-you") return true;
-    if (feedType === "following") return user && post.author?.id && [user.id].includes(post.author.id);
+    if (feedType === "following") return !!user;
     if (feedType === "announcements") return post.post_type === "announcement";
     if (feedType === "results") return post.post_type === "result";
     return true;
@@ -229,12 +258,12 @@ export default function CommunityPage() {
           <div className="user-profile-card">
             <div className="user-profile-header">
               <div className="user-avatar-large">
-                {user.username?.[0]?.toUpperCase()}
+                {user.avatar ? <img src={user.avatar} alt="" /> : user.username?.[0]?.toUpperCase()}
               </div>
               <div className="user-info">
                 <div className="user-name">{user.username}</div>
                 <div className="user-role">
-                  {user.is_staff ? 'Admin' : user.is_judge ? 'Judge' : 'Hacker'}
+                  {user.is_staff ? 'Admin' : user.is_organizer ? 'Organizer' : user.is_judge ? 'Judge' : 'Hacker'}
                 </div>
               </div>
             </div>
@@ -292,7 +321,7 @@ export default function CommunityPage() {
         ) : user && (
           <div className="compose-trigger" onClick={() => setShowCompose(true)}>
             <div className="trigger-avatar">
-              {user.username?.[0]?.toUpperCase()}
+              {user.avatar ? <img src={user.avatar} alt="" /> : user.username?.[0]?.toUpperCase()}
             </div>
             <div className="trigger-input">
               What's happening in the hackathon world?
@@ -331,7 +360,14 @@ export default function CommunityPage() {
 
         {/* Posts Feed */}
         <div className="posts-feed">
-          {filteredPosts.length === 0 ? (
+          {postsLoading ? (
+            <div className="empty-feed">
+              <div className="empty-icon">
+                <div className="feed-spinner" />
+              </div>
+              <p>Loading posts...</p>
+            </div>
+          ) : filteredPosts.length === 0 ? (
             <div className="empty-feed">
               <div className="empty-icon">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -648,6 +684,11 @@ export default function CommunityPage() {
           font-weight: 700;
           color: #6EE7B7;
         }
+        .user-avatar-large img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
         .user-info {
           flex: 1;
         }
@@ -810,6 +851,11 @@ export default function CommunityPage() {
           color: #6EE7B7;
           flex-shrink: 0;
         }
+        .trigger-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
         .trigger-input {
           flex: 1;
           color: #888;
@@ -876,6 +922,14 @@ export default function CommunityPage() {
           width: 48px;
           height: 48px;
           stroke: currentColor;
+        }
+        .feed-spinner {
+          width: 32px;
+          height: 32px;
+          border: 3px solid #1e1e24;
+          border-top-color: #6EE7B7;
+          border-radius: 50%;
+          animation: spin 0.7s linear infinite;
         }
         .empty-feed h3 {
           font-family: 'Syne', sans-serif;
@@ -1076,6 +1130,9 @@ export default function CommunityPage() {
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.4; }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
         }
 
         @media (max-width: 1000px) {

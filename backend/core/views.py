@@ -1,11 +1,12 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Post, Event, Team, Submission, JudgeFeedback, UserProfile, Activity
+from .models import Post, Event, Team, Submission, JudgeFeedback, UserProfile, Activity, Follow
 from .serializers import (
     PostSerializer, EventSerializer, TeamSerializer,
     SubmissionSerializer, JudgeFeedbackSerializer,
-    UserSerializer, RegisterSerializer, ActivitySerializer
+    UserSerializer, RegisterSerializer, ActivitySerializer,
+    UserDirectorySerializer
 )
 from django.contrib.auth import get_user_model
 from rest_framework import generics
@@ -13,6 +14,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.permissions import BasePermission
 from rest_framework import filters
 from rest_framework.pagination import PageNumberPagination
+from django.db.models import Count, Q
+from django.utils import timezone
+from datetime import timedelta
 
 User = get_user_model()
 
@@ -73,10 +77,16 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'me':
             return [IsAuthenticated()]
-        if self.action in ['make_judge', 'remove_judge', 'list', 'retrieve', 'activities', 'change_password', 'verify_password', 'delete_account']:
+        if self.action in ['make_judge', 'remove_judge', 'list', 'retrieve', 'activities', 'change_password', 'verify_password', 'delete_account', 'directory', 'trending', 'suggested', 'follow', 'unfollow']:
             return [IsAuthenticated()]
         return [IsAuthenticated()]
     
+    def get_serializer_class(self):
+        if self.action in ['directory', 'trending', 'suggested']:
+            return UserDirectorySerializer
+        return UserSerializer
+    
+    # ========== EXISTING ACTIONS ==========
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def activities(self, request):
         """Get all activities for the logged-in user"""
@@ -220,6 +230,145 @@ class UserViewSet(viewsets.ModelViewSet):
         # Delete the user
         user.delete()
         return Response({"success": "Account deleted successfully"}, status=status.HTTP_200_OK)
+
+    # ========== NEW ACTIONS FOR USERS PAGE ==========
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def directory(self, request):
+        """Get all users for the directory page with role information and stats"""
+        try:
+            users = User.objects.filter(is_active=True).select_related('profile')
+
+            # Annotate with counts
+            users = users.annotate(
+                posts_count=Count('posts', distinct=True),
+            )
+
+            # Paginate the results
+            page = self.paginate_queryset(users)
+            if page is not None:
+                serializer = self.get_serializer(page, many=True, context={'request': request})
+                return self.get_paginated_response(serializer.data)
+
+            serializer = self.get_serializer(users, many=True, context={'request': request})
+            return Response(serializer.data)
+        except Exception as e:
+            print(f"ERROR in directory endpoint: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def trending(self, request):
+        """Get trending users based on activity"""
+        # Users with most posts/followers in last 30 days
+        last_month = timezone.now() - timedelta(days=30)
+
+        users = User.objects.filter(is_active=True).select_related('profile')
+        users = users.annotate(
+            recent_posts=Count('posts', filter=Q(posts__created_at__gte=last_month), distinct=True),
+            posts_count=Count('posts', distinct=True),
+            followers_count=Count('followers_set', distinct=True)
+        ).order_by('-recent_posts', '-posts_count', '-followers_count')[:10]
+
+        serializer = self.get_serializer(users, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def suggested(self, request):
+        """Get suggested users for the current user to follow"""
+        if not request.user.is_authenticated:
+            return Response([])
+
+        # Get users that the current user is not already following
+        following_ids = Follow.objects.filter(
+            follower=request.user
+        ).values_list('followed_id', flat=True)
+
+        users = User.objects.filter(is_active=True)\
+            .exclude(id=request.user.id)\
+            .exclude(id__in=following_ids)\
+            .select_related('profile')
+
+        # Prioritize users with most posts/followers
+        users = users.annotate(
+            posts_count=Count('posts', distinct=True),
+            followers_count=Count('followers_set', distinct=True)
+        ).order_by('-posts_count', '-followers_count')[:10]
+
+        serializer = self.get_serializer(users, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def follow(self, request, pk=None):
+        """Follow a user"""
+        target_user = self.get_object()
+
+        if target_user == request.user:
+            return Response(
+                {"error": "You cannot follow yourself"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if already following
+        if Follow.objects.filter(follower=request.user, followed=target_user).exists():
+            return Response(
+                {"error": f"You are already following {target_user.username}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create follow relationship
+        Follow.objects.create(
+            follower=request.user,
+            followed=target_user
+        )
+
+        # Create activity (optional)
+        try:
+            from .utils.activity_helpers import create_follow_activity
+            create_follow_activity(request.user, target_user)
+        except ImportError:
+            pass
+
+        return Response({
+            "success": f"You are now following {target_user.username}",
+            "followers_count": target_user.followers_set.count()
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def unfollow(self, request, pk=None):
+        """Unfollow a user"""
+        target_user = self.get_object()
+
+        if target_user == request.user:
+            return Response(
+                {"error": "You cannot unfollow yourself"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if following
+        follow = Follow.objects.filter(
+            follower=request.user,
+            followed=target_user
+        ).first()
+
+        if not follow:
+            return Response(
+                {"error": f"You are not following {target_user.username}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Delete follow relationship
+        follow.delete()
+
+        return Response({
+            "success": f"You have unfollowed {target_user.username}",
+            "followers_count": target_user.followers_set.count()
+        })
+
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()

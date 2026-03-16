@@ -46,7 +46,7 @@ export default function UsersPage() {
     }
     
     try {
-      const url = pageUrl || "/users/?expand=followers,following,posts";
+      const url = pageUrl || "/users/directory/";
       const res = await api.get(url);
       console.log("Raw API response:", res.data);
 

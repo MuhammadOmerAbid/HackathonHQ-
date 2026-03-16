@@ -29,10 +29,44 @@ class UserProfile(models.Model):
     is_organizer = models.BooleanField(default=False)
     is_judge = models.BooleanField(default=False)
     organization_name = models.CharField(max_length=200, blank=True, null=True)
+    bio = models.TextField(max_length=500, blank=True, null=True)
+    cover_image = models.ImageField(upload_to='covers/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
         return f"{self.user.username}'s profile"
+    
+    # Add these methods to get counts
+    def get_posts_count(self):
+        return self.user.posts.count()
+    
+    def get_followers_count(self):
+        return self.user.followers_set.count()
+    
+    def get_following_count(self):
+        return self.user.following_set.count()
+    
+    
+class Follow(models.Model):
+    """Model to handle user following relationships"""
+    follower = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='following_set'
+    )
+    followed = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='followers_set'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('follower', 'followed')
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.follower.username} follows {self.followed.username}"
 
 class Team(models.Model):
     name = models.CharField(max_length=255)
@@ -115,6 +149,14 @@ class Activity(models.Model):
         ('submission', 'Submitted Project'),
         ('feedback', 'Received Feedback'),
         ('winner', 'Won Hackathon'),
+        ('review', 'Submission Reviewed'),
+
+        # Event Activities
+        ('event_register', 'Registered for Event'),
+
+         # Follow Activities  # ADD THIS SECTION
+        ('follow', 'Started Following'),
+        ('new_follower', 'New Follower'),
         
         # NEW: Role Change Activities
         ('became_judge', 'Became a Judge'),

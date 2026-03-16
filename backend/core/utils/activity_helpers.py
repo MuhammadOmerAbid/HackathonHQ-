@@ -41,7 +41,6 @@ def create_judge_activity(user, made_by=None):
 def create_password_change_activity(user):
     """Create activity when user changes password"""
     try:
-        from ..models import Activity
         Activity.objects.create(
             user=user,
             type='password_change',
@@ -149,4 +148,35 @@ def create_winner_activity(user, submission):
         submission=submission,
         metadata={'submission_id': submission.id, 'title': submission.title},
         is_important=True
+    )
+
+# ========== NEW FOLLOW ACTIVITY (FIXED INDENTATION) ==========
+def create_follow_activity(follower, followed):
+    """Create activity when someone follows another user"""
+    # Activity for the follower
+    Activity.objects.create(
+        user=follower,
+        type='follow',
+        title=f'Started following {followed.username}',
+        description=f'You are now following {followed.username}',
+        metadata={
+            'follower_id': follower.id,
+            'follower_username': follower.username,
+            'followed_id': followed.id,
+            'followed_username': followed.username,
+        },
+        is_important=False
+    )
+    
+    # Activity for the followed user (notification)
+    Activity.objects.create(
+        user=followed,
+        type='new_follower',
+        title=f'{follower.username} started following you',
+        description=f'{follower.username} is now following you',
+        metadata={
+            'follower_id': follower.id,
+            'follower_username': follower.username,
+        },
+        is_important=False
     )

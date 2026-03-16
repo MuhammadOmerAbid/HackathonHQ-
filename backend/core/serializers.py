@@ -1,13 +1,13 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Post, Event, Team, Submission, JudgeFeedback, UserProfile, Activity
+from .models import Post, Event, Team, Submission, JudgeFeedback, UserProfile, Activity, Follow
 
 User = get_user_model()
 
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        fields = ['id', 'is_organizer', 'is_judge', 'organization_name', 'created_at']
+        fields = ['id', 'is_organizer', 'is_judge', 'organization_name', 'bio', 'cover_image', 'created_at']
 
 class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
@@ -136,9 +136,83 @@ class JudgeFeedbackSerializer(serializers.ModelSerializer):
                   'judge_username', 'score', 'comment', 'created_at', 'updated_at']
         read_only_fields = ['judge']
 
-# ========== NEW ACTIVITY SERIALIZER ==========
+# ========== ACTIVITY SERIALIZER ==========
 class ActivitySerializer(serializers.ModelSerializer):
     class Meta:
         model = Activity
         fields = ['id', 'type', 'title', 'description', 'metadata', 
                   'is_important', 'created_at', 'team', 'submission', 'event']
+
+# ========== USER DIRECTORY SERIALIZER (FIXED - SINGLE VERSION) ==========
+class UserDirectorySerializer(serializers.ModelSerializer):
+    """Serializer for the users directory page with all needed fields"""
+    profile = UserProfileSerializer(read_only=True)
+    posts_count = serializers.SerializerMethodField()
+    followers_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
+    is_organizer = serializers.SerializerMethodField()
+    is_judge = serializers.SerializerMethodField()
+    organization_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name',
+            'is_active', 'is_staff', 'is_superuser',
+            'profile',
+            'posts_count', 'followers_count', 'following_count',
+            'is_following',
+            'is_organizer', 'is_judge', 'organization_name',
+            'date_joined'
+        ]
+    
+    def get_posts_count(self, obj):
+        try:
+            return obj.posts.count()
+        except:
+            return 0
+    
+    def get_followers_count(self, obj):
+        try:
+            return obj.followers_set.count()
+        except:
+            return 0
+    
+    def get_following_count(self, obj):
+        try:
+            return obj.following_set.count()
+        except:
+            return 0
+    
+    def get_is_following(self, obj):
+        """Check if the current user is following this user"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated and request.user != obj:
+            try:
+                from .models import Follow
+                return Follow.objects.filter(
+                    follower=request.user,
+                    followed=obj
+                ).exists()
+            except:
+                return False
+        return False
+
+    def get_is_organizer(self, obj):
+        try:
+            return bool(getattr(obj.profile, 'is_organizer', False)) or obj.is_staff or obj.is_superuser
+        except:
+            return obj.is_staff or obj.is_superuser
+
+    def get_is_judge(self, obj):
+        try:
+            return bool(getattr(obj.profile, 'is_judge', False))
+        except:
+            return False
+
+    def get_organization_name(self, obj):
+        try:
+            return getattr(obj.profile, 'organization_name', None)
+        except:
+            return None

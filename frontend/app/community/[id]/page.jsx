@@ -25,7 +25,9 @@ function Comment({ c, currentUser, onLike, onDelete, depth=0 }) {
     <div className={`cmt${depth>0?` cmt-d${Math.min(depth,3)}`:""}`}>
       <div className="cmt-card">
         <div className="cmt-left">
-          <div className="cmt-avi" onClick={()=>router.push(`/users/${c.author?.id}`)}>{c.author?.username?.[0]?.toUpperCase()||"?"}</div>
+          <div className="cmt-avi" onClick={()=>router.push(`/users/${c.author?.id}`)}>
+            {c.author?.avatar ? <img src={c.author.avatar} alt="" /> : (c.author?.username?.[0]?.toUpperCase()||"?")}
+          </div>
           {(replies.length>0||replying) && <div className="cmt-line"/>}
         </div>
         <div className="cmt-body">
@@ -60,7 +62,8 @@ function Comment({ c, currentUser, onLike, onDelete, depth=0 }) {
         .cmt-d1{padding-left:36px;background:rgba(255,255,255,.006)}.cmt-d2{padding-left:60px}.cmt-d3{padding-left:80px}
         .cmt-card{display:flex;gap:10px;padding:12px 18px 9px}
         .cmt-left{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:30px;gap:5px}
-        .cmt-avi{width:30px;height:30px;border-radius:50%;background:rgba(110,231,183,.08);border:1px solid rgba(110,231,183,.15);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:#6EE7B7;cursor:pointer;flex-shrink:0;transition:all .12s}.cmt-avi:hover{background:rgba(110,231,183,.17)}
+        .cmt-avi{width:30px;height:30px;border-radius:50%;background:rgba(110,231,183,.08);border:1px solid rgba(110,231,183,.15);display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:#6EE7B7;cursor:pointer;flex-shrink:0;transition:all .12s;overflow:hidden}.cmt-avi:hover{background:rgba(110,231,183,.17)}
+        .cmt-avi img{width:100%;height:100%;object-fit:cover}
         .cmt-line{width:2px;flex:1;min-height:8px;background:#1e1e24;border-radius:1px}
         .cmt-body{flex:1;min-width:0}
         .cmt-hd{display:flex;align-items:center;gap:5px;margin-bottom:3px;flex-wrap:wrap}

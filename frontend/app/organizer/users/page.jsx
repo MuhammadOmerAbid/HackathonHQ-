@@ -200,9 +200,18 @@ export default function OrganizerUsersPage() {
                             justifyContent: 'center',
                             color: 'white',
                             fontWeight: 'bold',
-                            fontSize: '0.9rem'
+                            fontSize: '0.9rem',
+                            overflow: 'hidden'
                           }}>
-                            {u.username?.charAt(0).toUpperCase()}
+                            {u.avatar ? (
+                              <img
+                                src={u.avatar}
+                                alt=""
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                              />
+                            ) : (
+                              u.username?.charAt(0).toUpperCase()
+                            )}
                           </div>
                           <span style={{ color: 'white', fontWeight: 500 }}>{u.username}</span>
                         </div>

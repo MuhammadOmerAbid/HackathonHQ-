@@ -42,7 +42,11 @@ export default function SubmissionDetailPage() {
   }, [submission]);
 
   const getTeamMembers = useCallback(() => {
-    return safeGet(submission, 'team.members', []);
+    return safeGet(
+      submission,
+      'team_details.members_details',
+      safeGet(submission, 'team.members', [])
+    );
   }, [submission]);
 
   const getTeamMemberCount = useCallback(() => {
@@ -62,9 +66,10 @@ export default function SubmissionDetailPage() {
 
   // Ownership check
   const isOwner = (() => {
-    if (!authUser || !submission?.team?.members) return false;
-    return submission.team.members.some(member => 
-      member.id === authUser.id || member.username === authUser.username
+    if (!authUser) return false;
+    const members = getTeamMembers();
+    return members.some(member => 
+      member?.id === authUser.id || member?.username === authUser.username
     );
   })();
 
@@ -483,9 +488,13 @@ export default function SubmissionDetailPage() {
                         width: "28px", height: "28px", borderRadius: "50%",
                         background: "var(--accent)", color: "#0c0c0f",
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: "12px", fontWeight: 700
+                        fontSize: "12px", fontWeight: 700, overflow: "hidden"
                       }}>
-                        {member.username?.charAt(0).toUpperCase() || "?"}
+                        {member.avatar ? (
+                          <img src={member.avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : (
+                          member.username?.charAt(0).toUpperCase() || "?"
+                        )}
                       </div>
                       <div>
                         <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)" }}>
@@ -536,9 +545,11 @@ export default function SubmissionDetailPage() {
             {feedback.length > 0 ? (
               <div className="evd-feedback-list">
                 {feedback.map((item) => {
+                  const judgeDetails = item.judge_details || (typeof item.judge === "object" ? item.judge : null);
+                  const judgeName = judgeDetails?.username || item.judge_username || "Judge";
                   // Check if current user can delete this feedback
                   const canDelete = 
-                    item.judge?.id === authUser?.id || // The judge who wrote it
+                    judgeDetails?.id === authUser?.id || // The judge who wrote it
                     isOrganizer || // Organizer
                     authUser?.is_staff || // Staff
                     authUser?.is_superuser; // Admin
@@ -546,12 +557,16 @@ export default function SubmissionDetailPage() {
                   return (
                     <div key={item.id} className="evd-feedback-item">
                       <div className="evd-feedback-header">
-                        <div className="evd-feedback-judge">
+                          <div className="evd-feedback-judge">
                           <div className="evd-feedback-avatar">
-                            {item.judge?.username?.charAt(0).toUpperCase() || "J"}
+                            {judgeDetails?.avatar ? (
+                              <img src={judgeDetails.avatar} alt="" />
+                            ) : (
+                              judgeName?.charAt(0).toUpperCase() || "J"
+                            )}
                           </div>
                           <div className="evd-feedback-judge-info">
-                            <span className="evd-feedback-judge-name">{item.judge?.username || "Judge"}</span>
+                            <span className="evd-feedback-judge-name">{judgeName}</span>
                             <span className="evd-feedback-date">
                               {item.created_at ? new Date(item.created_at).toLocaleDateString("en-US", { 
                                 month: "short", day: "numeric", year: "numeric" 

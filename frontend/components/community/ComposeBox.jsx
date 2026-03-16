@@ -20,8 +20,9 @@ export default function ComposeBox({ user, events = [], onPost, onCancel, replyT
   const progressPercentage = (content.length / MAX_CHARS) * 100;
 
   const isAdmin = user?.is_staff || user?.is_superuser;
-  const canPostAnnouncement = isAdmin;
-  const canPostResult = isAdmin;
+  const isOrganizer = user?.is_organizer;
+  const canPostAnnouncement = isAdmin || isOrganizer;
+  const canPostResult = isAdmin || isOrganizer;
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -104,7 +105,11 @@ export default function ComposeBox({ user, events = [], onPost, onCancel, replyT
       <div style={styles.composeArea}>
         {/* Avatar */}
         <div style={styles.avatar}>
-          {user?.username?.[0]?.toUpperCase() || "?"}
+          {user?.avatar ? (
+            <img src={user.avatar} alt="" style={styles.avatarImg} />
+          ) : (
+            user?.username?.[0]?.toUpperCase() || "?"
+          )}
         </div>
 
         {/* Editor */}
@@ -354,6 +359,12 @@ const styles = {
     fontWeight: 700,
     color: '#6EE7B7',
     flexShrink: 0,
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
   },
   editor: {
     flex: 1,

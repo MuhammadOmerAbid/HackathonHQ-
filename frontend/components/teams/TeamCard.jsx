@@ -45,7 +45,7 @@
                   style={{ zIndex: 4 - idx }}
                   title={member.username}
                 >
-                  {member.username?.charAt(0).toUpperCase() || "?"}
+                  {member.avatar ? <img src={member.avatar} alt="" /> : (member.username?.charAt(0).toUpperCase() || "?")}
                 </div>
               ))}
               {memberCount > 4 && (

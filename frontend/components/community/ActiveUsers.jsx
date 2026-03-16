@@ -17,7 +17,7 @@ export default function ActiveUsers({ users = [] }) {
             onClick={() => router.push(`/users/${user.id}`)}
           >
             <div className="active-user-avatar">
-              {user.username?.[0]?.toUpperCase()}
+              {user.avatar ? <img src={user.avatar} alt="" /> : user.username?.[0]?.toUpperCase()}
               <span className="active-indicator"></span>
             </div>
             <span className="active-user-name">{user.username}</span>
@@ -74,6 +74,12 @@ export default function ActiveUsers({ users = [] }) {
           font-size: 16px;
           font-weight: 700;
           color: #6EE7B7;
+          overflow: hidden;
+        }
+        .active-user-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
         .active-indicator {
           position: absolute;

@@ -11,11 +11,13 @@ export default function SettingsCard({
 }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
+  const [deleteReason, setDeleteReason] = useState("");
   const [deleteError, setDeleteError] = useState("");
 
   const openDeleteModal = () => {
     setShowDeleteModal(true);
     setDeletePassword("");
+    setDeleteReason("");
     setDeleteError("");
   };
 
@@ -23,6 +25,7 @@ export default function SettingsCard({
     if (!saving) {
       setShowDeleteModal(false);
       setDeletePassword("");
+      setDeleteReason("");
       setDeleteError("");
     }
   };
@@ -34,11 +37,12 @@ export default function SettingsCard({
     }
 
     // Call parent's delete handler with password
-    const success = await onDeleteAccount(deletePassword, setDeleteError);
+    const success = await onDeleteAccount(deletePassword, deleteReason, setDeleteError);
     
     if (success) {
       setShowDeleteModal(false);
       setDeletePassword("");
+      setDeleteReason("");
       setDeleteError("");
     }
   };
@@ -176,6 +180,18 @@ export default function SettingsCard({
                 autoFocus
               />
               {deleteError && <p className="modal-error">{deleteError}</p>}
+            </div>
+
+            <div className="modal-password-section">
+              <label htmlFor="delete-reason">Reason for leaving (optional):</label>
+              <textarea
+                id="delete-reason"
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                placeholder="Tell us why you're leaving (optional)"
+                className="modal-textarea"
+                rows={3}
+              />
             </div>
 
             <div className="modal-actions">
@@ -430,6 +446,24 @@ export default function SettingsCard({
 
         .modal-password-input:focus {
           border-color: #f87171;
+          background: rgba(255,255,255,0.08);
+        }
+
+        .modal-textarea {
+          width: 100%;
+          padding: 0.75rem 1rem;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 8px;
+          color: #fff;
+          font-size: 0.95rem;
+          outline: none;
+          transition: all 0.2s ease;
+          resize: vertical;
+        }
+
+        .modal-textarea:focus {
+          border-color: #6EE7B7;
           background: rgba(255,255,255,0.08);
         }
 

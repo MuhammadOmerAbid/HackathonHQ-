@@ -23,6 +23,8 @@ export default function CreatePostModal({ user, onClose, onPost }) {
   const progressPercentage = (content.length / MAX_CHARS) * 100;
 
   const isAdmin = user?.is_staff || user?.is_superuser;
+  const isOrganizer = user?.is_organizer;
+  const canPostSpecial = isAdmin || isOrganizer;
 
   useEffect(() => {
     // Fetch events for dropdown
@@ -111,7 +113,7 @@ export default function CreatePostModal({ user, onClose, onPost }) {
           >
             📝 Post
           </button>
-          {isAdmin && (
+          {canPostSpecial && (
             <button
               style={{
                 ...styles.postTypeButton,
@@ -122,7 +124,7 @@ export default function CreatePostModal({ user, onClose, onPost }) {
               📢 Announcement
             </button>
           )}
-          {isAdmin && (
+          {canPostSpecial && (
             <button
               style={{
                 ...styles.postTypeButton,
@@ -138,7 +140,11 @@ export default function CreatePostModal({ user, onClose, onPost }) {
         {/* User Info */}
         <div style={styles.userInfo}>
           <div style={styles.userAvatar}>
-            {user?.username?.[0]?.toUpperCase()}
+            {user?.avatar ? (
+              <img src={user.avatar} alt="" style={styles.userAvatarImg} />
+            ) : (
+              user?.username?.[0]?.toUpperCase()
+            )}
           </div>
           <div>
             <div style={styles.userName}>{user?.username}</div>
@@ -396,6 +402,12 @@ const styles = {
     fontSize: '18px',
     fontWeight: 700,
     color: '#6EE7B7',
+    overflow: 'hidden',
+  },
+  userAvatarImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
   },
   userName: {
     fontSize: '16px',

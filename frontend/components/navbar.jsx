@@ -201,7 +201,7 @@ export default function LiquidGlassNavbar() {
             {user ? (
               <div className="glass-user-menu" onClick={() => setShowDropdown(!showDropdown)}>
                 <div className="glass-user-avatar">
-                  {user.username?.charAt(0).toUpperCase() || "U"}
+                  {user.avatar ? <img src={user.avatar} alt="" /> : (user.username?.charAt(0).toUpperCase() || "U")}
                 </div>
                 <span className="glass-user-name">{user.username || "User"}</span>
                 {/* Role badge */}

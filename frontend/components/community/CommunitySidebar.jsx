@@ -62,7 +62,11 @@ export default function CommunitySidebar({
             {suggestedUsers.map((suggestedUser) => (
               <div key={suggestedUser.id} style={styles.userRow}>
                 <div style={styles.userAvatar} onClick={() => onUserClick?.(suggestedUser)}>
-                  {suggestedUser.username?.[0]?.toUpperCase()}
+                  {suggestedUser.avatar ? (
+                    <img src={suggestedUser.avatar} alt="" style={styles.userAvatarImg} />
+                  ) : (
+                    suggestedUser.username?.[0]?.toUpperCase()
+                  )}
                 </div>
                 <div style={styles.userInfo} onClick={() => onUserClick?.(suggestedUser)}>
                   <div style={styles.userName}>{suggestedUser.username}</div>
@@ -240,9 +244,15 @@ const styles = {
     cursor: 'pointer',
     flexShrink: 0,
     transition: 'all 0.2s ease',
+    overflow: 'hidden',
     ':hover': {
       background: 'rgba(110,231,183,0.15)',
     },
+  },
+  userAvatarImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
   },
   userInfo: {
     flex: 1,

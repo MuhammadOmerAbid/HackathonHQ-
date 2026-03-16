@@ -170,7 +170,9 @@ export default function CreateEventPage() {
 
               {user && (
                 <div className="evc-organizer-strip">
-                  <div className="evc-organizer-avatar">{(user.username || "U").charAt(0).toUpperCase()}</div>
+                  <div className="evc-organizer-avatar">
+                    {user.avatar ? <img src={user.avatar} alt="" /> : (user.username || "U").charAt(0).toUpperCase()}
+                  </div>
                   <div>
                     <div className="evc-organizer-name">
                       {user.profile?.organization_name || user.username}

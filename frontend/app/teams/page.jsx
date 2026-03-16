@@ -396,7 +396,13 @@ export default function TeamsPage() {
   border: 2px solid #111114;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   backdrop-filter: blur(2px);
+  overflow: hidden;
 }
+ .tm-table-avatar img {
+   width: 100%;
+   height: 100%;
+   object-fit: cover;
+ }
 
 /* Green variations with opacity */
 .tm-table-avatar[data-letter="A"],
@@ -687,7 +693,7 @@ export default function TeamsPage() {
               data-letter={initial}
               title={username}
             >
-              {initial}
+              {member.avatar ? <img src={member.avatar} alt="" /> : initial}
             </div>
           );
         })}

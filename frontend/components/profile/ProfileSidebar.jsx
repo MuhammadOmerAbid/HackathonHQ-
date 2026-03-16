@@ -33,15 +33,25 @@ export default function ProfileSidebar({
       {/* Avatar Section */}
       <div className="profile-avatar-section">
         <div className="profile-avatar-large">
-          {user?.username?.charAt(0).toUpperCase() || "U"}
+          {user?.avatar ? (
+            <img src={user.avatar} alt="" className="profile-avatar-img" />
+          ) : (
+            user?.username?.charAt(0).toUpperCase() || "U"
+          )}
         </div>
         <h2 className="profile-username">{user?.username}</h2>
         <div className="profile-badges">
+          {user?.is_superuser && <span className="profile-badge admin">Admin</span>}
           {isJudge && <span className="profile-badge judge">Judge</span>}
           {isOrganizer && <span className="profile-badge organizer">Organizer</span>}
-          {!isJudge && !isOrganizer && <span className="profile-badge participant">Participant</span>}
+          {!user?.is_superuser && !isJudge && !isOrganizer && <span className="profile-badge participant">Member</span>}
         </div>
         <p className="profile-member-since">Member since {stats.member_since}</p>
+        {user?.last_active && (
+          <p className="profile-last-active">
+            Last active {new Date(user.last_active).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+          </p>
+        )}
       </div>
 
       {/* Stats Grid */}
@@ -145,6 +155,12 @@ export default function ProfileSidebar({
           color: white;
           border: 3px solid rgba(255,255,255,0.1);
         }
+        .profile-avatar-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          border-radius: 50%;
+        }
 
         .profile-username {
           font-size: 1.2rem;
@@ -179,6 +195,12 @@ export default function ProfileSidebar({
           border: 1px solid rgba(110,231,183,0.3);
         }
 
+        .profile-badge.admin {
+          background: rgba(251,191,36,0.12);
+          color: #fbbf24;
+          border: 1px solid rgba(251,191,36,0.25);
+        }
+
         .profile-badge.participant {
           background: rgba(156,163,175,0.15);
           color: #9ca3af;
@@ -189,6 +211,12 @@ export default function ProfileSidebar({
           font-size: 0.8rem;
           color: #888;
           margin: 0.5rem 0 0;
+        }
+
+        .profile-last-active {
+          font-size: 0.75rem;
+          color: #5c5c6e;
+          margin: 0.25rem 0 0;
         }
 
         .profile-stats-grid {

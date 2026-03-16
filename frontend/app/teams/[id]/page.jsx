@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "../../../utils/axios";
@@ -14,6 +14,10 @@ export default function TeamDetailPage() {
   const [user, setUser] = useState(null);
   const [joinLoading, setJoinLoading] = useState(false);
   const [error, setError] = useState("");
+  const [chatMsgs, setChatMsgs] = useState([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const chatPollRef = useRef(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -37,6 +41,28 @@ export default function TeamDetailPage() {
     };
     fetchData();
   }, [id]);
+
+  useEffect(() => {
+    const isMemberNow = user && team?.members_details?.some((m) => m.id === user.id);
+    if (!isMemberNow) return;
+
+    const fetchChat = async (silent = false) => {
+      if (!silent) setChatLoading(true);
+      try {
+        const res = await axios.get(`/messages/teams/${id}/messages/`);
+        setChatMsgs(res.data.results || res.data || []);
+      } catch (err) {
+        console.error("Error fetching team chat:", err);
+      } finally {
+        if (!silent) setChatLoading(false);
+      }
+    };
+
+    fetchChat();
+    clearInterval(chatPollRef.current);
+    chatPollRef.current = setInterval(() => fetchChat(true), 5000);
+    return () => clearInterval(chatPollRef.current);
+  }, [id, team?.id, user?.id]);
 
   const handleJoinTeam = async () => {
     const token = localStorage.getItem("access");
@@ -71,6 +97,17 @@ export default function TeamDetailPage() {
       await axios.delete(`/teams/${id}/`);
       router.push("/teams");
     } catch { setError("Failed to delete team"); }
+  };
+
+  const handleSendTeamMessage = async () => {
+    if (!chatInput.trim()) return;
+    try {
+      const res = await axios.post(`/messages/teams/${id}/messages/`, { content: chatInput.trim() });
+      setChatMsgs((prev) => [...prev, res.data]);
+      setChatInput("");
+    } catch (err) {
+      console.error("Error sending team message:", err);
+    }
   };
 
   if (loading) return <LoadingSpinner message="Loading team…" />;
@@ -192,7 +229,9 @@ export default function TeamDetailPage() {
               const isLeaderMember = member?.id === (team.leader_details?.id ?? team.leader);
               const Inner = () => (
                 <>
-                  <div className="tmd-member-pip">{initial}</div>
+                  <div className="tmd-member-pip">
+                    {member?.avatar ? <img src={member.avatar} alt="" /> : initial}
+                  </div>
                   <div className="tmd-member-info">
                     <div className="tmd-member-name">{member?.username || "Unknown"}</div>
                     {isLeaderMember && <span className="tmd-member-badge">Leader</span>}
@@ -217,6 +256,58 @@ export default function TeamDetailPage() {
         )}
       </div>
 
+      {/* Team Chat */}
+      {isMember && (
+        <div className="tmd-panel">
+          <div className="tmd-panel-head">
+            <h3 className="tmd-panel-title">Team Chat</h3>
+          </div>
+          <div className="tmd-chat-body">
+            {chatLoading ? (
+              <div className="tmd-chat-empty">Loading messages…</div>
+            ) : chatMsgs.length === 0 ? (
+              <div className="tmd-chat-empty">No messages yet — start the conversation.</div>
+            ) : (
+              <div className="tmd-chat-list">
+                {chatMsgs.map((m) => {
+                  const isMe = m.sender?.id === user?.id || m.sender === user?.id;
+                  return (
+                    <div key={m.id} className={`tmd-chat-msg ${isMe ? "me" : ""}`}>
+                      {!isMe && (
+                        <div className="tmd-chat-avi">
+                          {m.sender?.avatar ? (
+                            <img src={m.sender.avatar} alt="" />
+                          ) : (
+                            m.sender?.username?.[0]?.toUpperCase() || "?"
+                          )}
+                        </div>
+                      )}
+                      <div className="tmd-chat-bubble">
+                        <div className="tmd-chat-text">{m.content}</div>
+                        <div className="tmd-chat-time">
+                          {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div className="tmd-chat-input">
+            <textarea
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="Message your team..."
+              rows={2}
+            />
+            <button onClick={handleSendTeamMessage} disabled={!chatInput.trim()}>
+              Send
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Action buttons */}
       <div className="tmd-cta">
         {!user ? (
@@ -238,6 +329,109 @@ export default function TeamDetailPage() {
           <span className="tmd-btn-disabled">Team Full</span>
         )}
       </div>
+
+      <style jsx>{`
+        .tmd-chat-body {
+          padding: 14px 16px;
+          max-height: 320px;
+          overflow-y: auto;
+          border-top: 1px solid #1e1e24;
+          border-bottom: 1px solid #1e1e24;
+          background: #111114;
+        }
+        .tmd-chat-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .tmd-chat-empty {
+          color: #5c5c6e;
+          font-size: 13px;
+          text-align: center;
+          padding: 16px 0;
+        }
+        .tmd-chat-msg {
+          display: flex;
+          align-items: flex-end;
+          gap: 8px;
+          max-width: 85%;
+        }
+        .tmd-chat-msg.me {
+          margin-left: auto;
+          flex-direction: row-reverse;
+        }
+        .tmd-chat-avi {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          background: rgba(110,231,183,0.1);
+          border: 1px solid rgba(110,231,183,0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: 'Syne', sans-serif;
+          font-size: 11px;
+          font-weight: 700;
+          color: #6EE7B7;
+          overflow: hidden;
+        }
+        .tmd-chat-avi img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .tmd-chat-bubble {
+          background: #17171b;
+          border: 1px solid #1e1e24;
+          border-radius: 12px;
+          padding: 8px 12px;
+        }
+        .tmd-chat-msg.me .tmd-chat-bubble {
+          background: rgba(110,231,183,0.12);
+          border-color: rgba(110,231,183,0.25);
+        }
+        .tmd-chat-text {
+          color: #f0f0f3;
+          font-size: 13px;
+          line-height: 1.5;
+        }
+        .tmd-chat-time {
+          font-size: 10px;
+          color: #5c5c6e;
+          margin-top: 4px;
+          text-align: right;
+        }
+        .tmd-chat-input {
+          display: flex;
+          gap: 10px;
+          padding: 12px 16px;
+          background: #0c0c0f;
+        }
+        .tmd-chat-input textarea {
+          flex: 1;
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 10px;
+          color: #f0f0f3;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 13px;
+          padding: 8px 10px;
+          resize: none;
+        }
+        .tmd-chat-input button {
+          background: #6EE7B7;
+          border: none;
+          color: #0c0c0f;
+          font-weight: 600;
+          border-radius: 10px;
+          padding: 0 16px;
+          cursor: pointer;
+        }
+        .tmd-chat-input button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,12 +1,16 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Post, Event, Team, Submission, JudgeFeedback, UserProfile, Activity, Follow
+from .models import (
+    Post, Event, Team, Submission, JudgeFeedback,
+    UserProfile, Activity, Follow, Tag, PostLike, PostRepost,
+    ModerationAction, UserWarning, AccountDeletionLog
+)
 from .serializers import (
     PostSerializer, EventSerializer, TeamSerializer,
     SubmissionSerializer, JudgeFeedbackSerializer,
     UserSerializer, RegisterSerializer, ActivitySerializer,
-    UserDirectorySerializer
+    UserDirectorySerializer, ConversationSerializer, MessageSerializer
 )
 from django.contrib.auth import get_user_model
 from rest_framework import generics
@@ -17,15 +21,25 @@ from rest_framework.pagination import PageNumberPagination
 from django.db.models import Count, Q
 from django.utils import timezone
 from datetime import timedelta
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.views import APIView
 
 User = get_user_model()
 
 # ========== HELPERS ==========
+def is_admin(user):
+    return user and user.is_authenticated and user.is_superuser
+
 def is_judge(user):
-    return hasattr(user, 'profile') and user.profile.is_judge
+    return user and user.is_authenticated and hasattr(user, 'profile') and user.profile.is_judge
 
 def is_organizer(user):
-    return user.is_staff or user.is_superuser or (hasattr(user, 'profile') and user.profile.is_organizer)
+    return user and user.is_authenticated and (
+        user.is_staff or user.is_superuser or (hasattr(user, 'profile') and user.profile.is_organizer)
+    )
+
+def is_regular(user):
+    return user and user.is_authenticated and not (is_admin(user) or is_organizer(user) or is_judge(user))
 
 # ========== CUSTOM PERMISSIONS ==========
 class IsOwner(BasePermission):
@@ -38,7 +52,7 @@ class IsOrganizerOrAdmin(BasePermission):
             return True
         if not request.user or not request.user.is_authenticated:
             return False
-        return is_organizer(request.user)
+        return is_organizer(request.user) or is_admin(request.user)
 
     def has_object_permission(self, request, view, obj):
         if request.method in permissions.SAFE_METHODS:
@@ -57,6 +71,33 @@ class IsOrganizerUser(BasePermission):
     def has_permission(self, request, view):
         return request.user and request.user.is_authenticated and is_organizer(request.user)
 
+
+class IsAdmin(BasePermission):
+    def has_permission(self, request, view):
+        return is_admin(request.user)
+
+
+class IsJudgeOrAdmin(BasePermission):
+    def has_permission(self, request, view):
+        return is_judge(request.user) or is_admin(request.user)
+
+
+class IsNotBanned(BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        if not user.is_active:
+            return False
+        profile = getattr(user, 'profile', None)
+        now = timezone.now()
+        if profile:
+            if profile.banned_until and profile.banned_until > now:
+                return False
+            if profile.suspended_until and profile.suspended_until > now:
+                return False
+        return True
+
 # ========== PAGINATION ==========
 class PostPagination(PageNumberPagination):
     page_size = 5
@@ -73,13 +114,17 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('id')
     serializer_class = UserSerializer
     pagination_class = StandardPagination
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_permissions(self):
-        if self.action == 'me':
-            return [IsAuthenticated()]
-        if self.action in ['make_judge', 'remove_judge', 'list', 'retrieve', 'activities', 'change_password', 'verify_password', 'delete_account', 'directory', 'trending', 'suggested', 'follow', 'unfollow']:
-            return [IsAuthenticated()]
-        return [IsAuthenticated()]
+        if self.action in ['destroy']:
+            return [IsAuthenticated(), IsAdmin(), IsNotBanned()]
+        if self.action in ['make_judge', 'remove_judge', 'warn', 'suspend', 'reactivate', 'ban']:
+            return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
+        if self.action in ['me', 'list', 'retrieve', 'activities', 'change_password', 'verify_password',
+                           'delete_account', 'directory', 'trending', 'suggested', 'follow', 'unfollow']:
+            return [IsAuthenticated(), IsNotBanned()]
+        return [IsAuthenticated(), IsNotBanned()]
     
     def get_serializer_class(self):
         if self.action in ['directory', 'trending', 'suggested']:
@@ -101,14 +146,59 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get', 'put', 'patch'], permission_classes=[IsAuthenticated])
     def me(self, request):
         if request.method == 'GET':
+            try:
+                profile, _ = UserProfile.objects.get_or_create(user=request.user)
+                profile.last_active = timezone.now()
+                profile.save()
+            except Exception:
+                pass
             serializer = self.get_serializer(request.user)
             return Response(serializer.data)
         elif request.method in ['PUT', 'PATCH']:
-            serializer = self.get_serializer(request.user, data=request.data, partial=request.method == 'PATCH')
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            user = request.user
+            data = request.data
+
+            if 'first_name' in data:
+                user.first_name = data.get('first_name', '')
+            if 'last_name' in data:
+                user.last_name = data.get('last_name', '')
+            if 'email' in data:
+                user.email = data.get('email', '')
+            user.save()
+
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile_fields = [
+                'organization_name', 'bio', 'location',
+                'github_url', 'linkedin_url', 'twitter_url', 'website_url'
+            ]
+            for field in profile_fields:
+                if field in data:
+                    setattr(profile, field, data.get(field) or None)
+
+            if 'avatar' in request.FILES:
+                profile.avatar = request.FILES.get('avatar')
+            if 'cover_image' in request.FILES:
+                profile.cover_image = request.FILES.get('cover_image')
+
+            profile.save()
+
+            serializer = self.get_serializer(user)
+            return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], permission_classes=[AllowAny])
+    def active(self, request):
+        """Get recently active users"""
+        limit = request.query_params.get('limit')
+        try:
+            limit = int(limit) if limit else 8
+        except ValueError:
+            limit = 8
+
+        cutoff = timezone.now() - timedelta(minutes=20)
+        users = User.objects.filter(is_active=True, profile__last_active__gte=cutoff)\
+            .select_related('profile')[:limit]
+        serializer = UserDirectorySerializer(users, many=True, context={'request': request})
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def make_judge(self, request, pk=None):
@@ -134,7 +224,7 @@ class UserViewSet(viewsets.ModelViewSet):
         from .utils.activity_helpers import create_judge_activity
         create_judge_activity(target_user, made_by=request.user)
 
-        return Response({"success": f"{target_user.username} is now a judge.", "user": UserSerializer(target_user).data})
+        return Response({"success": f"{target_user.username} is now a judge.", "user": UserSerializer(target_user, context={'request': request}).data})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def remove_judge(self, request, pk=None):
@@ -154,7 +244,123 @@ class UserViewSet(viewsets.ModelViewSet):
         from .utils.activity_helpers import create_role_removed_activity
         create_role_removed_activity(target_user, 'judge', removed_by=request.user)
 
-        return Response({"success": f"Judge role removed from {target_user.username}.", "user": UserSerializer(target_user).data})
+        return Response({"success": f"Judge role removed from {target_user.username}.", "user": UserSerializer(target_user, context={'request': request}).data})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def warn(self, request, pk=None):
+        """Warn a user. Organizers/admins only."""
+        target_user = self.get_object()
+        reason = request.data.get('reason')
+        message = request.data.get('message')
+
+        UserWarning.objects.create(
+            user=target_user,
+            warned_by=request.user,
+            reason=reason,
+            message=message
+        )
+
+        ModerationAction.objects.create(
+            moderator=request.user,
+            target_user=target_user,
+            action_type=ModerationAction.ACTION_WARN,
+            reason=reason
+        )
+
+        return Response({"success": f"{target_user.username} has been warned."})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def suspend(self, request, pk=None):
+        """Suspend a user for a duration (days). Organizers/admins only."""
+        target_user = self.get_object()
+        duration_days = request.data.get('duration_days') or request.data.get('duration')
+
+        try:
+            duration_days = int(duration_days)
+        except (TypeError, ValueError):
+            return Response({"error": "duration_days is required and must be an integer."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if duration_days <= 0:
+            return Response({"error": "duration_days must be greater than 0."}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile, _ = UserProfile.objects.get_or_create(user=target_user)
+        expires_at = timezone.now() + timedelta(days=duration_days)
+        profile.suspended_until = expires_at
+        profile.save()
+
+        target_user.is_active = False
+        target_user.save()
+
+        ModerationAction.objects.create(
+            moderator=request.user,
+            target_user=target_user,
+            action_type=ModerationAction.ACTION_SUSPEND,
+            duration=timedelta(days=duration_days),
+            expires_at=expires_at
+        )
+
+        return Response({"success": f"{target_user.username} has been suspended.", "suspended_until": expires_at})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def reactivate(self, request, pk=None):
+        """Reactivate a suspended/banned user. Organizers/admins only."""
+        target_user = self.get_object()
+        profile, _ = UserProfile.objects.get_or_create(user=target_user)
+
+        profile.suspended_until = None
+        profile.banned_until = None
+        profile.ban_reason = None
+        profile.save()
+
+        target_user.is_active = True
+        target_user.save()
+
+        ModerationAction.objects.create(
+            moderator=request.user,
+            target_user=target_user,
+            action_type=ModerationAction.ACTION_REACTIVATE
+        )
+
+        return Response({"success": f"{target_user.username} has been reactivated."})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def ban(self, request, pk=None):
+        """Ban a user with a grace period (default 30 days). Organizers/admins only."""
+        target_user = self.get_object()
+
+        if (is_organizer(target_user) or is_admin(target_user)) and not is_admin(request.user):
+            return Response({"error": "Only admins can ban organizers or admins."}, status=status.HTTP_403_FORBIDDEN)
+
+        reason = request.data.get('reason')
+        duration_days = request.data.get('duration_days') or 30
+
+        try:
+            duration_days = int(duration_days)
+        except (TypeError, ValueError):
+            duration_days = 30
+
+        if duration_days <= 0:
+            duration_days = 30
+
+        profile, _ = UserProfile.objects.get_or_create(user=target_user)
+        expires_at = timezone.now() + timedelta(days=duration_days)
+        profile.banned_until = expires_at
+        profile.ban_reason = reason
+        profile.save()
+
+        target_user.is_active = False
+        target_user.save()
+
+        ModerationAction.objects.create(
+            moderator=request.user,
+            target_user=target_user,
+            action_type=ModerationAction.ACTION_BAN,
+            reason=reason,
+            duration=timedelta(days=duration_days),
+            expires_at=expires_at
+        )
+
+        return Response({"success": f"{target_user.username} has been banned.", "banned_until": expires_at})
     
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def verify_password(self, request):
@@ -212,20 +418,29 @@ class UserViewSet(viewsets.ModelViewSet):
     def delete_account(self, request):
         """Delete the authenticated user's account"""
         user = request.user
+        reason = request.data.get('reason')
         
-        # Check if user has teams
-        if user.teams.exists():
+        # Check if user is team leader with other members
+        if Team.objects.filter(leader=user).annotate(member_count=Count('members')).filter(member_count__gt=1).exists():
             return Response(
-                {"error": "Cannot delete account while still in teams. Leave all teams first."},
+                {"error": "Cannot delete account while you are leading a team with members."},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Check if user has submissions
-        if user.submissions_made.exists():
+        # Check if user has pending submissions
+        if user.submissions_made.filter(is_reviewed=False).exists():
             return Response(
-                {"error": "Cannot delete account with existing submissions."},
+                {"error": "Cannot delete account with pending submissions."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        AccountDeletionLog.objects.create(
+            user_id=user.id,
+            username=user.username,
+            email=user.email,
+            reason=reason,
+            deleted_by=user
+        )
         
         # Delete the user
         user.delete()
@@ -377,15 +592,128 @@ class RegisterView(generics.CreateAPIView):
 
 # ========== POST VIEWS ==========
 class PostViewSet(viewsets.ModelViewSet):
-    queryset = Post.objects.all()
     serializer_class = PostSerializer
-    permission_classes = [IsAuthenticated, IsOwner]
+    permission_classes = [IsAuthenticated, IsNotBanned]
     pagination_class = PostPagination
-    filter_backends = [filters.SearchFilter]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'content']
+    ordering_fields = ['created_at', 'pinned_at']
+
+    def get_permissions(self):
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return [IsAuthenticated(), IsNotBanned(), IsOwner()]
+        if self.action in ['pin']:
+            return [IsAuthenticated(), IsNotBanned(), IsOrganizerOrAdmin()]
+        return [IsAuthenticated(), IsNotBanned()]
+
+    def get_queryset(self):
+        qs = Post.objects.select_related('owner', 'event')\
+            .prefetch_related('tags', 'likes', 'reposts')
+
+        if self.action != 'comments':
+            qs = qs.filter(parent__isnull=True)
+
+        qs = qs.filter(is_deleted=False)
+
+        now = timezone.now()
+        qs = qs.filter(Q(scheduled_for__isnull=True) | Q(scheduled_for__lte=now))
+
+        post_type = self.request.query_params.get('post_type')
+        if post_type:
+            qs = qs.filter(post_type=post_type)
+
+        tag = self.request.query_params.get('tag')
+        if tag:
+            qs = qs.filter(tags__name=tag.strip().lower())
+
+        feed = self.request.query_params.get('feed')
+        following = self.request.query_params.get('following')
+        if feed == 'following' or (following and following.lower() in ['1', 'true', 'yes']):
+            following_ids = Follow.objects.filter(follower=self.request.user)\
+                .values_list('followed_id', flat=True)
+            qs = qs.filter(owner_id__in=following_ids)
+
+        ordering = self.request.query_params.get('ordering')
+        if ordering:
+            qs = qs.order_by(ordering)
+        else:
+            qs = qs.order_by('-is_pinned', '-pinned_at', '-created_at')
+
+        return qs.distinct()
 
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+        post_type = serializer.validated_data.get('post_type', Post.POST_TYPE_POST)
+        parent = serializer.validated_data.get('parent')
+
+        if parent is not None:
+            post_type = Post.POST_TYPE_POST
+
+        if post_type in [Post.POST_TYPE_ANNOUNCEMENT, Post.POST_TYPE_RESULT]:
+            if not (is_organizer(self.request.user) or is_admin(self.request.user)):
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Only organizers or admins can create announcements or results.")
+
+        serializer.save(owner=self.request.user, post_type=post_type)
+
+    @action(detail=True, methods=['post'])
+    def like(self, request, pk=None):
+        post = self.get_object()
+        like, created = PostLike.objects.get_or_create(user=request.user, post=post)
+        if not created:
+            like.delete()
+        return Response({
+            "liked": created,
+            "likes_count": post.likes.count(),
+            "liked_by": list(post.likes.values_list('user_id', flat=True))
+        })
+
+    @action(detail=True, methods=['post'])
+    def repost(self, request, pk=None):
+        post = self.get_object()
+        repost, created = PostRepost.objects.get_or_create(user=request.user, post=post)
+        if not created:
+            repost.delete()
+        return Response({
+            "reposted": created,
+            "reposts_count": post.reposts.count(),
+            "reposted_by": list(post.reposts.values_list('user_id', flat=True))
+        })
+
+    @action(detail=True, methods=['get'])
+    def comments(self, request, pk=None):
+        post = self.get_object()
+        qs = Post.objects.filter(parent=post, is_deleted=False)\
+            .select_related('owner', 'event')\
+            .prefetch_related('tags', 'likes', 'reposts')\
+            .order_by('created_at')
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def pin(self, request, pk=None):
+        post = self.get_object()
+        if post.is_pinned:
+            post.is_pinned = False
+            post.pinned_at = None
+        else:
+            post.is_pinned = True
+            post.pinned_at = timezone.now()
+        post.save()
+        return Response({
+            "success": True,
+            "is_pinned": post.is_pinned,
+            "pinned_at": post.pinned_at
+        })
+
+    @action(detail=False, methods=['get'], url_path='trending-tags')
+    def trending_tags(self, request):
+        tags = Tag.objects.annotate(post_count=Count('posts'))\
+            .order_by('-post_count', 'name')[:10]
+        return Response([t.name for t in tags])
 
 # ========== EVENT VIEWS ==========
 class EventViewSet(viewsets.ModelViewSet):
@@ -399,7 +727,7 @@ class EventViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def teams(self, request, pk=None):
         event = self.get_object()
-        serializer = TeamSerializer(event.teams.all(), many=True)
+        serializer = TeamSerializer(event.teams.all(), many=True, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=True, methods=["get"])
@@ -407,7 +735,14 @@ class EventViewSet(viewsets.ModelViewSet):
         event = self.get_object()
         teams = event.teams.all()
         submissions = Submission.objects.filter(team__in=teams)
-        serializer = SubmissionSerializer(submissions, many=True)
+        serializer = SubmissionSerializer(submissions, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], permission_classes=[AllowAny])
+    def live(self, request):
+        now = timezone.now()
+        events = Event.objects.filter(start_date__lte=now, end_date__gte=now).order_by('start_date')
+        serializer = self.get_serializer(events, many=True)
         return Response(serializer.data)
 
 # ========== TEAM VIEWS ==========
@@ -500,7 +835,7 @@ class TeamViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def members(self, request, pk=None):
         team = self.get_object()
-        serializer = UserSerializer(team.members.all(), many=True)
+        serializer = UserSerializer(team.members.all(), many=True, context={'request': request})
         return Response(serializer.data)
 
 # ========== SUBMISSION VIEWS ==========
@@ -531,7 +866,7 @@ class SubmissionViewSet(viewsets.ModelViewSet):
                 )
             
             feedbacks = submission.feedback.all().order_by('-created_at')
-            serializer = JudgeFeedbackSerializer(feedbacks, many=True)
+            serializer = JudgeFeedbackSerializer(feedbacks, many=True, context={'request': request})
             return Response(serializer.data)
 
         elif request.method in ["POST", "PUT"]:
@@ -554,9 +889,9 @@ class SubmissionViewSet(viewsets.ModelViewSet):
                 data['submission'] = submission.id
             
             if existing:
-                serializer = JudgeFeedbackSerializer(existing, data=data, partial=True)
+                serializer = JudgeFeedbackSerializer(existing, data=data, partial=True, context={'request': request})
             else:
-                serializer = JudgeFeedbackSerializer(data=data)
+                serializer = JudgeFeedbackSerializer(data=data, context={'request': request})
 
             if serializer.is_valid():
                 feedback = serializer.save(judge=request.user, submission=submission)
@@ -652,3 +987,178 @@ class JudgeFeedbackViewSet(viewsets.ModelViewSet):
         if feedback.judge != request.user and not request.user.is_staff:
             return Response({"error": "You can only delete your own feedback."}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)
+
+
+def _get_direct_conversation(user, recipient):
+    qs = Conversation.objects.filter(is_team=False)\
+        .annotate(pcount=Count('participants'))\
+        .filter(pcount=2, participants=user)\
+        .filter(participants=recipient)
+    return qs.first()
+
+
+def _ensure_team_conversation(team):
+    convo = Conversation.objects.filter(is_team=True, team=team).first()
+    if not convo:
+        convo = Conversation.objects.create(is_team=True, team=team)
+    members = team.members.all()
+    for member in members:
+        ConversationParticipant.objects.get_or_create(conversation=convo, user=member)
+    return convo
+
+
+class ConversationListCreate(APIView):
+    permission_classes = [IsAuthenticated, IsNotBanned]
+
+    def get(self, request):
+        convos = Conversation.objects.filter(participants=request.user)\
+            .select_related('team')\
+            .prefetch_related('participants', 'messages')\
+            .order_by('-updated_at')
+        serializer = ConversationSerializer(convos, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    def post(self, request):
+        recipient_id = request.data.get('recipient_id')
+        if not recipient_id:
+            return Response({"error": "recipient_id required"}, status=status.HTTP_400_BAD_REQUEST)
+        if str(recipient_id) == str(request.user.id):
+            return Response({"error": "Cannot message yourself"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            recipient = User.objects.get(id=recipient_id)
+        except User.DoesNotExist:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        convo = _get_direct_conversation(request.user, recipient)
+        if not convo:
+            convo = Conversation.objects.create(is_team=False)
+            ConversationParticipant.objects.get_or_create(conversation=convo, user=request.user)
+            ConversationParticipant.objects.get_or_create(conversation=convo, user=recipient)
+
+        serializer = ConversationSerializer(convo, context={'request': request})
+        return Response(serializer.data)
+
+
+class ConversationMessages(APIView):
+    permission_classes = [IsAuthenticated, IsNotBanned]
+
+    def get(self, request, pk):
+        try:
+            convo = Conversation.objects.get(pk=pk)
+        except Conversation.DoesNotExist:
+            return Response({"error": "Conversation not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not ConversationParticipant.objects.filter(conversation=convo, user=request.user).exists():
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        qs = convo.messages.select_related('sender').order_by('created_at')
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(qs, request)
+        serializer = MessageSerializer(page if page is not None else qs, many=True, context={'request': request})
+
+        link = ConversationParticipant.objects.get(conversation=convo, user=request.user)
+        link.last_read_at = timezone.now()
+        link.save(update_fields=['last_read_at'])
+
+        if page is not None:
+            return paginator.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    def post(self, request, pk):
+        try:
+            convo = Conversation.objects.get(pk=pk)
+        except Conversation.DoesNotExist:
+            return Response({"error": "Conversation not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not ConversationParticipant.objects.filter(conversation=convo, user=request.user).exists():
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        content = request.data.get('content', '').strip()
+        if not content:
+            return Response({"error": "content required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        msg = Message.objects.create(conversation=convo, sender=request.user, content=content)
+        convo.save(update_fields=['updated_at'])
+
+        link = ConversationParticipant.objects.get(conversation=convo, user=request.user)
+        link.last_read_at = timezone.now()
+        link.save(update_fields=['last_read_at'])
+
+        serializer = MessageSerializer(msg, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class MessageUnreadCount(APIView):
+    permission_classes = [IsAuthenticated, IsNotBanned]
+
+    def get(self, request):
+        total = 0
+        convos = Conversation.objects.filter(participants=request.user)
+        for convo in convos:
+            try:
+                link = ConversationParticipant.objects.get(conversation=convo, user=request.user)
+            except ConversationParticipant.DoesNotExist:
+                continue
+            qs = convo.messages.exclude(sender=request.user)
+            if link.last_read_at:
+                qs = qs.filter(created_at__gt=link.last_read_at)
+            total += qs.count()
+        return Response({"count": total})
+
+
+class TeamMessages(APIView):
+    permission_classes = [IsAuthenticated, IsNotBanned]
+
+    def get(self, request, team_id):
+        try:
+            team = Team.objects.get(pk=team_id)
+        except Team.DoesNotExist:
+            return Response({"error": "Team not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not team.members.filter(id=request.user.id).exists():
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        convo = _ensure_team_conversation(team)
+        qs = convo.messages.select_related('sender').order_by('created_at')
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(qs, request)
+        serializer = MessageSerializer(page if page is not None else qs, many=True, context={'request': request})
+
+        link = ConversationParticipant.objects.get(conversation=convo, user=request.user)
+        link.last_read_at = timezone.now()
+        link.save(update_fields=['last_read_at'])
+
+        if page is not None:
+            return paginator.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    def post(self, request, team_id):
+        try:
+            team = Team.objects.get(pk=team_id)
+        except Team.DoesNotExist:
+            return Response({"error": "Team not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not team.members.filter(id=request.user.id).exists():
+            return Response({"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+        content = request.data.get('content', '').strip()
+        if not content:
+            return Response({"error": "content required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        convo = _ensure_team_conversation(team)
+        msg = Message.objects.create(conversation=convo, sender=request.user, content=content)
+        convo.save(update_fields=['updated_at'])
+
+        link = ConversationParticipant.objects.get(conversation=convo, user=request.user)
+        link.last_read_at = timezone.now()
+        link.save(update_fields=['last_read_at'])
+
+        serializer = MessageSerializer(msg, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class NotificationsUnreadCount(APIView):
+    permission_classes = [IsAuthenticated, IsNotBanned]
+
+    def get(self, request):
+        return Response({"count": 0})

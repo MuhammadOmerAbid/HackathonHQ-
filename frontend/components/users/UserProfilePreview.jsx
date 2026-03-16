@@ -55,7 +55,7 @@ export default function UserProfilePreview({ user, currentUser, onFollow, onMess
       {/* Avatar */}
       <div className="profile-avatar-wrapper">
         <div className="profile-avatar">
-          {user.username?.[0]?.toUpperCase()}
+          {user.avatar ? <img src={user.avatar} alt="" /> : user.username?.[0]?.toUpperCase()}
         </div>
         {user.is_active && <span className="profile-active" />}
       </div>
@@ -213,6 +213,12 @@ export default function UserProfilePreview({ user, currentUser, onFollow, onMess
           font-weight: 700;
           color: #6EE7B7;
           box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+          overflow: hidden;
+        }
+        .profile-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
         .profile-active {
           position: absolute;

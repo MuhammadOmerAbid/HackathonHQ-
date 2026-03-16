@@ -88,7 +88,7 @@ export default function UserSearch({ onSearch, onSelect, placeholder = "Search u
               onClick={() => handleSelect(user)}
             >
               <div className="user-result-avatar">
-                {user.username?.[0]?.toUpperCase()}
+                {user.avatar ? <img src={user.avatar} alt="" /> : user.username?.[0]?.toUpperCase()}
               </div>
               <div className="user-result-info">
                 <div className="user-result-name">{user.username}</div>
@@ -223,6 +223,12 @@ export default function UserSearch({ onSearch, onSelect, placeholder = "Search u
           font-weight: 700;
           color: #6EE7B7;
           flex-shrink: 0;
+          overflow: hidden;
+        }
+        .user-result-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
 
         .user-result-info {

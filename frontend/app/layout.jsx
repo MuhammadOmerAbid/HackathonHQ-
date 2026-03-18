@@ -1,6 +1,8 @@
 import { Inter } from "next/font/google";
 import Navbar from "../components/navbar";
 import { AuthProvider } from '@/context/AuthContext';
+import { MessagingProvider } from "@/context/MessagingContext";
+import FloatingMessageBubble from "@/components/community/FloatingMessageBubble";
 import "../styles/global.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -15,10 +17,13 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-        <Navbar />
-        <main className="main-content">
-          {children}
-        </main>
+          <MessagingProvider>
+            <Navbar />
+            <main className="main-content">
+              {children}
+            </main>
+            <FloatingMessageBubble />
+          </MessagingProvider>
         </AuthProvider>
       </body>
     </html>

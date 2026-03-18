@@ -7,7 +7,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import UserCard from "../../components/users/UserCard";
 import UserSearch from "../../components/users/UserSearch";
 import UserFilters from "../../components/users/UserFilters";
-import DMPanel from "../../components/community/DMPanel";
+import { useMessaging } from "@/context/MessagingContext";
 
 export default function UsersPage() {
   const router = useRouter();
@@ -19,8 +19,7 @@ export default function UsersPage() {
   const [activeFilter, setActiveFilter] = useState("all");
   const [viewMode, setViewMode] = useState("grid");
   const [currentUser, setCurrentUser] = useState(null);
-  const [dmRecipient, setDmRecipient] = useState(null);
-  const [showDMPanel, setShowDMPanel] = useState(false);
+  const { openChat } = useMessaging();
   const [pagination, setPagination] = useState({
     count: 0,
     next: null,
@@ -147,8 +146,7 @@ export default function UsersPage() {
   };
 
   const handleMessage = (user) => {
-    setDmRecipient(user);
-    setShowDMPanel(true);
+    openChat(user);
   };
 
   const stats = {
@@ -369,18 +367,6 @@ export default function UsersPage() {
             Page {pagination.currentPage} of {pagination.totalPages}
           </p>
         </div>
-      )}
-
-      {/* DM Panel */}
-      {showDMPanel && currentUser && (
-        <DMPanel
-          currentUser={currentUser}
-          initialRecipient={dmRecipient}
-          onClose={() => {
-            setShowDMPanel(false);
-            setDmRecipient(null);
-          }}
-        />
       )}
 
       <style jsx>{`

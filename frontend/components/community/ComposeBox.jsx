@@ -19,8 +19,9 @@ export default function ComposeBox({ user, events = [], onPost, onCancel, replyT
   const isNearLimit = remainingChars < 100 && remainingChars >= 0;
   const progressPercentage = (content.length / MAX_CHARS) * 100;
 
+  // FIXED: Check for is_organizer in profile
   const isAdmin = user?.is_staff || user?.is_superuser;
-  const isOrganizer = user?.is_organizer;
+  const isOrganizer = user?.profile?.is_organizer || user?.is_organizer;
   const canPostAnnouncement = isAdmin || isOrganizer;
   const canPostResult = isAdmin || isOrganizer;
 
@@ -32,7 +33,6 @@ export default function ComposeBox({ user, events = [], onPost, onCancel, replyT
   }, [content]);
 
   useEffect(() => {
-    // Focus textarea when component mounts
     setTimeout(() => {
       textareaRef.current?.focus();
     }, 100);
@@ -378,7 +378,10 @@ const styles = {
   postTypeButton: {
     padding: '6px 14px',
     background: '#17171b',
-    border: '1px solid #1e1e24',
+    // FIXED: Use separate border properties instead of shorthand
+    borderWidth: '1px',
+    borderStyle: 'solid',
+    borderColor: '#1e1e24',
     borderRadius: '100px',
     color: '#5c5c6e',
     fontSize: '12.5px',
@@ -388,6 +391,7 @@ const styles = {
   },
   activePostType: {
     background: '#6EE7B7',
+    // FIXED: Only override borderColor, not the whole border
     borderColor: '#4fb88b',
     color: '#0c0c0f',
   },

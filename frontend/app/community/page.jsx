@@ -8,7 +8,7 @@ import PostCard from "../../components/community/PostCard";
 import ComposeBox from "../../components/community/ComposeBox";
 import TrendingSidebar from "../../components/community/TrendingSidebar";
 import ActiveUsers from "../../components/community/ActiveUsers";
-import DMPanel from "../../components/community/DMPanel";
+import { useMessaging } from "@/context/MessagingContext";
 
 export default function CommunityPage() {
   const router = useRouter();
@@ -22,18 +22,16 @@ export default function CommunityPage() {
   const [liveEvents, setLiveEvents] = useState([]);
   const [onlineCount, setOnlineCount] = useState(0);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
   const [postsLoading, setPostsLoading] = useState(false);
   
   
-   const [dmRecipient, setDmRecipient] = useState(null);
+  const { openInbox, openChat } = useMessaging();
   const feedRef = useRef(null);
 
   useEffect(() => {
     fetchInitialData();
-    const interval = setInterval(() => {
-      setOnlineCount(prev => Math.floor(Math.random() * 50) + 120);
-    }, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -68,12 +66,13 @@ export default function CommunityPage() {
 
   const fetchInitialData = async () => {
     try {
-      const [userRes, tagsRes, usersRes, eventsRes, notifRes] = await Promise.all([
+      const [userRes, tagsRes, usersRes, eventsRes, notifRes, activityRes] = await Promise.all([
         axios.get("/users/me/").catch(() => null),
         axios.get("/posts/trending-tags/").catch(() => null),
-        axios.get("/users/active/?limit=8").catch(() => null),
+        axios.get("/users/active/?limit=8&scope=following").catch(() => null),
         axios.get("/events/live/").catch(() => null),
         axios.get("/notifications/unread/count/").catch(() => null),
+        axios.get("/users/activities/?scope=inbound").catch(() => null),
       ]);
 
       setUser(userRes?.data || null);
@@ -90,16 +89,64 @@ export default function CommunityPage() {
         setLiveEvents(eventsRes.data.results || eventsRes.data || []);
       }
 
+      if (activityRes?.data) {
+        setRecentActivity(activityRes.data || []);
+      }
+
       if (notifRes?.data?.count) {
         setUnreadNotifications(notifRes.data.count);
       }
 
-      setOnlineCount(Math.floor(Math.random() * 100) + 150);
+      setOnlineCount((usersRes?.data?.results || usersRes?.data || []).length || 0);
     } catch (err) {
       console.error("Error fetching community data:", err);
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      fetchActivity();
+      fetchActiveUsers();
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [user?.id]);
+
+  const fetchActivity = async () => {
+    setActivityLoading(true);
+    try {
+      const res = await axios.get("/users/activities/?scope=inbound");
+      setRecentActivity(res.data || []);
+    } catch (err) {
+      console.error("Error fetching activity:", err);
+    } finally {
+      setActivityLoading(false);
+    }
+  };
+
+  const fetchActiveUsers = async () => {
+    try {
+      const res = await axios.get("/users/active/?limit=8&scope=following");
+      const list = res.data.results || res.data || [];
+      setActiveUsers(list);
+      setOnlineCount(list.length || 0);
+    } catch (err) {
+      console.error("Error fetching active users:", err);
+    }
+  };
+
+  const timeAgo = (dateString) => {
+    if (!dateString) return "";
+    const diff = Date.now() - new Date(dateString).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
   };
 
   const handleCreatePost = async (postData) => {
@@ -303,7 +350,7 @@ export default function CommunityPage() {
 
         <div className="online-indicator">
           <span className="online-dot"></span>
-          <span className="online-text">{onlineCount} online now</span>
+          <span className="online-text">{onlineCount} active now</span>
         </div>
       </div>
 
@@ -432,12 +479,17 @@ export default function CommunityPage() {
 
   {/* Direct Messages - Main Messaging Hub */}
   {user && (
-    <div className="right-card">
+  <div className="right-card">
       <h3>Messages</h3>
-      <DMPanel 
-        currentUser={user}
-        initialRecipient={dmRecipient}
-      />
+      <button
+        className="dm-open-btn"
+        onClick={() => openInbox()}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+        Open Messages
+      </button>
     </div>
   )}
 
@@ -445,8 +497,7 @@ export default function CommunityPage() {
   <ActiveUsers 
     users={activeUsers} 
     onMessageClick={(user) => {
-      console.log(`Starting conversation with ${user.username}`);
-      setDmRecipient(user);
+      openChat(user);
     }} 
   />
 
@@ -454,57 +505,26 @@ export default function CommunityPage() {
   <div className="right-card">
     <h3>Recent Activity</h3>
     <div className="activity-feed">
-      <div className="activity-item">
-        <span className="activity-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-          </svg>
-        </span>
-        <span className="activity-text">
-          <strong>alex_chen</strong> liked a post
-        </span>
-        <span className="activity-time">2m ago</span>
-      </div>
-      <div className="activity-item">
-        <span className="activity-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="17 1 21 5 17 9" />
-            <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-            <polyline points="7 23 3 19 7 15" />
-            <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-          </svg>
-        </span>
-        <span className="activity-text">
-          <strong>sarah_dev</strong> reposted
-        </span>
-        <span className="activity-time">5m ago</span>
-      </div>
-      <div className="activity-item">
-        <span className="activity-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-        </span>
-        <span className="activity-text">
-          <strong>mike_hacker</strong> commented
-        </span>
-        <span className="activity-time">12m ago</span>
-      </div>
-      <div className="activity-item">
-        <span className="activity-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="16" y1="13" x2="8" y2="13" />
-            <line x1="16" y1="17" x2="8" y2="17" />
-            <polyline points="10 9 9 9 8 9" />
-          </svg>
-        </span>
-        <span className="activity-text">
-          <strong>priya_raj</strong> created a post
-        </span>
-        <span className="activity-time">18m ago</span>
-      </div>
+      {activityLoading ? (
+        <div className="activity-empty">Loading activity...</div>
+      ) : recentActivity.length === 0 ? (
+        <div className="activity-empty">No recent interactions yet.</div>
+      ) : (
+        recentActivity.slice(0, 6).map((item) => (
+          <div key={item.id} className="activity-item">
+            <span className="activity-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+            </span>
+            <span className="activity-text">
+              <strong>{item.title || "Update"}</strong> {item.description || ""}
+            </span>
+            <span className="activity-time">{timeAgo(item.created_at)}</span>
+          </div>
+        ))
+      )}
     </div>
   </div>
 
@@ -520,38 +540,26 @@ export default function CommunityPage() {
 
       <style jsx>{`
 
-/* Right sidebar card adjustments for DMPanel */
-.right-card .dm-container {
-  margin-top: 8px;
-}
-
-.right-card .dm-trigger {
-  background: #17171b;
-  border-color: #26262e;
-  border-radius: 12px;
+/* Right sidebar message button */
+.dm-open-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
   padding: 12px 16px;
+  background: #17171b;
+  border: 1px solid #26262e;
+  border-radius: 12px;
+  color: #888;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
-
-.right-card .dm-trigger:hover {
+.dm-open-btn:hover {
   background: #1e1e24;
   border-color: rgba(110,231,183,0.3);
-}
-
-/* Ensure panel doesn't get clipped by card */
-.right-card {
-  position: relative;
-  overflow: visible !important;
-  z-index: 5;
-}
-
-/* Higher z-index for expanded panel */
-.dm-panel {
-  z-index: 100 !important;
-}
-
-/* Smooth transitions */
-.right-card .dm-trigger {
-  transition: all 0.2s ease;
+  color: #f0f0f3;
 }
         
         .community-container {
@@ -683,11 +691,13 @@ export default function CommunityPage() {
           font-size: 20px;
           font-weight: 700;
           color: #6EE7B7;
+          overflow: hidden;
         }
         .user-avatar-large img {
           width: 100%;
           height: 100%;
           object-fit: cover;
+          display: block;
         }
         .user-info {
           flex: 1;
@@ -850,11 +860,13 @@ export default function CommunityPage() {
           font-weight: 700;
           color: #6EE7B7;
           flex-shrink: 0;
+          overflow: hidden;
         }
         .trigger-avatar img {
           width: 100%;
           height: 100%;
           object-fit: cover;
+          display: block;
         }
         .trigger-input {
           flex: 1;
@@ -1074,6 +1086,12 @@ export default function CommunityPage() {
           display: flex;
           flex-direction: column;
           gap: 12px;
+        }
+        .activity-empty {
+          font-size: 12px;
+          color: #5c5c6e;
+          text-align: center;
+          padding: 8px 0;
         }
         .activity-item {
           display: flex;

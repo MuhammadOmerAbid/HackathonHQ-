@@ -1,13 +1,15 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import axios from "../../utils/axios";
 
 function MsgBubble({ msg, isMe }) {
   const t = new Date(msg.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  
   return (
-    <div className={`mb${isMe?" mb-me":""}`}>
+    <div className={`msg-bubble-wrapper ${isMe ? 'me' : 'other'}`}>
       {!isMe && (
-        <div className="mb-avi">
+        <div className="msg-avatar">
           {msg.sender?.avatar ? (
             <img src={msg.sender.avatar} alt="" />
           ) : (
@@ -15,18 +17,101 @@ function MsgBubble({ msg, isMe }) {
           )}
         </div>
       )}
-      <div className="mb-bub">
-        <p className="mb-txt">{msg.content}</p>
-        <span className="mb-t">{t}</span>
+      <div className={`msg-content ${isMe ? 'me' : 'other'}`}>
+        <div className="msg-text">{msg.content}</div>
+        <span className="msg-time">{t}</span>
       </div>
+      
+      <style jsx>{`
+        .msg-bubble-wrapper {
+          display: flex;
+          align-items: flex-end;
+          gap: 8px;
+          margin-bottom: 16px;
+          max-width: 85%;
+        }
+        .msg-bubble-wrapper.me {
+          margin-left: auto;
+          flex-direction: row-reverse;
+        }
+        
+        .msg-avatar {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          background: rgba(110,231,183,0.1);
+          border: 1.5px solid rgba(110,231,183,0.25);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: 'Syne', sans-serif;
+          font-size: 11px;
+          font-weight: 700;
+          color: #6EE7B7;
+          flex-shrink: 0;
+          overflow: hidden;
+        }
+        .msg-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        
+        .msg-content {
+          display: flex;
+          flex-direction: column;
+          max-width: calc(100% - 36px);
+        }
+        .msg-content.other {
+          align-items: flex-start;
+        }
+        .msg-content.me {
+          align-items: flex-end;
+        }
+        
+        .msg-text {
+          padding: 12px 16px;
+          border-radius: 18px;
+          font-size: 13px;
+          line-height: 1.5;
+          word-break: break-word;
+          font-family: 'DM Sans', sans-serif;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+          max-width: 100%;
+        }
+        .msg-content.other .msg-text {
+          background: #17171b;
+          border: 1px solid #26262e;
+          color: #f0f0f3;
+          border-bottom-left-radius: 4px;
+        }
+        .msg-content.me .msg-text {
+          background: rgba(110,231,183,0.15);
+          border: 1px solid rgba(110,231,183,0.3);
+          color: #f0f0f3;
+          border-bottom-right-radius: 4px;
+        }
+        
+        .msg-time {
+          font-size: 10px;
+          color: #5c5c6e;
+          margin-top: 4px;
+          padding: 0 4px;
+        }
+      `}</style>
     </div>
   );
 }
 
 function ConvoRow({ convo, meId, active, onClick }) {
-  const other = convo.other_user || convo.participants?.find(p=>p.id!==meId);
+  const isTeam = !!convo.is_team;
+  const other = !isTeam ? (convo.other_user || convo.participants?.find(p=>p.id!==meId)) : null;
   const last  = convo.last_message;
   const unread= convo.unread_count||0;
+  const teamName = convo.team?.name || "Team";
+  const displayName = isTeam ? teamName : (other?.username||"Unknown");
+  const displayInitial = (isTeam ? teamName?.[0] : other?.username?.[0])?.toUpperCase() || "?";
+  
   const ago = (d) => {
     if (!d) return "";
     const m = Math.floor((Date.now()-new Date(d))/60000);
@@ -35,31 +120,160 @@ function ConvoRow({ convo, meId, active, onClick }) {
     if (m < 1440) return `${Math.floor(m/60)}h`; 
     return `${Math.floor(m/1440)}d`;
   };
+  
   return (
-    <div className={`cr${active?" cr-on":""}`} onClick={onClick}>
-      <div className="cr-avi">
-        {other?.avatar ? (
+    <div className={`convo-row ${active ? 'active' : ''}`} onClick={onClick}>
+      <div className="convo-avatar">
+        {isTeam ? (
+          <span className="convo-team-initial">{displayInitial}</span>
+        ) : other?.avatar ? (
           <img src={other.avatar} alt="" />
         ) : (
-          other?.username?.[0]?.toUpperCase()||"?"
+          displayInitial
         )}
+        {unread > 0 && <span className="convo-badge">{unread}</span>}
       </div>
-      <div className="cr-info">
-        <div className="cr-top">
-          <span className="cr-name">{other?.username||"Unknown"}</span>
-          <span className="cr-ts">{ago(last?.created_at)}</span>
+      <div className="convo-info">
+        <div className="convo-header">
+          <div className="convo-title">
+            <span className="convo-name">{displayName}</span>
+            {isTeam && <span className="convo-team-badge">Team</span>}
+          </div>
+          <span className="convo-time">{ago(last?.created_at)}</span>
         </div>
-        <div className="cr-pre">
-          {last?.content?.slice(0,35) || <em>No messages yet</em>}
-          {unread>0 && <span className="cr-badge">{unread}</span>}
+        <div className="convo-preview">
+          {last?.content?.slice(0,40) || <em>{isTeam ? "No team messages yet" : "No messages yet"}</em>}
         </div>
       </div>
+      
+      <style jsx>{`
+        .convo-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px 16px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          border-bottom: 1px solid #1e1e24;
+        }
+        .convo-row:last-child {
+          border-bottom: none;
+        }
+        .convo-row:hover {
+          background: #151519;
+        }
+        .convo-row.active {
+          background: #151519;
+          border-left: 3px solid #6EE7B7;
+        }
+        
+        .convo-avatar {
+          position: relative;
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: rgba(110,231,183,0.1);
+          border: 2px solid rgba(110,231,183,0.25);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: 'Syne', sans-serif;
+          font-size: 16px;
+          font-weight: 700;
+          color: #6EE7B7;
+          flex-shrink: 0;
+          overflow: hidden;
+        }
+        .convo-team-initial {
+          font-size: 16px;
+          font-weight: 700;
+          color: #6EE7B7;
+        }
+        .convo-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .convo-badge {
+          position: absolute;
+          top: -2px;
+          right: -2px;
+          min-width: 18px;
+          height: 18px;
+          padding: 0 4px;
+          border-radius: 50px;
+          background: #f87171;
+          color: white;
+          font-size: 10px;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 2px solid #111114;
+        }
+        
+        .convo-info {
+          flex: 1;
+          min-width: 0;
+        }
+        .convo-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 4px;
+        }
+        .convo-title {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          min-width: 0;
+        }
+        .convo-name {
+          font-size: 14px;
+          font-weight: 600;
+          color: #f0f0f3;
+          max-width: 140px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .convo-team-badge {
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+          padding: 2px 6px;
+          border-radius: 999px;
+          background: rgba(110,231,183,0.12);
+          color: #6EE7B7;
+          border: 1px solid rgba(110,231,183,0.25);
+        }
+        .convo-time {
+          font-size: 11px;
+          color: #5c5c6e;
+        }
+        .convo-preview {
+          font-size: 12px;
+          color: #888;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+      `}</style>
     </div>
   );
 }
 
-export default function DMPanel({ currentUser, initialRecipient=null, onClose }) {
-  const [isOpen, setIsOpen] = useState(false);
+export default function DMPanel({
+  currentUser,
+  initialRecipient = null,
+  onClose,
+  isOpen: controlledOpen,
+  onOpen,
+  anchorRef = null,
+  showTrigger = true,
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
   const [convos, setConvos] = useState([]);
   const [active, setActive] = useState(null);
   const [msgs, setMsgs] = useState([]);
@@ -71,16 +285,29 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
   const [sRes, setSRes] = useState([]);
   const [view, setView] = useState("list");
   const [unreadCount, setUnreadCount] = useState(0);
-  const [panelPosition, setPanelPosition] = useState("down"); // "up" or "down"
-  const [panelHeight, setPanelHeight] = useState(600); // Default height
+  const [panelPosition, setPanelPosition] = useState("down");
+  const [panelHeight, setPanelHeight] = useState(600);
+  const [panelCoords, setPanelCoords] = useState({ top: 0, left: 0 });
   
   const endRef = useRef(null);
   const inRef = useRef(null);
   const pollRef = useRef(null);
   const panelRef = useRef(null);
   const triggerRef = useRef(null);
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
 
-  // Fetch conversations when opened
+  const openPanel = () => {
+    if (onOpen) return onOpen();
+    setInternalOpen(true);
+  };
+
+  const closePanel = () => {
+    if (onClose) onClose();
+    if (controlledOpen === undefined) setInternalOpen(false);
+    setView("list");
+    setActive(null);
+  };
+
   useEffect(() => {
     if (isOpen) {
       fetchConvos();
@@ -102,6 +329,8 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
   useEffect(() => {
     if (initialRecipient && isOpen) {
       startConvo(initialRecipient);
+    } else if (isOpen && !initialRecipient) {
+      setView("list");
     }
   }, [initialRecipient?.id, isOpen]);
 
@@ -119,39 +348,54 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
     return () => clearInterval(pollRef.current);
   }, [active?.id, isOpen]);
 
-  // Calculate available space and set panel position
   useEffect(() => {
-    if (isOpen && triggerRef.current) {
+    const anchorEl = anchorRef?.current || triggerRef.current;
+    if (isOpen && anchorEl) {
       const calculatePosition = () => {
-        const triggerRect = triggerRef.current.getBoundingClientRect();
+        const triggerRect = anchorEl.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
-        const spaceBelow = viewportHeight - triggerRect.bottom - 30; // 30px margin
-        const spaceAbove = triggerRect.top - 30; // 30px margin
-        const desiredHeight = 600; // Your desired panel height
+        const viewportWidth = window.innerWidth;
+        const panelWidth = 360;
+        const margin = 12;
+        const spaceBelow = viewportHeight - triggerRect.bottom - 30;
+        const spaceAbove = triggerRect.top - 30;
+        const desiredHeight = 600;
         
-        // Calculate max available height
-        const maxHeightBelow = Math.min(desiredHeight, spaceBelow);
-        const maxHeightAbove = Math.min(desiredHeight, spaceAbove);
-        
-        // Decide position based on available space
+        let nextPosition = "down";
+        let nextHeight = desiredHeight;
         if (spaceBelow >= desiredHeight) {
-          setPanelPosition("down");
-          setPanelHeight(desiredHeight);
+          nextPosition = "down";
+          nextHeight = desiredHeight;
         } else if (spaceAbove >= desiredHeight) {
-          setPanelPosition("up");
-          setPanelHeight(desiredHeight);
+          nextPosition = "up";
+          nextHeight = desiredHeight;
         } else if (spaceBelow > spaceAbove) {
-          setPanelPosition("down");
-          setPanelHeight(Math.max(300, spaceBelow)); // At least 300px
+          nextPosition = "down";
+          nextHeight = Math.max(350, spaceBelow);
         } else {
-          setPanelPosition("up");
-          setPanelHeight(Math.max(300, spaceAbove)); // At least 300px
+          nextPosition = "up";
+          nextHeight = Math.max(350, spaceAbove);
         }
+
+        const left = Math.min(
+          Math.max(triggerRect.right - panelWidth, margin),
+          viewportWidth - panelWidth - margin
+        );
+        const top =
+          nextPosition === "down"
+            ? triggerRect.bottom + 10
+            : triggerRect.top - nextHeight - 10;
+
+        setPanelPosition(nextPosition);
+        setPanelHeight(nextHeight);
+        setPanelCoords({
+          top: Math.max(margin, Math.min(viewportHeight - nextHeight - margin, top)),
+          left,
+        });
       };
       
       calculatePosition();
       
-      // Recalculate on scroll or resize
       window.addEventListener("scroll", calculatePosition, true);
       window.addEventListener("resize", calculatePosition);
       
@@ -162,16 +406,19 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
     }
   }, [isOpen]);
 
-  // Handle click outside to close
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (panelRef.current && !panelRef.current.contains(e.target) && isOpen) {
-        setIsOpen(false);
+      if (!isOpen) return;
+      const anchorEl = anchorRef?.current || triggerRef.current;
+      const clickedPanel = panelRef.current && panelRef.current.contains(e.target);
+      const clickedTrigger = anchorEl && anchorEl.contains(e.target);
+      if (!clickedPanel && !clickedTrigger) {
+        closePanel();
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen]);
+  }, [isOpen, onClose, anchorRef]);
 
   const fetchConvos = async (silent=false) => {
     if (!silent) setLoadC(true);
@@ -241,16 +488,19 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
     } catch(e){console.error(e);}
   };
 
-  const other = active?.other_user || active?.participants?.find(p=>p.id!==currentUser.id);
-
+  const activeIsTeam = !!active?.is_team;
+  const activeTeam = activeIsTeam ? active?.team : null;
+  const other = !activeIsTeam
+    ? (active?.other_user || active?.participants?.find(p=>p.id!==currentUser.id))
+    : null;
+  
   return (
-    <div className="dm-container" ref={panelRef}>
-      {/* Collapsed Button */}
-      {!isOpen && (
+    <div className="dm-container">
+      {showTrigger && !isOpen && (
         <button 
           ref={triggerRef}
           className="dm-trigger" 
-          onClick={() => setIsOpen(true)}
+          onClick={openPanel}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -260,11 +510,11 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
         </button>
       )}
 
-      {/* Expanded Panel - with dynamic positioning */}
-      {isOpen && (
+      {isOpen && typeof window !== "undefined" && createPortal(
         <div 
           className={`dm-panel dm-panel-${panelPosition}`}
-          style={{ height: panelHeight }}
+          style={{ height: panelHeight, top: panelCoords.top, left: panelCoords.left }}
+          ref={panelRef}
         >
           {/* Header */}
           <div className="dm-header">
@@ -280,19 +530,28 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
             {view === "chat" ? (
               <>
                 <div className="dm-header-avatar">
-                  {other?.avatar ? (
+                  {activeIsTeam ? (
+                    <span className="dm-team-initial">
+                      {activeTeam?.name?.[0]?.toUpperCase() || "T"}
+                    </span>
+                  ) : other?.avatar ? (
                     <img src={other.avatar} alt="" />
                   ) : (
                     other?.username?.[0]?.toUpperCase()
                   )}
                 </div>
-                <span className="dm-header-name">{other?.username}</span>
+                <div className="dm-header-meta">
+                  <span className="dm-header-name">
+                    {activeIsTeam ? (activeTeam?.name || "Team chat") : other?.username}
+                  </span>
+                  {activeIsTeam && <span className="dm-header-subtitle">Team chat</span>}
+                </div>
               </>
             ) : (
               <h3 className="dm-header-title">Messages</h3>
             )}
             
-            <button className="dm-close-btn" onClick={() => setIsOpen(false)}>
+            <button className="dm-close-btn" onClick={closePanel}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
@@ -373,7 +632,11 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
                     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                     </svg>
-                    <p>Say hello to {other?.username}!</p>
+                    <p>
+                      {activeIsTeam
+                        ? `Say hello to team ${activeTeam?.name || ""}!`
+                        : `Say hello to ${other?.username || ""}!`}
+                    </p>
                   </div>
                 ) : (
                   msgs.map(m => (
@@ -392,7 +655,7 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
                 <textarea
                   ref={inRef}
                   className="dm-input"
-                  placeholder={`Message ${other?.username || ""}...`}
+                  placeholder={`Message ${activeIsTeam ? (activeTeam?.name || "team") : (other?.username || "")}...`}
                   value={newMsg}
                   onChange={e => setNewMsg(e.target.value)}
                   onKeyDown={e => {
@@ -416,7 +679,8 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
               </div>
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
 
       <style jsx>{`
@@ -461,10 +725,9 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
           text-align: center;
         }
 
-        /* Expanded Panel - Base styles */
+        /* Expanded Panel */
         .dm-panel {
-          position: absolute;
-          right: 0;
+          position: fixed;
           width: 360px;
           background: #111114;
           border: 1px solid #1e1e24;
@@ -476,17 +739,10 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
           z-index: 1000;
         }
 
-        /* Position downward (default) */
         .dm-panel-down {
-          top: 100%;
-          margin-top: 10px;
           animation: slideDown 0.25s ease;
         }
-
-        /* Position upward */
         .dm-panel-up {
-          bottom: 100%;
-          margin-bottom: 10px;
           animation: slideUp 0.25s ease;
         }
 
@@ -500,7 +756,6 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
             transform: translateY(0);
           }
         }
-
         @keyframes slideUp {
           from {
             opacity: 0;
@@ -531,34 +786,54 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
           flex: 1;
         }
         .dm-header-avatar {
-          width: 32px;
-          height: 32px;
+          width: 36px;
+          height: 36px;
           border-radius: 50%;
           background: rgba(110,231,183,0.12);
-          border: 1.5px solid rgba(110,231,183,0.3);
+          border: 2px solid rgba(110,231,183,0.3);
           display: flex;
           align-items: center;
           justify-content: center;
           font-family: 'Syne', sans-serif;
-          font-size: 13px;
+          font-size: 14px;
           font-weight: 700;
           color: #6EE7B7;
           overflow: hidden;
+        }
+        .dm-team-initial {
+          font-size: 14px;
+          font-weight: 700;
+          color: #6EE7B7;
         }
         .dm-header-avatar img {
           width: 100%;
           height: 100%;
           object-fit: cover;
         }
+        .dm-header-meta {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          flex: 1;
+          min-width: 0;
+        }
         .dm-header-name {
           font-size: 15px;
           font-weight: 600;
           color: #f0f0f3;
-          flex: 1;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .dm-header-subtitle {
+          font-size: 11px;
+          color: #5c5c6e;
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
         }
         .dm-back-btn, .dm-close-btn {
-          width: 32px;
-          height: 32px;
+          width: 34px;
+          height: 34px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -597,7 +872,7 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
         }
         .dm-search-input {
           width: 100%;
-          padding: 10px 16px 10px 40px;
+          padding: 10px 16px 10px 44px;
           background: #17171b;
           border: 1px solid #1e1e24;
           border-radius: 100px;
@@ -609,9 +884,6 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
         .dm-search-input:focus {
           border-color: rgba(110,231,183,0.4);
         }
-        .dm-search-input::placeholder {
-          color: #3a3a48;
-        }
 
         /* Search Results */
         .dm-search-results {
@@ -619,13 +891,6 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
           max-height: 200px;
           overflow-y: auto;
           flex-shrink: 0;
-        }
-        .dm-search-results::-webkit-scrollbar {
-          width: 4px;
-        }
-        .dm-search-results::-webkit-scrollbar-thumb {
-          background: #1e1e24;
-          border-radius: 2px;
         }
         .dm-search-row {
           display: flex;
@@ -639,16 +904,16 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
           background: #151519;
         }
         .dm-search-avatar {
-          width: 32px;
-          height: 32px;
+          width: 36px;
+          height: 36px;
           border-radius: 50%;
           background: rgba(110,231,183,0.08);
-          border: 1px solid rgba(110,231,183,0.2);
+          border: 2px solid rgba(110,231,183,0.2);
           display: flex;
           align-items: center;
           justify-content: center;
           font-family: 'Syne', sans-serif;
-          font-size: 12px;
+          font-size: 14px;
           font-weight: 700;
           color: #6EE7B7;
           overflow: hidden;
@@ -676,13 +941,6 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
           overflow-y: auto;
           min-height: 0;
         }
-        .dm-conversations::-webkit-scrollbar {
-          width: 4px;
-        }
-        .dm-conversations::-webkit-scrollbar-thumb {
-          background: #1e1e24;
-          border-radius: 2px;
-        }
 
         /* Chat View */
         .dm-chat-view {
@@ -696,13 +954,6 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
           overflow-y: auto;
           padding: 20px;
           min-height: 0;
-        }
-        .dm-messages::-webkit-scrollbar {
-          width: 4px;
-        }
-        .dm-messages::-webkit-scrollbar-thumb {
-          background: #1e1e24;
-          border-radius: 2px;
         }
 
         /* Input Area */
@@ -732,9 +983,6 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
         .dm-input:focus {
           border-color: rgba(110,231,183,0.4);
         }
-        .dm-input::placeholder {
-          color: #3a3a48;
-        }
         .dm-send-btn {
           width: 38px;
           height: 38px;
@@ -755,11 +1003,6 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
         }
         .dm-send-btn:disabled {
           opacity: 0.4;
-          cursor: not-allowed;
-        }
-        .dm-send-btn svg {
-          width: 16px;
-          height: 16px;
         }
 
         /* Loading States */
@@ -781,7 +1024,6 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
         .dm-spinner-small {
           width: 16px;
           height: 16px;
-          border-width: 2px;
         }
         @keyframes spin {
           to { transform: rotate(360deg); }
@@ -801,7 +1043,6 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
         }
         .dm-empty svg {
           color: #3a3a48;
-          margin-bottom: 8px;
         }
         .dm-empty p {
           font-size: 14px;
@@ -812,154 +1053,18 @@ export default function DMPanel({ currentUser, initialRecipient=null, onClose })
         .dm-empty span {
           font-size: 12px;
         }
-        .dm-empty-chat {
-          padding: 60px 20px;
-        }
 
-        /* Message Bubble Styles */
-        .mb {
-          display: flex;
-          align-items: flex-end;
-          gap: 6px;
-          margin-bottom: 12px;
-          max-width: 85%;
+        /* Scrollbar Styling */
+        .dm-conversations::-webkit-scrollbar,
+        .dm-messages::-webkit-scrollbar,
+        .dm-search-results::-webkit-scrollbar {
+          width: 4px;
         }
-        .mb-me {
-          margin-left: auto;
-          flex-direction: row-reverse;
-        }
-        .mb-avi {
-          width: 26px;
-          height: 26px;
-          border-radius: 50%;
-          background: rgba(110,231,183,0.1);
-          border: 1.5px solid rgba(110,231,183,0.2);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: 'Syne', sans-serif;
-          font-size: 10px;
-          font-weight: 700;
-          color: #6EE7B7;
-          flex-shrink: 0;
-          overflow: hidden;
-        }
-        .mb-avi img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-        .mb-bub {
-          padding: 10px 14px;
-          border-radius: 16px;
-          max-width: 100%;
-        }
-        .mb:not(.mb-me) .mb-bub {
-          background: #17171b;
-          border: 1px solid #1e1e24;
-          border-bottom-left-radius: 4px;
-        }
-        .mb-me .mb-bub {
-          background: rgba(110,231,183,0.12);
-          border: 1px solid rgba(110,231,183,0.25);
-          border-bottom-right-radius: 4px;
-        }
-        .mb-txt {
-          font-size: 13px;
-          color: #f0f0f3;
-          margin: 0 0 4px;
-          line-height: 1.5;
-          word-break: break-word;
-          font-family: 'DM Sans', sans-serif;
-        }
-        .mb-t {
-          font-size: 9px;
-          color: #5c5c6e;
-          display: block;
-          text-align: right;
-          opacity: 0.8;
-        }
-
-        /* Conversation Row Styles */
-        .cr {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 12px 16px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          border-bottom: 1px solid #1e1e24;
-        }
-        .cr:last-child {
-          border-bottom: none;
-        }
-        .cr:hover {
-          background: #151519;
-        }
-        .cr-on {
-          background: #151519;
-          border-left: 3px solid #6EE7B7;
-        }
-        .cr-avi {
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          background: rgba(110,231,183,0.1);
-          border: 2px solid rgba(110,231,183,0.25);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: 'Syne', sans-serif;
-          font-size: 14px;
-          font-weight: 700;
-          color: #6EE7B7;
-          flex-shrink: 0;
-          overflow: hidden;
-        }
-        .cr-avi img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-        .cr-info {
-          flex: 1;
-          min-width: 0;
-        }
-        .cr-top {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 4px;
-        }
-        .cr-name {
-          font-size: 14px;
-          font-weight: 600;
-          color: #f0f0f3;
-        }
-        .cr-ts {
-          font-size: 11px;
-          color: #5c5c6e;
-          flex-shrink: 0;
-        }
-        .cr-pre {
-          font-size: 12px;
-          color: #888;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-family: 'DM Sans', sans-serif;
-        }
-        .cr-badge {
-          background: #6EE7B7;
-          color: #0c0c0f;
-          font-size: 10px;
-          font-weight: 700;
-          border-radius: 100px;
-          padding: 2px 6px;
-          flex-shrink: 0;
+        .dm-conversations::-webkit-scrollbar-thumb,
+        .dm-messages::-webkit-scrollbar-thumb,
+        .dm-search-results::-webkit-scrollbar-thumb {
+          background: #1e1e24;
+          border-radius: 2px;
         }
       `}</style>
     </div>

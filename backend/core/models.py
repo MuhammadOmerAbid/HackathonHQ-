@@ -247,6 +247,11 @@ class Activity(models.Model):
          # Follow Activities  # ADD THIS SECTION
         ('follow', 'Started Following'),
         ('new_follower', 'New Follower'),
+
+        # Post Interactions
+        ('like', 'Post Liked'),
+        ('repost', 'Post Reposted'),
+        ('reply', 'Post Replied'),
         
         # NEW: Role Change Activities
         ('became_judge', 'Became a Judge'),

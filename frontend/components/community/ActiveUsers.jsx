@@ -80,6 +80,10 @@ export default function ActiveUsers({ users = [] }) {
           width: 100%;
           height: 100%;
           object-fit: cover;
+          border-radius: 50%;
+          display: block;
+          position: relative;
+          z-index: 1;
         }
         .active-indicator {
           position: absolute;
@@ -91,6 +95,7 @@ export default function ActiveUsers({ users = [] }) {
           background: #6EE7B7;
           border: 2px solid #111114;
           box-shadow: 0 0 8px rgba(110,231,183,0.8);
+          z-index: 2;
         }
         .active-user-name {
           font-size: 11px;

@@ -180,3 +180,77 @@ def create_follow_activity(follower, followed):
         },
         is_important=False
     )
+
+# ========== POST INTERACTION ACTIVITIES ==========
+def create_like_activity(actor, post):
+    """Create activity when someone likes a post (inbound only)."""
+    if not post or not actor or post.owner_id == actor.id:
+        return
+    Activity.objects.create(
+        user=post.owner,
+        type='like',
+        title=f'{actor.username} liked your post',
+        description='Your post received a like',
+        metadata={
+            'post_id': post.id,
+            'actor_id': actor.id,
+            'actor_username': actor.username
+        },
+        is_important=False
+    )
+
+def remove_like_activity(actor, post):
+    """Remove like activity when like is undone."""
+    if not post or not actor:
+        return
+    Activity.objects.filter(
+        user=post.owner,
+        type='like',
+        metadata__post_id=post.id,
+        metadata__actor_id=actor.id
+    ).delete()
+
+def create_repost_activity(actor, post):
+    """Create activity when someone reposts a post (inbound only)."""
+    if not post or not actor or post.owner_id == actor.id:
+        return
+    Activity.objects.create(
+        user=post.owner,
+        type='repost',
+        title=f'{actor.username} reposted your post',
+        description='Your post was reposted',
+        metadata={
+            'post_id': post.id,
+            'actor_id': actor.id,
+            'actor_username': actor.username
+        },
+        is_important=False
+    )
+
+def remove_repost_activity(actor, post):
+    """Remove repost activity when repost is undone."""
+    if not post or not actor:
+        return
+    Activity.objects.filter(
+        user=post.owner,
+        type='repost',
+        metadata__post_id=post.id,
+        metadata__actor_id=actor.id
+    ).delete()
+
+def create_reply_activity(actor, parent_post):
+    """Create activity when someone replies to a post (inbound only)."""
+    if not parent_post or not actor or parent_post.owner_id == actor.id:
+        return
+    Activity.objects.create(
+        user=parent_post.owner,
+        type='reply',
+        title=f'{actor.username} replied to your post',
+        description='Your post received a reply',
+        metadata={
+            'post_id': parent_post.id,
+            'actor_id': actor.id,
+            'actor_username': actor.username
+        },
+        is_important=False
+    )

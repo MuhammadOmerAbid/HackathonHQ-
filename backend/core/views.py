@@ -4,7 +4,8 @@ from rest_framework.response import Response
 from .models import (
     Post, Event, Team, Submission, JudgeFeedback,
     UserProfile, Activity, Follow, Tag, PostLike, PostRepost,
-    ModerationAction, UserWarning, AccountDeletionLog
+    ModerationAction, UserWarning, AccountDeletionLog,
+    Conversation, ConversationParticipant, Message
 )
 from .serializers import (
     PostSerializer, EventSerializer, TeamSerializer,
@@ -136,7 +137,16 @@ class UserViewSet(viewsets.ModelViewSet):
     def activities(self, request):
         """Get all activities for the logged-in user"""
         try:
-            activities = Activity.objects.filter(user=request.user).order_by('-created_at')[:50]
+            qs = Activity.objects.filter(user=request.user)
+            scope = request.query_params.get('scope')
+            if scope == 'inbound':
+                inbound_types = [
+                    'new_follower', 'feedback', 'review',
+                    'role_removed', 'became_judge', 'became_organizer', 'winner',
+                    'like', 'repost', 'reply'
+                ]
+                qs = qs.filter(type__in=inbound_types)
+            activities = qs.order_by('-created_at')[:50]
             serializer = ActivitySerializer(activities, many=True)
             return Response(serializer.data)
         except Exception as e:
@@ -185,7 +195,7 @@ class UserViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(user)
             return Response(serializer.data)
 
-    @action(detail=False, methods=['get'], permission_classes=[AllowAny])
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def active(self, request):
         """Get recently active users"""
         limit = request.query_params.get('limit')
@@ -196,7 +206,13 @@ class UserViewSet(viewsets.ModelViewSet):
 
         cutoff = timezone.now() - timedelta(minutes=20)
         users = User.objects.filter(is_active=True, profile__last_active__gte=cutoff)\
-            .select_related('profile')[:limit]
+            .select_related('profile')
+        scope = request.query_params.get('scope')
+        if scope == 'following':
+            following_ids = Follow.objects.filter(follower=request.user)\
+                .values_list('followed_id', flat=True)
+            users = users.filter(id__in=following_ids)
+        users = users.exclude(id=request.user.id)[:limit]
         serializer = UserDirectorySerializer(users, many=True, context={'request': request})
         return Response(serializer.data)
 
@@ -653,14 +669,32 @@ class PostViewSet(viewsets.ModelViewSet):
                 from rest_framework.exceptions import PermissionDenied
                 raise PermissionDenied("Only organizers or admins can create announcements or results.")
 
-        serializer.save(owner=self.request.user, post_type=post_type)
+        post = serializer.save(owner=self.request.user, post_type=post_type)
+
+        if parent is not None:
+            try:
+                from .utils.activity_helpers import create_reply_activity
+                create_reply_activity(self.request.user, parent)
+            except Exception as e:
+                print(f"Error creating reply activity: {e}")
 
     @action(detail=True, methods=['post'])
     def like(self, request, pk=None):
         post = self.get_object()
         like, created = PostLike.objects.get_or_create(user=request.user, post=post)
-        if not created:
+        if created:
+            try:
+                from .utils.activity_helpers import create_like_activity
+                create_like_activity(request.user, post)
+            except Exception as e:
+                print(f"Error creating like activity: {e}")
+        else:
             like.delete()
+            try:
+                from .utils.activity_helpers import remove_like_activity
+                remove_like_activity(request.user, post)
+            except Exception as e:
+                print(f"Error removing like activity: {e}")
         return Response({
             "liked": created,
             "likes_count": post.likes.count(),
@@ -671,8 +705,19 @@ class PostViewSet(viewsets.ModelViewSet):
     def repost(self, request, pk=None):
         post = self.get_object()
         repost, created = PostRepost.objects.get_or_create(user=request.user, post=post)
-        if not created:
+        if created:
+            try:
+                from .utils.activity_helpers import create_repost_activity
+                create_repost_activity(request.user, post)
+            except Exception as e:
+                print(f"Error creating repost activity: {e}")
+        else:
             repost.delete()
+            try:
+                from .utils.activity_helpers import remove_repost_activity
+                remove_repost_activity(request.user, post)
+            except Exception as e:
+                print(f"Error removing repost activity: {e}")
         return Response({
             "reposted": created,
             "reposts_count": post.reposts.count(),
@@ -766,6 +811,8 @@ class TeamViewSet(viewsets.ModelViewSet):
         if hasattr(team, 'leader'):
             team.leader = user
             team.save()
+
+        _ensure_team_conversation(team)
         
         from .utils.activity_helpers import create_team_activity
         create_team_activity(user, team, 'team_create')
@@ -785,6 +832,8 @@ class TeamViewSet(viewsets.ModelViewSet):
             return Response({"message": "This team is full."}, status=status.HTTP_400_BAD_REQUEST)
 
         team.members.add(request.user)
+
+        _ensure_team_conversation(team)
         
         from .utils.activity_helpers import create_team_activity
         create_team_activity(request.user, team, 'team_join')
@@ -803,6 +852,14 @@ class TeamViewSet(viewsets.ModelViewSet):
             return Response({"message": "You are the team leader. Delete the team or transfer leadership instead."}, status=status.HTTP_400_BAD_REQUEST)
 
         team.members.remove(request.user)
+
+        # Remove user from the team conversation participants if it exists
+        try:
+            convo = Conversation.objects.filter(is_team=True, team=team).first()
+            if convo:
+                ConversationParticipant.objects.filter(conversation=convo, user=request.user).delete()
+        except Exception:
+            pass
         
         from .utils.activity_helpers import create_team_activity
         create_team_activity(request.user, team, 'team_leave')
@@ -1011,6 +1068,14 @@ class ConversationListCreate(APIView):
     permission_classes = [IsAuthenticated, IsNotBanned]
 
     def get(self, request):
+        # Ensure team conversations exist for all teams the user is in
+        try:
+            teams = Team.objects.filter(members=request.user)
+            for team in teams:
+                _ensure_team_conversation(team)
+        except Exception:
+            pass
+
         convos = Conversation.objects.filter(participants=request.user)\
             .select_related('team')\
             .prefetch_related('participants', 'messages')\

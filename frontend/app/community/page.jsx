@@ -3,10 +3,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import axios from "../../utils/axios";
-import LoadingSpinner from "@/components/LoadingSpinner";
 import PostCard from "../../components/community/PostCard";
 import ComposeBox from "../../components/community/ComposeBox";
-import TrendingSidebar from "../../components/community/TrendingSidebar";
 import ActiveUsers from "../../components/community/ActiveUsers";
 import { useMessaging } from "@/context/MessagingContext";
 
@@ -25,46 +23,83 @@ export default function CommunityPage() {
   const [recentActivity, setRecentActivity] = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
   const [postsLoading, setPostsLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [activeUsersLoading, setActiveUsersLoading] = useState(false);
   
   
   const { openInbox, openChat } = useMessaging();
   const feedRef = useRef(null);
+  const loadMoreRef = useRef(null);
+  const PAGE_SIZE = 10;
 
   useEffect(() => {
     fetchInitialData();
   }, []);
 
   useEffect(() => {
-    if (loading) return;
-    fetchPosts(feedType);
-  }, [feedType, loading, user?.id]);
+    if (!user) {
+      setPosts([]);
+      setHasMore(false);
+      setPostsLoading(false);
+      return;
+    }
+    setPage(1);
+    setHasMore(true);
+    fetchPosts({ mode: feedType, pageParam: 1, append: false });
+  }, [feedType, user?.id]);
 
-  const buildPostsUrl = (mode) => {
+  const buildPostsUrl = (mode, pageParam = 1, pageSize = PAGE_SIZE) => {
     const params = new URLSearchParams();
     params.set("ordering", "-created_at");
+    params.set("page", String(pageParam));
+    params.set("page_size", String(pageSize));
     if (mode === "announcements") params.set("post_type", "announcement");
     if (mode === "results") params.set("post_type", "result");
     if (mode === "following") params.set("following", "1");
     return `/posts/?${params.toString()}`;
   };
 
-  const fetchPosts = async (mode = feedType, silent = false) => {
+  const fetchPosts = async ({ mode = feedType, pageParam = 1, append = false } = {}) => {
     if (!user) {
       setPosts([]);
+      setHasMore(false);
+      setPostsLoading(false);
       return;
     }
-    if (!silent) setPostsLoading(true);
+    if (pageParam === 1) {
+      setPostsLoading(true);
+    } else {
+      setIsFetchingMore(true);
+    }
     try {
-      const res = await axios.get(buildPostsUrl(mode));
-      setPosts(res.data.results || res.data || []);
+      const res = await axios.get(buildPostsUrl(mode, pageParam, PAGE_SIZE));
+      const list = res.data?.results || res.data || [];
+      if (append) {
+        setPosts(prev => [...prev, ...list]);
+      } else {
+        setPosts(list);
+      }
+      const hasNext = typeof res.data?.next !== "undefined"
+        ? !!res.data.next
+        : list.length === PAGE_SIZE;
+      setHasMore(hasNext);
+      setPage(pageParam);
     } catch (err) {
       console.error("Error fetching posts:", err);
     } finally {
-      if (!silent) setPostsLoading(false);
+      if (pageParam === 1) {
+        setPostsLoading(false);
+      } else {
+        setIsFetchingMore(false);
+      }
     }
   };
 
   const fetchInitialData = async () => {
+    setActiveUsersLoading(true);
+    setActivityLoading(true);
     try {
       const [userRes, tagsRes, usersRes, eventsRes, notifRes, activityRes] = await Promise.all([
         axios.get("/users/me/").catch(() => null),
@@ -101,6 +136,8 @@ export default function CommunityPage() {
     } catch (err) {
       console.error("Error fetching community data:", err);
     } finally {
+      setActiveUsersLoading(false);
+      setActivityLoading(false);
       setLoading(false);
     }
   };
@@ -127,6 +164,7 @@ export default function CommunityPage() {
   };
 
   const fetchActiveUsers = async () => {
+    setActiveUsersLoading(true);
     try {
       const res = await axios.get("/users/active/?limit=8&scope=following");
       const list = res.data.results || res.data || [];
@@ -134,8 +172,25 @@ export default function CommunityPage() {
       setOnlineCount(list.length || 0);
     } catch (err) {
       console.error("Error fetching active users:", err);
+    } finally {
+      setActiveUsersLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!loadMoreRef.current || !feedRef.current) return;
+    if (!hasMore || postsLoading || isFetchingMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          fetchPosts({ mode: feedType, pageParam: page + 1, append: true });
+        }
+      },
+      { root: feedRef.current, rootMargin: "200px" }
+    );
+    observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [feedType, page, hasMore, postsLoading, isFetchingMore, user?.id]);
 
   const timeAgo = (dateString) => {
     if (!dateString) return "";
@@ -155,7 +210,7 @@ export default function CommunityPage() {
       const fullPost = await axios.get(`/posts/${response.data.id}/?expand=author,event`);
       setPosts(prev => [fullPost.data, ...prev]);
       setShowCompose(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      feedRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       console.error("Error creating post:", error);
       throw error;
@@ -225,14 +280,6 @@ export default function CommunityPage() {
     if (feedType === "results") return post.post_type === "result";
     return true;
   });
-
-  if (loading) {
-    return (
-      <div className="community-loading">
-        <LoadingSpinner message="Loading community..." />
-      </div>
-    );
-  }
 
   return (
     <div className="community-container">
@@ -407,12 +454,18 @@ export default function CommunityPage() {
 
         {/* Posts Feed */}
         <div className="posts-feed">
-          {postsLoading ? (
-            <div className="empty-feed">
-              <div className="empty-icon">
-                <div className="feed-spinner" />
-              </div>
-              <p>Loading posts...</p>
+          {postsLoading || loading ? (
+            <div className="feed-skeleton">
+              {Array.from({ length: 3 }).map((_, idx) => (
+                <div key={`post-skel-${idx}`} className="post-skeleton">
+                  <div className="skeleton-avatar" />
+                  <div className="skeleton-lines">
+                    <div className="skeleton-line short" />
+                    <div className="skeleton-line" />
+                    <div className="skeleton-line" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : filteredPosts.length === 0 ? (
             <div className="empty-feed">
@@ -441,16 +494,21 @@ export default function CommunityPage() {
               />
             ))
           )}
+          {isFetchingMore && (
+            <div className="feed-skeleton compact">
+              {Array.from({ length: 2 }).map((_, idx) => (
+                <div key={`post-more-skel-${idx}`} className="post-skeleton">
+                  <div className="skeleton-avatar" />
+                  <div className="skeleton-lines">
+                    <div className="skeleton-line short" />
+                    <div className="skeleton-line" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div ref={loadMoreRef} className="feed-sentinel" />
         </div>
-
-        {/* Load More */}
-        {filteredPosts.length > 0 && (
-          <div className="load-more">
-            <button className="load-more-btn">
-              Load more posts
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Right Sidebar - Discover & Activity */}
@@ -496,6 +554,7 @@ export default function CommunityPage() {
   {/* Active Users - Quick Message Access */}
   <ActiveUsers 
     users={activeUsers} 
+    loading={activeUsersLoading || loading}
     onMessageClick={(user) => {
       openChat(user);
     }} 
@@ -506,7 +565,15 @@ export default function CommunityPage() {
     <h3>Recent Activity</h3>
     <div className="activity-feed">
       {activityLoading ? (
-        <div className="activity-empty">Loading activity...</div>
+        <div className="activity-skeleton">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={`activity-skel-${idx}`} className="activity-skeleton-row">
+              <span className="skeleton-dot" />
+              <span className="skeleton-line wide" />
+              <span className="skeleton-line tiny" />
+            </div>
+          ))}
+        </div>
       ) : recentActivity.length === 0 ? (
         <div className="activity-empty">No recent interactions yet.</div>
       ) : (
@@ -561,6 +628,14 @@ export default function CommunityPage() {
   border-color: rgba(110,231,183,0.3);
   color: #f0f0f3;
 }
+
+        :global(html) {
+          height: 100%;
+        }
+        :global(body) {
+          background: #0a0a0a;
+          overflow: hidden;
+        }
         
         .community-container {
           display: grid;
@@ -570,6 +645,8 @@ export default function CommunityPage() {
           margin: 0 auto;
           padding: 24px 32px;
           min-height: calc(100vh - 70px);
+          height: calc(100vh - 70px);
+          overflow: hidden;
           background: #0a0a0a;
           font-family: 'DM Sans', sans-serif;
         }
@@ -831,7 +908,31 @@ export default function CommunityPage() {
           background: #111114;
           border: 1px solid #1e1e24;
           border-radius: 20px;
-          overflow: hidden;
+          overflow-y: auto;
+          overflow-x: hidden;
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          max-height: calc(100vh - 70px);
+          scrollbar-gutter: stable;
+          scroll-behavior: smooth;
+        }
+        .community-feed::-webkit-scrollbar {
+          width: 6px;
+        }
+        .community-feed::-webkit-scrollbar-track {
+          background: #151519;
+        }
+        .community-feed::-webkit-scrollbar-thumb {
+          background: #26262e;
+          border-radius: 6px;
+        }
+        .community-feed::-webkit-scrollbar-thumb:hover {
+          background: rgba(110,231,183,0.4);
+        }
+        .community-feed {
+          scrollbar-width: thin;
+          scrollbar-color: #26262e #151519;
         }
 
         .compose-trigger {
@@ -917,6 +1018,52 @@ export default function CommunityPage() {
         .posts-feed {
           display: flex;
           flex-direction: column;
+          padding-bottom: 8px;
+        }
+        .feed-sentinel {
+          height: 1px;
+        }
+        .feed-skeleton {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          padding: 20px;
+        }
+        .feed-skeleton.compact {
+          padding-top: 0;
+        }
+        .post-skeleton {
+          display: flex;
+          gap: 16px;
+          padding: 16px;
+          border: 1px solid #1e1e24;
+          border-radius: 14px;
+          background: #111114;
+        }
+        .skeleton-avatar {
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: linear-gradient(90deg, #17171b 25%, #1f1f26 37%, #17171b 63%);
+          background-size: 400% 100%;
+          animation: shimmer 1.6s infinite;
+          flex-shrink: 0;
+        }
+        .skeleton-lines {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .skeleton-line {
+          height: 10px;
+          border-radius: 6px;
+          background: linear-gradient(90deg, #17171b 25%, #1f1f26 37%, #17171b 63%);
+          background-size: 400% 100%;
+          animation: shimmer 1.6s infinite;
+        }
+        .skeleton-line.short {
+          width: 40%;
         }
 
         .empty-feed {
@@ -1086,6 +1233,52 @@ export default function CommunityPage() {
           display: flex;
           flex-direction: column;
           gap: 12px;
+          max-height: 220px;
+          overflow-y: auto;
+          padding-right: 4px;
+        }
+        .activity-feed::-webkit-scrollbar {
+          width: 6px;
+        }
+        .activity-feed::-webkit-scrollbar-track {
+          background: #151519;
+        }
+        .activity-feed::-webkit-scrollbar-thumb {
+          background: #26262e;
+          border-radius: 6px;
+        }
+        .activity-feed::-webkit-scrollbar-thumb:hover {
+          background: rgba(110,231,183,0.4);
+        }
+        .activity-feed {
+          scrollbar-width: thin;
+          scrollbar-color: #26262e #151519;
+        }
+        .activity-skeleton {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .activity-skeleton-row {
+          display: grid;
+          grid-template-columns: 16px 1fr 40px;
+          align-items: center;
+          gap: 10px;
+        }
+        .skeleton-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: linear-gradient(90deg, #17171b 25%, #1f1f26 37%, #17171b 63%);
+          background-size: 400% 100%;
+          animation: shimmer 1.6s infinite;
+        }
+        .skeleton-line.wide {
+          width: 100%;
+        }
+        .skeleton-line.tiny {
+          width: 32px;
+          height: 8px;
         }
         .activity-empty {
           font-size: 12px;
@@ -1148,6 +1341,10 @@ export default function CommunityPage() {
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.4; }
+        }
+        @keyframes shimmer {
+          0% { background-position: 100% 0; }
+          100% { background-position: -100% 0; }
         }
         @keyframes spin {
           to { transform: rotate(360deg); }

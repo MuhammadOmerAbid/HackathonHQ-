@@ -2,11 +2,13 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import axios from "../../utils/axios";
 
 export default function PostCard({ post, currentUser, onLike, onRepost, onDelete }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showReplies, setShowReplies] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(post.author?.is_following || false);
+  const [followLoading, setFollowLoading] = useState(false);
   const menuRef = useRef(null);
 
   const isOwner = post.author?.id === currentUser?.id;
@@ -23,6 +25,10 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    setIsFollowing(post.author?.is_following || false);
+  }, [post.author?.is_following, post.author?.id]);
 
   const formatTimeAgo = (date) => {
     if (!date) return "";
@@ -48,6 +54,33 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
     if (post.author?.id) router.push(`/users/${post.author.id}`);
   };
 
+  const handleRepostContextClick = (e) => {
+    e.stopPropagation();
+    if (post.repost_context?.id) router.push(`/users/${post.repost_context.id}`);
+  };
+
+  const handleFollow = async (e) => {
+    e.stopPropagation();
+    if (!currentUser) {
+      router.push('/login');
+      return;
+    }
+    if (!post.author?.id || post.author?.id === currentUser.id) return;
+    setFollowLoading(true);
+    try {
+      if (isFollowing) {
+        await axios.post(`/users/${post.author.id}/unfollow/`);
+      } else {
+        await axios.post(`/users/${post.author.id}/follow/`);
+      }
+      setIsFollowing(!isFollowing);
+    } catch (error) {
+      console.error("Error following/unfollowing user:", error);
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
   return (
     <article 
       className={`post-card ${isPinned ? 'pinned' : ''} ${isAnnouncement ? 'announcement' : ''} ${isResult ? 'result' : ''}`}
@@ -56,17 +89,17 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
       {/* Special banners */}
       {isPinned && (
         <div className="post-banner pinned">
-          <span>📌 Pinned post</span>
+          <span>Pinned post</span>
         </div>
       )}
       {isAnnouncement && (
         <div className="post-banner announcement">
-          <span>📢 Official announcement</span>
+          <span>Official announcement</span>
         </div>
       )}
       {isResult && (
         <div className="post-banner result">
-          <span>🏆 Hackathon results</span>
+          <span>Hackathon results</span>
         </div>
       )}
 
@@ -87,6 +120,20 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
 
         {/* Content column */}
         <div className="post-content-col">
+          {post.repost_context && (
+            <div className="post-repost-context" onClick={handleRepostContextClick}>
+              {post.repost_context.avatar ? (
+                <img src={post.repost_context.avatar} alt="" />
+              ) : (
+                <span className="repost-avatar-fallback">
+                  {post.repost_context.username?.[0]?.toUpperCase() || "U"}
+                </span>
+              )}
+              <span>
+                Reposted by <strong>{post.repost_context.username}</strong>
+              </span>
+            </div>
+          )}
           {/* Header */}
           <div className="post-header">
             <div className="post-author-info">
@@ -98,6 +145,9 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
               </span>
               {post.author?.is_staff && (
                 <span className="post-badge admin">Admin</span>
+              )}
+              {post.author?.is_organizer && (
+                <span className="post-badge organizer">Organizer</span>
               )}
               {post.author?.is_judge && (
                 <span className="post-badge judge">Judge</span>
@@ -124,28 +174,44 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
               </div>
             )}
 
-            {/* Menu for owner */}
-            {isOwner && (
-              <div className="post-menu" ref={menuRef} onClick={(e) => e.stopPropagation()}>
-                <button className="post-menu-btn" onClick={() => setMenuOpen(!menuOpen)}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <circle cx="12" cy="5" r="2" />
-                    <circle cx="12" cy="12" r="2" />
-                    <circle cx="12" cy="19" r="2" />
-                  </svg>
+            <div className="post-header-actions">
+              {currentUser && post.author?.id !== currentUser.id && (
+                <button
+                  className={`post-follow-btn ${isFollowing ? 'following' : ''}`}
+                  onClick={handleFollow}
+                  disabled={followLoading}
+                >
+                  {followLoading ? (
+                    <span className="post-follow-spinner" />
+                  ) : isFollowing ? (
+                    'Following'
+                  ) : (
+                    'Follow'
+                  )}
                 </button>
-                {menuOpen && (
-                  <div className="post-dropdown">
-                    <button className="dropdown-item" onClick={() => router.push(`/community/${post.id}/edit`)}>
-                      Edit
-                    </button>
-                    <button className="dropdown-item danger" onClick={() => onDelete(post.id)}>
-                      Delete
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+              {isOwner && (
+                <div className="post-menu" ref={menuRef} onClick={(e) => e.stopPropagation()}>
+                  <button className="post-menu-btn" onClick={() => setMenuOpen(!menuOpen)}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="12" cy="5" r="2" />
+                      <circle cx="12" cy="12" r="2" />
+                      <circle cx="12" cy="19" r="2" />
+                    </svg>
+                  </button>
+                  {menuOpen && (
+                    <div className="post-dropdown">
+                      <button className="dropdown-item" onClick={() => router.push(`/community/${post.id}/edit`)}>
+                        Edit
+                      </button>
+                      <button className="dropdown-item danger" onClick={() => onDelete(post.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Title */}
@@ -161,7 +227,7 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
             <div className="post-winners">
               {post.winners.slice(0, 3).map((winner, idx) => (
                 <div key={winner.id || idx} className="winner-row">
-                  <span className="winner-medal">{['🥇', '🥈', '🥉'][idx]}</span>
+                  <span className="winner-medal">{['1st', '2nd', '3rd'][idx]}</span>
                   <div className="winner-info">
                     <span className="winner-title">{winner.title}</span>
                     <span className="winner-team">{winner.team_name || winner.team?.name}</span>
@@ -239,11 +305,11 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
           border-left: 3px solid #6EE7B7;
         }
         .post-card.announcement {
-          border-left: 3px solid #fbbf24;
+          border-left: 3px solid #60a5fa;
         }
         .post-card.result {
-          border-left: 3px solid #fbbf24;
-          background: linear-gradient(to right, rgba(251,191,36,0.02), transparent);
+          border-left: 3px solid #8b5cf6;
+          background: linear-gradient(to right, rgba(139,92,246,0.04), transparent);
         }
 
         .post-banner {
@@ -258,12 +324,12 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
           color: #6EE7B7;
         }
         .post-banner.announcement {
-          background: rgba(251,191,36,0.06);
-          color: #fbbf24;
+          background: rgba(96,165,250,0.08);
+          color: #60a5fa;
         }
         .post-banner.result {
-          background: rgba(251,191,36,0.08);
-          color: #fbbf24;
+          background: rgba(139,92,246,0.1);
+          color: #8b5cf6;
         }
 
         .post-main {
@@ -337,9 +403,14 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
           font-weight: 600;
         }
         .post-badge.admin {
-          background: rgba(251,191,36,0.12);
-          color: #fbbf24;
-          border: 1px solid rgba(251,191,36,0.25);
+          background: rgba(96,165,250,0.12);
+          color: #60a5fa;
+          border: 1px solid rgba(96,165,250,0.25);
+        }
+        .post-badge.organizer {
+          background: rgba(167,139,250,0.12);
+          color: #a78bfa;
+          border: 1px solid rgba(167,139,250,0.25);
         }
         .post-badge.judge {
           background: rgba(96,165,250,0.12);
@@ -349,6 +420,42 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
         .post-time {
           font-size: 13px;
           color: #5c5c6e;
+        }
+
+        .post-repost-context {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(96,165,250,0.08);
+          border: 1px solid rgba(96,165,250,0.2);
+          color: #93c5fd;
+          font-size: 11px;
+          font-weight: 600;
+          margin-bottom: 8px;
+          cursor: pointer;
+          width: fit-content;
+        }
+        .post-repost-context img,
+        .repost-avatar-fallback {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: rgba(96,165,250,0.15);
+          color: #93c5fd;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 10px;
+          font-weight: 700;
+        }
+        .post-repost-context img {
+          object-fit: cover;
+          display: block;
+        }
+        .post-repost-context strong {
+          color: #f0f0f3;
         }
 
         .post-event-tag {
@@ -369,9 +476,47 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
           background: rgba(110,231,183,0.12);
         }
 
+        .post-header-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-left: auto;
+        }
+        .post-follow-btn {
+          padding: 6px 14px;
+          background: transparent;
+          border: 1px solid #26262e;
+          border-radius: 999px;
+          color: #cbd5f5;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .post-follow-btn:hover {
+          border-color: rgba(110,231,183,0.4);
+          color: #6EE7B7;
+        }
+        .post-follow-btn.following {
+          background: rgba(110,231,183,0.12);
+          border-color: rgba(110,231,183,0.3);
+          color: #6EE7B7;
+        }
+        .post-follow-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .post-follow-spinner {
+          width: 12px;
+          height: 12px;
+          border: 2px solid rgba(203,213,245,0.2);
+          border-top-color: #cbd5f5;
+          border-radius: 50%;
+          animation: spin 0.6s linear infinite;
+          display: inline-block;
+        }
         .post-menu {
           position: relative;
-          margin-left: auto;
         }
         .post-menu-btn {
           width: 32px;
@@ -442,8 +587,8 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
         }
 
         .post-winners {
-          background: rgba(251,191,36,0.04);
-          border: 1px solid rgba(251,191,36,0.15);
+          background: rgba(139,92,246,0.06);
+          border: 1px solid rgba(139,92,246,0.2);
           border-radius: 12px;
           margin-bottom: 12px;
           overflow: hidden;
@@ -453,13 +598,19 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
           align-items: center;
           gap: 12px;
           padding: 12px 16px;
-          border-bottom: 1px solid rgba(251,191,36,0.1);
+          border-bottom: 1px solid rgba(139,92,246,0.12);
         }
         .winner-row:last-child {
           border-bottom: none;
         }
         .winner-medal {
-          font-size: 18px;
+          font-size: 11px;
+          font-weight: 700;
+          color: #c4b5fd;
+          background: rgba(139,92,246,0.18);
+          border: 1px solid rgba(139,92,246,0.3);
+          padding: 4px 8px;
+          border-radius: 999px;
         }
         .winner-info {
           flex: 1;
@@ -474,7 +625,7 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
         }
         .winner-team {
           font-size: 12px;
-          color: #fbbf24;
+          color: #c4b5fd;
         }
 
         .post-tags {
@@ -525,6 +676,10 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
         }
         .action-btn.comment:hover {
           color: #60a5fa;
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
         }
 
         @media (max-width: 600px) {

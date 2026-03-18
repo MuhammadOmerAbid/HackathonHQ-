@@ -23,6 +23,10 @@ class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
     is_organizer = serializers.SerializerMethodField()
     is_judge = serializers.SerializerMethodField()
+    posts_count = serializers.SerializerMethodField()
+    followers_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
     organization_name = serializers.SerializerMethodField()
     bio = serializers.SerializerMethodField()
     location = serializers.SerializerMethodField()
@@ -42,6 +46,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ["id", "username", "email", "first_name", "last_name",
                   "is_active", "is_staff", "is_superuser",
                   "profile",
+                  "posts_count", "followers_count", "following_count", "is_following",
                   "is_organizer", "is_judge", "organization_name", "bio", "location",
                   "avatar", "cover_image",
                   "github_url", "linkedin_url", "twitter_url", "website_url",
@@ -59,6 +64,38 @@ class UserSerializer(serializers.ModelSerializer):
             return bool(getattr(obj.profile, 'is_judge', False))
         except:
             return False
+
+    def get_posts_count(self, obj):
+        try:
+            return obj.posts.count()
+        except:
+            return 0
+
+    def get_followers_count(self, obj):
+        try:
+            return obj.followers_set.count()
+        except:
+            return 0
+
+    def get_following_count(self, obj):
+        try:
+            return obj.following_set.count()
+        except:
+            return 0
+
+    def get_is_following(self, obj):
+        """Check if the current user is following this user"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated and request.user != obj:
+            try:
+                from .models import Follow
+                return Follow.objects.filter(
+                    follower=request.user,
+                    followed=obj
+                ).exists()
+            except:
+                return False
+        return False
 
     def get_organization_name(self, obj):
         try:
@@ -164,6 +201,7 @@ class PostSerializer(serializers.ModelSerializer):
     comments_count = serializers.SerializerMethodField()
     liked_by = serializers.SerializerMethodField()
     reposted_by = serializers.SerializerMethodField()
+    repost_context = serializers.SerializerMethodField()
     
     class Meta:
         model = Post
@@ -173,7 +211,7 @@ class PostSerializer(serializers.ModelSerializer):
             'author', 'parent', 'event',
             'tags', 'tags_input', 'event_input',
             'likes_count', 'reposts_count', 'comments_count',
-            'liked_by', 'reposted_by'
+            'liked_by', 'reposted_by', 'repost_context'
         ]
 
     def get_tags(self, obj):
@@ -229,6 +267,44 @@ class PostSerializer(serializers.ModelSerializer):
 
     def get_reposted_by(self, obj):
         return list(obj.reposts.values_list('user_id', flat=True))
+
+    def get_repost_context(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return None
+        try:
+            scope = request.query_params.get('feed') or request.query_params.get('following')
+            if not (scope == 'following' or (scope and str(scope).lower() in ['1', 'true', 'yes'])):
+                return None
+            following_ids = self.context.get('following_ids')
+            if following_ids is None:
+                from .models import Follow
+                following_ids = list(Follow.objects.filter(follower=request.user)\
+                    .values_list('followed_id', flat=True))
+                self.context['following_ids'] = following_ids
+            if not following_ids:
+                return None
+            repost = obj.reposts.filter(user_id__in=following_ids)\
+                .select_related('user', 'user__profile')\
+                .order_by('-created_at')\
+                .first()
+            if not repost:
+                return None
+            user = repost.user
+            avatar = None
+            try:
+                avatar_obj = getattr(user.profile, 'avatar', None)
+                if avatar_obj:
+                    avatar = request.build_absolute_uri(avatar_obj.url) if request else avatar_obj.url
+            except:
+                avatar = None
+            return {
+                'id': user.id,
+                'username': user.username,
+                'avatar': avatar
+            }
+        except Exception:
+            return None
 
     def create(self, validated_data):
         if 'event_input' in validated_data:

@@ -624,7 +624,7 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Post.objects.select_related('owner', 'event')\
-            .prefetch_related('tags', 'likes', 'reposts')
+            .prefetch_related('tags', 'likes', 'reposts', 'reposts__user__profile')
 
         if self.action != 'comments':
             qs = qs.filter(parent__isnull=True)
@@ -642,12 +642,16 @@ class PostViewSet(viewsets.ModelViewSet):
         if tag:
             qs = qs.filter(tags__name=tag.strip().lower())
 
+        author_id = self.request.query_params.get('author')
+        if author_id:
+            qs = qs.filter(owner_id=author_id)
+
         feed = self.request.query_params.get('feed')
         following = self.request.query_params.get('following')
         if feed == 'following' or (following and following.lower() in ['1', 'true', 'yes']):
             following_ids = Follow.objects.filter(follower=self.request.user)\
                 .values_list('followed_id', flat=True)
-            qs = qs.filter(owner_id__in=following_ids)
+            qs = qs.filter(Q(owner_id__in=following_ids) | Q(reposts__user_id__in=following_ids))
 
         ordering = self.request.query_params.get('ordering')
         if ordering:

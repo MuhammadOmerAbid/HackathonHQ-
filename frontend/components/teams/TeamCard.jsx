@@ -15,7 +15,7 @@
 
     return (
       <Link href={`/teams/${team.id}`} className="tm-card-link">
-        <div className="tm-card">
+        <div className="tm-card radial-card">
           {/* Top row */}
           <div className="tm-card-top">
             <div className="tm-card-avatar">

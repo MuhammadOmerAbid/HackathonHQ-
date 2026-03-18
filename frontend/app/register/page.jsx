@@ -24,9 +24,20 @@ export default function RegisterPage() {
       setPassword("");
     } catch (err) {
       console.error(err);
+      const data = err.response?.data;
+      let apiMessage =
+        data?.message ||
+        data?.detail ||
+        (Array.isArray(data?.non_field_errors) ? data.non_field_errors[0] : null);
+      if (!apiMessage && data && typeof data === "object") {
+        const firstKey = Object.keys(data)[0];
+        if (firstKey && Array.isArray(data[firstKey])) {
+          apiMessage = data[firstKey][0];
+        }
+      }
       setMessage({ 
         type: "error", 
-        text: err.response?.data?.message || "Registration failed. Please try again." 
+        text: apiMessage || "Registration failed. Please try again." 
       });
     } finally {
       setIsLoading(false);

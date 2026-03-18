@@ -48,101 +48,166 @@ export default function UserCard({ user, currentUser, onFollow, onMessage }) {
 
   return (
     <div className="user-card" onClick={() => router.push(`/users/${user.id}`)}>
-      <div className="user-card-avatar">
-        {user.avatar ? <img src={user.avatar} alt="" /> : user.username?.[0]?.toUpperCase()}
-        {user.is_active && <span className="user-card-active" />}
-      </div>
+      {/* Gradient overlay - exactly like your reference */}
+      <div className="card-gradient" />
       
-      <div className="user-card-info">
-        <div className="user-card-header">
-          <h3 className="user-card-name">{user.username}</h3>
-          {role && (
-            <span 
-              className="user-card-badge"
-              style={{ 
-                background: `${role.color}15`, 
-                color: role.color,
-                borderColor: `${role.color}30`
-              }}
-            >
-              {role.text}
-            </span>
+      <div className="card-content">
+        {/* Header with avatar and actions */}
+        <div className="user-header">
+          <div className="user-avatar-wrapper">
+            <div className="user-avatar">
+              {user.avatar ? (
+                <img src={user.avatar} alt="" />
+              ) : (
+                user.username?.[0]?.toUpperCase()
+              )}
+            </div>
+            {user.is_active && <span className="online-indicator" />}
+          </div>
+
+          <div className="user-actions">
+            {currentUser && currentUser.id !== user.id && (
+              <>
+                <button
+                  className={`action-follow ${isFollowing ? 'following' : ''}`}
+                  onClick={handleFollow}
+                  disabled={followLoading}
+                  title={isFollowing ? 'Unfollow' : 'Follow'}
+                >
+                  {followLoading ? (
+                    <span className="spinner" />
+                  ) : isFollowing ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <line x1="19" y1="8" x2="19" y2="14" />
+                      <line x1="22" y1="11" x2="16" y2="11" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  className="action-message"
+                  onClick={handleMessage}
+                  title="Send message"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* User info section */}
+        <div className="user-info">
+          <div className="user-name-row">
+            <h3 className="user-name">{user.username}</h3>
+            {role && (
+              <span 
+                className="role-badge"
+                style={{ 
+                  background: `${role.color}12`,
+                  color: role.color,
+                  borderColor: `${role.color}25`
+                }}
+              >
+                {role.text}
+              </span>
+            )}
+          </div>
+          
+          <p className="user-email">{user.email}</p>
+          
+          {user.organization_name && (
+            <p className="user-org">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+              {user.organization_name}
+            </p>
           )}
         </div>
-        
-        <p className="user-card-email">{user.email}</p>
-        
-        {user.organization_name && (
-          <p className="user-card-org">{user.organization_name}</p>
-        )}
 
-        <div className="user-card-stats">
-          <div className="user-card-stat">
+        {/* Stats section */}
+        <div className="user-stats">
+          <div className="stat-item">
             <span className="stat-value">{user.posts_count || 0}</span>
             <span className="stat-label">posts</span>
           </div>
-          <div className="user-card-stat">
+          <div className="stat-divider" />
+          <div className="stat-item">
             <span className="stat-value">{user.followers_count || 0}</span>
             <span className="stat-label">followers</span>
           </div>
-          <div className="user-card-stat">
+          <div className="stat-divider" />
+          <div className="stat-item">
             <span className="stat-value">{user.following_count || 0}</span>
             <span className="stat-label">following</span>
           </div>
         </div>
       </div>
 
-      <div className="user-card-actions" onClick={(e) => e.stopPropagation()}>
-        {currentUser && currentUser.id !== user.id && (
-          <>
-            <button
-              className={`user-card-follow-btn ${isFollowing ? 'following' : ''}`}
-              onClick={handleFollow}
-              disabled={followLoading}
-            >
-              {followLoading ? (
-                <span className="user-card-spinner" />
-              ) : isFollowing ? (
-                'Following'
-              ) : (
-                'Follow'
-              )}
-            </button>
-            
-            <button
-              className="user-card-message-btn"
-              onClick={handleMessage}
-              title={`Message ${user.username}`}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-            </button>
-          </>
-        )}
-      </div>
-
       <style jsx>{`
         .user-card {
-          background: #111114;
+          position: relative;
+          background: #111114;  /* Solid dark background */
           border: 1px solid #1e1e24;
           border-radius: 16px;
-          padding: 20px;
-          display: flex;
-          gap: 16px;
+          overflow: hidden;
           cursor: pointer;
-          transition: all 0.2s ease;
-          position: relative;
+          transition: all 0.3s ease;
         }
+
         .user-card:hover {
-          border-color: rgba(110,231,183,0.3);
-          background: #17171b;
           transform: translateY(-2px);
+          border-color: rgba(110,231,183,0.3);
           box-shadow: 0 8px 20px rgba(0,0,0,0.3);
         }
 
-        .user-card-avatar {
+        /* Gradient overlay - exactly like your reference */
+        .card-gradient {
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(
+            circle at top right,
+            rgba(110,231,183,0.12),
+            transparent 70%
+          );
+          opacity: 0;
+          transition: opacity 0.3s ease;
+          pointer-events: none;
+        }
+
+        .user-card:hover .card-gradient {
+          opacity: 1;
+        }
+
+        .card-content {
           position: relative;
+          z-index: 1;
+          padding: 20px;
+        }
+
+        .user-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          margin-bottom: 16px;
+        }
+
+        .user-avatar-wrapper {
+          position: relative;
+        }
+
+        .user-avatar {
           width: 64px;
           height: 64px;
           border-radius: 50%;
@@ -155,15 +220,16 @@ export default function UserCard({ user, currentUser, onFollow, onMessage }) {
           font-size: 24px;
           font-weight: 700;
           color: #6EE7B7;
-          flex-shrink: 0;
           overflow: hidden;
         }
-        .user-card-avatar img {
+
+        .user-avatar img {
           width: 100%;
           height: 100%;
           object-fit: cover;
         }
-        .user-card-active {
+
+        .online-indicator {
           position: absolute;
           bottom: 2px;
           right: 2px;
@@ -172,109 +238,21 @@ export default function UserCard({ user, currentUser, onFollow, onMessage }) {
           border-radius: 50%;
           background: #4ade80;
           border: 2px solid #111114;
-          box-shadow: 0 0 8px rgba(74,222,128,0.4);
+          box-shadow: 0 0 8px rgba(74,222,128,0.6);
+          animation: pulse 2s infinite;
         }
 
-        .user-card-info {
-          flex: 1;
-          min-width: 0;
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
         }
 
-        .user-card-header {
+        .user-actions {
           display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 4px;
-          flex-wrap: wrap;
-        }
-        .user-card-name {
-          font-size: 16px;
-          font-weight: 700;
-          color: #f0f0f3;
-          margin: 0;
-        }
-        .user-card-badge {
-          padding: 2px 10px;
-          border-radius: 100px;
-          font-size: 10px;
-          font-weight: 600;
-          border: 1px solid transparent;
+          gap: 6px;
         }
 
-        .user-card-email {
-          font-size: 12px;
-          color: #888;
-          margin: 0 0 4px;
-        }
-
-        .user-card-org {
-          font-size: 11px;
-          color: #6EE7B7;
-          margin: 0 0 12px;
-        }
-
-        .user-card-stats {
-          display: flex;
-          gap: 16px;
-        }
-        .user-card-stat {
-          display: flex;
-          flex-direction: column;
-        }
-        .stat-value {
-          font-size: 14px;
-          font-weight: 700;
-          color: #f0f0f3;
-        }
-        .stat-label {
-          font-size: 10px;
-          color: #5c5c6e;
-          text-transform: uppercase;
-        }
-
-        .user-card-actions {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          justify-content: center;
-        }
-
-        .user-card-follow-btn {
-          padding: 8px 16px;
-          border-radius: 100px;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          border: 1px solid;
-          min-width: 90px;
-          text-align: center;
-        }
-        .user-card-follow-btn:not(.following) {
-          background: #6EE7B7;
-          border-color: #4fb88b;
-          color: #0c0c0f;
-        }
-        .user-card-follow-btn:not(.following):hover {
-          background: #86efac;
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(110,231,183,0.3);
-        }
-        .user-card-follow-btn.following {
-          background: transparent;
-          border-color: #1e1e24;
-          color: #888;
-        }
-        .user-card-follow-btn.following:hover {
-          border-color: #f87171;
-          color: #f87171;
-        }
-        .user-card-follow-btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .user-card-message-btn {
+        .action-follow, .action-message {
           width: 36px;
           height: 36px;
           display: flex;
@@ -282,25 +260,124 @@ export default function UserCard({ user, currentUser, onFollow, onMessage }) {
           justify-content: center;
           background: transparent;
           border: 1px solid #1e1e24;
-          border-radius: 50%;
+          border-radius: 8px;
           color: #888;
           cursor: pointer;
           transition: all 0.2s ease;
         }
-        .user-card-message-btn:hover {
-          border-color: #6EE7B7;
-          color: #6EE7B7;
-          transform: scale(1.05);
+
+        .action-follow {
+          width: auto;
+          padding: 0 14px;
+          border-radius: 100px;
+          font-size: 12px;
+          font-weight: 600;
+          gap: 4px;
         }
 
-        .user-card-spinner {
-          display: inline-block;
+        .action-follow:hover, .action-message:hover {
+          border-color: rgba(110,231,183,0.4);
+          color: #6EE7B7;
+          background: rgba(110,231,183,0.05);
+        }
+
+        .action-follow.following {
+          background: rgba(110,231,183,0.1);
+          border-color: rgba(110,231,183,0.3);
+          color: #6EE7B7;
+        }
+
+        .action-follow:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .spinner {
           width: 12px;
           height: 12px;
           border: 2px solid currentColor;
           border-top-color: transparent;
           border-radius: 50%;
           animation: spin 0.6s linear infinite;
+        }
+
+        .user-info {
+          margin-bottom: 16px;
+        }
+
+        .user-name-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 4px;
+          flex-wrap: wrap;
+        }
+
+        .user-name {
+          font-size: 16px;
+          font-weight: 600;
+          color: #f0f0f3;
+          margin: 0;
+        }
+
+        .role-badge {
+          padding: 2px 8px;
+          border-radius: 100px;
+          font-size: 10px;
+          font-weight: 600;
+          border: 1px solid;
+          white-space: nowrap;
+        }
+
+        .user-email {
+          font-size: 12px;
+          color: #888;
+          margin: 0 0 4px;
+        }
+
+        .user-org {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 11px;
+          color: #6EE7B7;
+          margin: 0;
+        }
+
+        .user-stats {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px 0 0;
+          border-top: 1px solid #1e1e24;
+        }
+
+        .stat-item {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+        }
+
+        .stat-value {
+          font-size: 15px;
+          font-weight: 600;
+          color: #f0f0f3;
+          line-height: 1.2;
+        }
+
+        .stat-label {
+          font-size: 9px;
+          color: #5c5c6e;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .stat-divider {
+          width: 1px;
+          height: 20px;
+          background: #1e1e24;
         }
 
         @keyframes spin {

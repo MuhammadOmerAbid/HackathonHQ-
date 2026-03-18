@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import IntegrityError
 from django.contrib.auth import get_user_model
 from .models import (
     Post, Event, Team, Submission, JudgeFeedback,
@@ -23,6 +24,10 @@ class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
     is_organizer = serializers.SerializerMethodField()
     is_judge = serializers.SerializerMethodField()
+    posts_count = serializers.SerializerMethodField()
+    followers_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
     organization_name = serializers.SerializerMethodField()
     bio = serializers.SerializerMethodField()
     location = serializers.SerializerMethodField()
@@ -42,6 +47,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ["id", "username", "email", "first_name", "last_name",
                   "is_active", "is_staff", "is_superuser",
                   "profile",
+                  "posts_count", "followers_count", "following_count", "is_following",
                   "is_organizer", "is_judge", "organization_name", "bio", "location",
                   "avatar", "cover_image",
                   "github_url", "linkedin_url", "twitter_url", "website_url",
@@ -59,6 +65,38 @@ class UserSerializer(serializers.ModelSerializer):
             return bool(getattr(obj.profile, 'is_judge', False))
         except:
             return False
+
+    def get_posts_count(self, obj):
+        try:
+            return obj.posts.count()
+        except:
+            return 0
+
+    def get_followers_count(self, obj):
+        try:
+            return obj.followers_set.count()
+        except:
+            return 0
+
+    def get_following_count(self, obj):
+        try:
+            return obj.following_set.count()
+        except:
+            return 0
+
+    def get_is_following(self, obj):
+        """Check if the current user is following this user"""
+        request = self.context.get('request')
+        if request and request.user.is_authenticated and request.user != obj:
+            try:
+                from .models import Follow
+                return Follow.objects.filter(
+                    follower=request.user,
+                    followed=obj
+                ).exists()
+            except:
+                return False
+        return False
 
     def get_organization_name(self, obj):
         try:
@@ -164,6 +202,7 @@ class PostSerializer(serializers.ModelSerializer):
     comments_count = serializers.SerializerMethodField()
     liked_by = serializers.SerializerMethodField()
     reposted_by = serializers.SerializerMethodField()
+    repost_context = serializers.SerializerMethodField()
     
     class Meta:
         model = Post
@@ -173,7 +212,7 @@ class PostSerializer(serializers.ModelSerializer):
             'author', 'parent', 'event',
             'tags', 'tags_input', 'event_input',
             'likes_count', 'reposts_count', 'comments_count',
-            'liked_by', 'reposted_by'
+            'liked_by', 'reposted_by', 'repost_context'
         ]
 
     def get_tags(self, obj):
@@ -230,6 +269,44 @@ class PostSerializer(serializers.ModelSerializer):
     def get_reposted_by(self, obj):
         return list(obj.reposts.values_list('user_id', flat=True))
 
+    def get_repost_context(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return None
+        try:
+            scope = request.query_params.get('feed') or request.query_params.get('following')
+            if not (scope == 'following' or (scope and str(scope).lower() in ['1', 'true', 'yes'])):
+                return None
+            following_ids = self.context.get('following_ids')
+            if following_ids is None:
+                from .models import Follow
+                following_ids = list(Follow.objects.filter(follower=request.user)\
+                    .values_list('followed_id', flat=True))
+                self.context['following_ids'] = following_ids
+            if not following_ids:
+                return None
+            repost = obj.reposts.filter(user_id__in=following_ids)\
+                .select_related('user', 'user__profile')\
+                .order_by('-created_at')\
+                .first()
+            if not repost:
+                return None
+            user = repost.user
+            avatar = None
+            try:
+                avatar_obj = getattr(user.profile, 'avatar', None)
+                if avatar_obj:
+                    avatar = request.build_absolute_uri(avatar_obj.url) if request else avatar_obj.url
+            except:
+                avatar = None
+            return {
+                'id': user.id,
+                'username': user.username,
+                'avatar': avatar
+            }
+        except Exception:
+            return None
+
     def create(self, validated_data):
         if 'event_input' in validated_data:
             validated_data['event'] = validated_data.pop('event_input')
@@ -268,30 +345,58 @@ class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["username", "email", "password"]
+
+    def validate_username(self, value):
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError("Username already taken.")
+        return value
+
+    def validate_email(self, value):
+        if value and User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("Email already registered.")
+        return value
+
+    def validate_password(self, value):
+        if len(value) < 6:
+            raise serializers.ValidationError("Password must be at least 6 characters long.")
+        return value
     
     def create(self, validated_data):
-        user = User.objects.create_user(
-            username=validated_data["username"],
-            email=validated_data.get("email", ""),
-            password=validated_data["password"]
-        )
-        UserProfile.objects.create(user=user)
-        return user
+        try:
+            user = User.objects.create_user(
+                username=validated_data["username"],
+                email=validated_data.get("email", ""),
+                password=validated_data["password"]
+            )
+            UserProfile.objects.create(user=user)
+            return user
+        except IntegrityError:
+            raise serializers.ValidationError("User with these credentials already exists.")
+        except Exception:
+            raise serializers.ValidationError("Registration failed. Please try again.")
 
 class EventSerializer(serializers.ModelSerializer):
     organizer_details = UserSerializer(source='organizer', read_only=True)
     organizer_username = serializers.ReadOnlyField(source='organizer.username')
     teams_count = serializers.SerializerMethodField()
+    judges_count = serializers.SerializerMethodField()
+    judges_details = UserSerializer(source='judges', many=True, read_only=True)
     
     class Meta:
         model = Event
         fields = ['id', 'name', 'description', 'start_date', 'end_date',
                   'is_premium', 'organizer', 'organizer_username', 'organizer_details',
-                  'teams_count']
+                  'teams_count', 'judges_count', 'judges_details']
         read_only_fields = ['organizer']
     
     def get_teams_count(self, obj):
         return obj.teams.count()
+
+    def get_judges_count(self, obj):
+        try:
+            return obj.judges.count()
+        except Exception:
+            return 0
 
 class TeamSerializer(serializers.ModelSerializer):
     members_details = UserSerializer(source='members', many=True, read_only=True)
@@ -327,6 +432,10 @@ class SubmissionSerializer(serializers.ModelSerializer):
     # Feedback stats
     feedback_count = serializers.SerializerMethodField()
     average_score = serializers.SerializerMethodField()
+    required_judges_count = serializers.SerializerMethodField()
+    completed_judges_count = serializers.SerializerMethodField()
+    all_judges_scored = serializers.SerializerMethodField()
+    is_assigned_judge = serializers.SerializerMethodField()
     
     class Meta:
         model = Submission
@@ -340,6 +449,8 @@ class SubmissionSerializer(serializers.ModelSerializer):
             'is_reviewed', 'is_winner',
             'winner_place', 'winner_prize',
             'feedback_count', 'average_score',
+            'required_judges_count', 'completed_judges_count', 'all_judges_scored',
+            'is_assigned_judge',
         ]
         read_only_fields = ['score', 'submitted_by', 'is_reviewed']
 
@@ -361,6 +472,35 @@ class SubmissionSerializer(serializers.ModelSerializer):
         if obj.feedback.exists():
             return sum(f.score for f in obj.feedback.all()) / obj.feedback.count()
         return None
+
+    def get_required_judges_count(self, obj):
+        try:
+            return obj.team.event.judges.count()
+        except Exception:
+            return 0
+
+    def get_completed_judges_count(self, obj):
+        try:
+            event = obj.team.event
+            return obj.feedback.filter(judge__in=event.judges.all()).count()
+        except Exception:
+            return 0
+
+    def get_all_judges_scored(self, obj):
+        required = self.get_required_judges_count(obj)
+        if required == 0:
+            return False
+        completed = self.get_completed_judges_count(obj)
+        return completed >= required
+
+    def get_is_assigned_judge(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return False
+        try:
+            return obj.team.event.judges.filter(id=request.user.id).exists()
+        except Exception:
+            return False
 
 class JudgeFeedbackSerializer(serializers.ModelSerializer):
     judge_details = UserSerializer(source='judge', read_only=True)

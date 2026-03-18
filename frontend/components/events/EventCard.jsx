@@ -30,7 +30,7 @@ export default function EventCard({ event }) {
 
   return (
     <Link href={`/events/${event.id}`} className="ec-link">
-      <div className="ec-card">
+      <div className="ec-card radial-card">
 
         {/* Top strip */}
         <div className="ec-top">

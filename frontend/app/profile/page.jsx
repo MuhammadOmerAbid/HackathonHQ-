@@ -6,7 +6,6 @@ import axios from "@/utils/axios";
 import { useAuth } from "@/context/AuthContext";
 import ProfileSidebar from "@/components/profile/ProfileSidebar";
 import ProfileInfoCard from "@/components/profile/ProfileInfoCard";
-import ActivityCard from "@/components/profile/ActivityCard";
 import SettingsCard from "@/components/profile/SettingsCard";
 
 export default function ProfilePage() {
@@ -15,7 +14,8 @@ export default function ProfilePage() {
   const { user, isJudge, isOrganizer, logout, checkAuth } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || "profile");
+  const initialTab = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(initialTab === "activity" ? "profile" : (initialTab || "profile"));
   const [profileData, setProfileData] = useState({
     username: "",
     email: "",
@@ -56,7 +56,8 @@ export default function ProfilePage() {
   }, [user]);
 
   useEffect(() => {
-    setActiveTab(searchParams.get('tab') || "profile");
+    const nextTab = searchParams.get('tab') || "profile";
+    setActiveTab(nextTab === "activity" ? "profile" : nextTab);
   }, [searchParams]);
 
   const fetchProfileData = async () => {
@@ -384,13 +385,6 @@ export default function ProfilePage() {
                 onCoverChange={handleCoverChange}
                 onSubmit={handleSaveProfile}
                 saving={saving}
-              />
-            )}
-
-            {activeTab === "activity" && (
-              <ActivityCard
-                stats={stats}
-                isJudge={isJudge}
               />
             )}
 

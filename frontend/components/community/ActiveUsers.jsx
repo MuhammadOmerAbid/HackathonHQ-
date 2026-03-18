@@ -2,29 +2,39 @@
 
 import { useRouter } from "next/navigation";
 
-export default function ActiveUsers({ users = [] }) {
+export default function ActiveUsers({ users = [], loading = false }) {
   const router = useRouter();
   
 
   return (
     <div className="active-users-card">
       <h3>Active Now</h3>
-      <div className="active-users-grid">
-        {users.slice(0, 6).map(user => (
-          <div 
-            key={user.id} 
-            className="active-user"
-            onClick={() => router.push(`/users/${user.id}`)}
-          >
-            <div className="active-user-avatar">
-              {user.avatar ? <img src={user.avatar} alt="" /> : user.username?.[0]?.toUpperCase()}
-              <span className="active-indicator"></span>
-            </div>
-            <span className="active-user-name">{user.username}</span>
-          </div>
-        ))}
+      <div className="active-users-row">
+        {loading
+          ? Array.from({ length: 6 }).map((_, idx) => (
+              <div key={`active-skel-${idx}`} className="active-user skeleton">
+                <div className="active-user-avatar-wrap">
+                  <div className="active-user-avatar skeleton-circle" />
+                </div>
+                <span className="active-user-name skeleton-line" />
+              </div>
+            ))
+          : users.slice(0, 10).map(user => (
+              <div 
+                key={user.id} 
+                className="active-user"
+                onClick={() => router.push(`/users/${user.id}`)}
+              >
+                <div className="active-user-avatar-wrap">
+                  <div className="active-user-avatar">
+                    {user.avatar ? <img src={user.avatar} alt="" /> : user.username?.[0]?.toUpperCase()}
+                  </div>
+                  <span className="active-indicator"></span>
+                </div>
+                <span className="active-user-name">{user.username}</span>
+              </div>
+            ))}
       </div>
-      <button className="view-all-btn">View all</button>
 
       <style jsx>{`
         .active-users-card {
@@ -40,11 +50,30 @@ export default function ActiveUsers({ users = [] }) {
           color: #f0f0f3;
           margin: 0 0 16px 0;
         }
-        .active-users-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 16px;
-          margin-bottom: 16px;
+        .active-users-row {
+          display: flex;
+          gap: 14px;
+          overflow-x: auto;
+          padding-bottom: 4px;
+          scroll-behavior: smooth;
+        }
+        .active-users-row::-webkit-scrollbar {
+          height: 6px;
+        }
+        .active-users-row::-webkit-scrollbar-track {
+          background: #151519;
+          border-radius: 6px;
+        }
+        .active-users-row::-webkit-scrollbar-thumb {
+          background: #26262e;
+          border-radius: 6px;
+        }
+        .active-users-row::-webkit-scrollbar-thumb:hover {
+          background: rgba(110,231,183,0.4);
+        }
+        .active-users-row {
+          scrollbar-width: thin;
+          scrollbar-color: #26262e #151519;
         }
         .active-user {
           display: flex;
@@ -53,12 +82,22 @@ export default function ActiveUsers({ users = [] }) {
           gap: 6px;
           cursor: pointer;
           transition: transform 0.2s ease;
+          min-width: 64px;
         }
         .active-user:hover {
           transform: translateY(-2px);
         }
         .active-user:hover .active-user-name {
           color: #6EE7B7;
+        }
+        .active-user-avatar-wrap {
+          position: relative;
+          width: 48px;
+          height: 48px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: visible;
         }
         .active-user-avatar {
           position: relative;
@@ -87,8 +126,8 @@ export default function ActiveUsers({ users = [] }) {
         }
         .active-indicator {
           position: absolute;
-          bottom: 2px;
-          right: 2px;
+          bottom: -2px;
+          right: -2px;
           width: 10px;
           height: 10px;
           border-radius: 50%;
@@ -98,6 +137,7 @@ export default function ActiveUsers({ users = [] }) {
           z-index: 2;
         }
         .active-user-name {
+          display: block;
           font-size: 11px;
           color: #888;
           text-align: center;
@@ -106,20 +146,30 @@ export default function ActiveUsers({ users = [] }) {
           text-overflow: ellipsis;
           white-space: nowrap;
         }
-        .view-all-btn {
-          width: 100%;
-          padding: 10px;
-          background: transparent;
+        .skeleton-circle {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          background: linear-gradient(90deg, #17171b 25%, #1f1f26 37%, #17171b 63%);
+          background-size: 400% 100%;
+          animation: shimmer 1.6s infinite;
           border: 1px solid #1e1e24;
-          border-radius: 100px;
-          color: #888;
-          font-size: 12px;
-          cursor: pointer;
-          transition: all 0.2s ease;
         }
-        .view-all-btn:hover {
-          border-color: #6EE7B7;
-          color: #6EE7B7;
+        .skeleton-line {
+          width: 52px;
+          height: 8px;
+          border-radius: 6px;
+          background: linear-gradient(90deg, #17171b 25%, #1f1f26 37%, #17171b 63%);
+          background-size: 400% 100%;
+          animation: shimmer 1.6s infinite;
+        }
+        .active-user.skeleton {
+          cursor: default;
+          pointer-events: none;
+        }
+        @keyframes shimmer {
+          0% { background-position: 100% 0; }
+          100% { background-position: -100% 0; }
         }
       `}</style>
     </div>

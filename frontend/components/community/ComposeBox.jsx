@@ -135,7 +135,7 @@ export default function ComposeBox({ user, events = [], onPost, onCancel, replyT
                   }}
                   onClick={() => setActualPostType("announcement")}
                 >
-                  📢 Announcement
+                  Announcement
                 </button>
               )}
               
@@ -147,7 +147,7 @@ export default function ComposeBox({ user, events = [], onPost, onCancel, replyT
                   }}
                   onClick={() => setActualPostType("result")}
                 >
-                  🏆 Results
+                  Results
                 </button>
               )}
             </div>

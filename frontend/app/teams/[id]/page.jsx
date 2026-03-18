@@ -363,6 +363,10 @@ export default function TeamDetailPage() {
         .tmd-chat-avi {
           width: 28px;
           height: 28px;
+          min-width: 28px;
+          min-height: 28px;
+          flex: 0 0 28px;
+          flex-shrink: 0;
           border-radius: 50%;
           background: rgba(110,231,183,0.1);
           border: 1px solid rgba(110,231,183,0.2);
@@ -394,6 +398,8 @@ export default function TeamDetailPage() {
           color: #f0f0f3;
           font-size: 13px;
           line-height: 1.5;
+          overflow-wrap: anywhere;
+          word-break: break-word;
         }
         .tmd-chat-time {
           font-size: 10px;

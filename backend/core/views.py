@@ -20,10 +20,16 @@ from rest_framework.permissions import BasePermission
 from rest_framework import filters
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Count, Q
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.views import APIView
+from django.http import StreamingHttpResponse
+from django.core.serializers.json import DjangoJSONEncoder
+import json
+import time
+from rest_framework.exceptions import PermissionDenied
 
 User = get_user_model()
 
@@ -123,7 +129,7 @@ class UserViewSet(viewsets.ModelViewSet):
         if self.action in ['make_judge', 'remove_judge', 'warn', 'suspend', 'reactivate', 'ban']:
             return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
         if self.action in ['me', 'list', 'retrieve', 'activities', 'change_password', 'verify_password',
-                           'delete_account', 'directory', 'trending', 'suggested', 'follow', 'unfollow']:
+                           'delete_account', 'directory', 'trending', 'suggested', 'follow', 'unfollow', 'judges']:
             return [IsAuthenticated(), IsNotBanned()]
         return [IsAuthenticated(), IsNotBanned()]
     
@@ -214,6 +220,16 @@ class UserViewSet(viewsets.ModelViewSet):
             users = users.filter(id__in=following_ids)
         users = users.exclude(id=request.user.id)[:limit]
         serializer = UserDirectorySerializer(users, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def judges(self, request):
+        """List eligible judges (organizers can assign)."""
+        q = (request.query_params.get('q') or '').strip()
+        qs = User.objects.filter(profile__is_judge=True).select_related('profile').order_by('username')
+        if q:
+            qs = qs.filter(Q(username__icontains=q) | Q(email__icontains=q))
+        serializer = UserSerializer(qs[:100], many=True, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
@@ -624,7 +640,7 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Post.objects.select_related('owner', 'event')\
-            .prefetch_related('tags', 'likes', 'reposts')
+            .prefetch_related('tags', 'likes', 'reposts', 'reposts__user__profile')
 
         if self.action != 'comments':
             qs = qs.filter(parent__isnull=True)
@@ -642,12 +658,16 @@ class PostViewSet(viewsets.ModelViewSet):
         if tag:
             qs = qs.filter(tags__name=tag.strip().lower())
 
+        author_id = self.request.query_params.get('author')
+        if author_id:
+            qs = qs.filter(owner_id=author_id)
+
         feed = self.request.query_params.get('feed')
         following = self.request.query_params.get('following')
         if feed == 'following' or (following and following.lower() in ['1', 'true', 'yes']):
             following_ids = Follow.objects.filter(follower=self.request.user)\
                 .values_list('followed_id', flat=True)
-            qs = qs.filter(owner_id__in=following_ids)
+            qs = qs.filter(Q(owner_id__in=following_ids) | Q(reposts__user_id__in=following_ids))
 
         ordering = self.request.query_params.get('ordering')
         if ordering:
@@ -766,6 +786,11 @@ class EventViewSet(viewsets.ModelViewSet):
     serializer_class = EventSerializer
     permission_classes = [IsOrganizerOrAdmin]
 
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'live', 'teams', 'submissions']:
+            return [IsAuthenticated(), IsNotBanned()]
+        return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
+
     def perform_create(self, serializer):
         serializer.save(organizer=self.request.user)
 
@@ -783,7 +808,32 @@ class EventViewSet(viewsets.ModelViewSet):
         serializer = SubmissionSerializer(submissions, many=True, context={'request': request})
         return Response(serializer.data)
 
-    @action(detail=False, methods=["get"], permission_classes=[AllowAny])
+    @action(detail=True, methods=["get", "put"], permission_classes=[IsAuthenticated, IsOrganizerOrAdmin])
+    def judges(self, request, pk=None):
+        event = self.get_object()
+        if not (request.user.is_staff or request.user.is_superuser or event.organizer == request.user):
+            return Response({"error": "Only the organizer can manage judges for this event."}, status=status.HTTP_403_FORBIDDEN)
+
+        if request.method == "GET":
+            serializer = UserSerializer(event.judges.all(), many=True, context={'request': request})
+            return Response({
+                "count": event.judges.count(),
+                "judges": serializer.data
+            })
+
+        judge_ids = request.data.get('judges', [])
+        if isinstance(judge_ids, str):
+            judge_ids = [j.strip() for j in judge_ids.split(',') if j.strip()]
+
+        valid_judges = User.objects.filter(id__in=judge_ids, profile__is_judge=True)
+        event.judges.set(valid_judges)
+        serializer = UserSerializer(event.judges.all(), many=True, context={'request': request})
+        return Response({
+            "count": event.judges.count(),
+            "judges": serializer.data
+        })
+
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated, IsNotBanned])
     def live(self, request):
         now = timezone.now()
         events = Event.objects.filter(start_date__lte=now, end_date__gte=now).order_by('start_date')
@@ -798,8 +848,8 @@ class TeamViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [permissions.AllowAny()]
-        return [IsAuthenticated()]
+            return [IsAuthenticated(), IsNotBanned()]
+        return [IsAuthenticated(), IsNotBanned()]
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -927,9 +977,17 @@ class SubmissionViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
 
         elif request.method in ["POST", "PUT"]:
-            if not (is_judge(request.user) or is_organizer(request.user) or request.user.is_staff or request.user.is_superuser):
+            event = submission.team.event if submission.team else None
+            is_assigned_judge = False
+            if event and request.user.is_authenticated:
+                is_assigned_judge = event.judges.filter(id=request.user.id).exists()
+
+            if not (
+                request.user.is_staff or request.user.is_superuser or
+                (is_judge(request.user) and is_assigned_judge)
+            ):
                 return Response(
-                    {"error": "Only judges, organizers, and admins can submit feedback."},
+                    {"error": "Only assigned judges or admins can submit feedback."},
                     status=status.HTTP_403_FORBIDDEN
                 )
 
@@ -993,8 +1051,12 @@ class SubmissionViewSet(viewsets.ModelViewSet):
             return Response({"error": "Only organizers can mark winners."}, status=status.HTTP_403_FORBIDDEN)
 
         submission = self.get_object()
+        if not submission.is_reviewed:
+            return Response(
+                {"error": "Cannot mark winner until all assigned judges have scored."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         submission.is_winner = request.data.get('is_winner', True)
-        submission.is_reviewed = True
         submission.winner_place = request.data.get('winner_place', '')
         submission.winner_prize = request.data.get('winner_prize', '')
         submission.save()
@@ -1031,6 +1093,11 @@ class JudgeFeedbackViewSet(viewsets.ModelViewSet):
         ).order_by('-created_at')
 
     def perform_create(self, serializer):
+        submission = serializer.validated_data.get('submission')
+        event = submission.team.event if submission and submission.team else None
+        if not (self.request.user.is_staff or self.request.user.is_superuser):
+            if not event or not event.judges.filter(id=self.request.user.id).exists():
+                raise PermissionDenied("Only assigned judges can submit feedback.")
         serializer.save(judge=self.request.user)
 
     def update(self, request, *args, **kwargs):
@@ -1227,3 +1294,171 @@ class NotificationsUnreadCount(APIView):
 
     def get(self, request):
         return Response({"count": 0})
+
+
+def _build_daily_series(qs, date_field, days=30):
+    today = timezone.now().date()
+    start = today - timedelta(days=days - 1)
+    data = (
+        qs.filter(**{f"{date_field}__date__gte": start})
+        .annotate(day=TruncDate(date_field))
+        .values('day')
+        .annotate(count=Count('id'))
+        .order_by('day')
+    )
+    counts = {item['day']: item['count'] for item in data}
+    series = []
+    for i in range(days):
+        day = start + timedelta(days=i)
+        series.append({
+            'date': day.isoformat(),
+            'count': counts.get(day, 0)
+        })
+    return series
+
+
+def _build_overview_analytics(user=None):
+    now = timezone.now()
+    events_qs = Event.objects.all()
+    teams_qs = Team.objects.all()
+    submissions_qs = Submission.objects.all()
+    users_qs = User.objects.all()
+    judges_qs = User.objects.filter(profile__is_judge=True)
+
+    live_events = events_qs.filter(start_date__lte=now, end_date__gte=now).count()
+    upcoming_events = events_qs.filter(start_date__gt=now).count()
+    reviewed_count = submissions_qs.filter(is_reviewed=True).count()
+    activity_qs = Activity.objects.none()
+    if user and user.is_authenticated:
+        activity_qs = Activity.objects.filter(user=user)
+
+    return {
+        'stats': {
+            'events_total': events_qs.count(),
+            'events_live': live_events,
+            'events_upcoming': upcoming_events,
+            'teams_total': teams_qs.count(),
+            'submissions_total': submissions_qs.count(),
+            'users_total': users_qs.count(),
+            'judges_total': judges_qs.count(),
+            'reviewed_total': reviewed_count,
+            'review_rate': (reviewed_count / submissions_qs.count()) if submissions_qs.exists() else 0,
+        },
+        'series': {
+            'submissions': _build_daily_series(submissions_qs, 'created_at'),
+            'users': _build_daily_series(users_qs, 'date_joined'),
+            'reviews': _build_daily_series(JudgeFeedback.objects.all(), 'created_at'),
+        },
+        'recent_activity': ActivitySerializer(activity_qs.order_by('-created_at')[:8], many=True).data,
+        'recent_events': EventSerializer(events_qs.order_by('-start_date')[:5], many=True).data,
+        'top_teams': list(
+            Team.objects.annotate(
+                submissions_count=Count('submissions', distinct=True),
+                members_count=Count('members', distinct=True)
+            ).order_by('-submissions_count', '-members_count')[:6].values(
+                'id', 'name', 'event__name', 'submissions_count', 'members_count'
+            )
+        ),
+        'updated_at': now.isoformat()
+    }
+
+
+def _build_judge_analytics(user):
+    now = timezone.now()
+    submissions_qs = Submission.objects.filter(team__event__judges=user).select_related('team', 'team__event')
+    feedback_qs = JudgeFeedback.objects.filter(judge=user)
+
+    assigned_total = submissions_qs.count()
+    my_feedback_count = feedback_qs.count()
+    pending_for_judge = submissions_qs.exclude(feedback__judge=user).count()
+    completed_for_judge = submissions_qs.filter(feedback__judge=user).count()
+    events_assigned = Event.objects.filter(judges=user).count()
+
+    # Score distribution buckets
+    buckets = [
+        {'label': '0-2', 'min': 0, 'max': 2},
+        {'label': '2-4', 'min': 2, 'max': 4},
+        {'label': '4-6', 'min': 4, 'max': 6},
+        {'label': '6-8', 'min': 6, 'max': 8},
+        {'label': '8-10', 'min': 8, 'max': 10.1},
+    ]
+    dist = []
+    for b in buckets:
+        count = feedback_qs.filter(score__gte=b['min'], score__lt=b['max']).count()
+        dist.append({'label': b['label'], 'count': count})
+
+    assigned_queue = []
+    for sub in submissions_qs.order_by('-created_at')[:12]:
+        my_fb = sub.feedback.filter(judge=user).first()
+        assigned_queue.append({
+            'id': sub.id,
+            'title': sub.title,
+            'team_name': sub.team.name if sub.team else None,
+            'event_name': sub.team.event.name if sub.team and sub.team.event else None,
+            'created_at': sub.created_at.isoformat(),
+            'is_reviewed': sub.is_reviewed,
+            'my_score': my_fb.score if my_fb else None,
+            'required_judges_count': sub.team.event.judges.count() if sub.team and sub.team.event else 0,
+            'completed_judges_count': sub.feedback.filter(judge__in=sub.team.event.judges.all()).count() if sub.team and sub.team.event else 0,
+        })
+
+    return {
+        'stats': {
+            'assigned_total': assigned_total,
+            'pending_for_judge': pending_for_judge,
+            'completed_for_judge': completed_for_judge,
+            'events_assigned': events_assigned,
+            'my_feedbacks': my_feedback_count
+        },
+        'series': {
+            'my_scores': _build_daily_series(feedback_qs, 'created_at'),
+            'assigned': _build_daily_series(submissions_qs, 'created_at')
+        },
+        'score_distribution': dist,
+        'assigned_queue': assigned_queue,
+        'updated_at': now.isoformat()
+    }
+
+
+class AnalyticsOverview(APIView):
+    permission_classes = [IsAuthenticated, IsNotBanned]
+
+    def get(self, request):
+        return Response(_build_overview_analytics(request.user))
+
+
+class AnalyticsJudge(APIView):
+    permission_classes = [IsAuthenticated, IsNotBanned]
+
+    def get(self, request):
+        if not is_judge(request.user):
+            return Response({"error": "Only judges can access this endpoint."}, status=status.HTTP_403_FORBIDDEN)
+        return Response(_build_judge_analytics(request.user))
+
+
+class AnalyticsStream(APIView):
+    permission_classes = [IsAuthenticated, IsNotBanned]
+
+    def get(self, request):
+        channel = request.query_params.get('channel', 'overview')
+        if channel not in ['overview', 'judge']:
+            return Response({"error": "Invalid channel."}, status=status.HTTP_400_BAD_REQUEST)
+        if channel == 'judge' and not is_judge(request.user):
+            return Response({"error": "Only judges can access this channel."}, status=status.HTTP_403_FORBIDDEN)
+
+        def event_stream():
+            try:
+                while True:
+                    if channel == 'overview':
+                        payload = _build_overview_analytics(request.user)
+                    else:
+                        payload = _build_judge_analytics(request.user)
+                    yield f"data: {json.dumps(payload, cls=DjangoJSONEncoder)}\n\n"
+                    time.sleep(5)
+            except GeneratorExit:
+                return
+
+        response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        return response

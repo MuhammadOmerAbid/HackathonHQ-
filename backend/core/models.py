@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -46,9 +47,26 @@ class Event(models.Model):
     end_date = models.DateTimeField()
     is_premium = models.BooleanField(default=False)
     organizer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="organized_events")
+    judges = models.ManyToManyField(
+        User,
+        through='EventJudge',
+        related_name='judged_events',
+        blank=True
+    )
     
     def __str__(self):
         return self.name
+
+class EventJudge(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='event_judges')
+    judge = models.ForeignKey(User, on_delete=models.CASCADE, related_name='event_judges')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('event', 'judge')
+
+    def __str__(self):
+        return f"{self.judge.username} -> {self.event.name}"
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
@@ -193,6 +211,7 @@ class Submission(models.Model):
     score = models.FloatField(default=0)
     is_reviewed = models.BooleanField(default=False)
     is_winner = models.BooleanField(default=False)
+    judging_complete_at = models.DateTimeField(null=True, blank=True)
     winner_place = models.CharField(
         max_length=20, blank=True, null=True, choices=WINNER_PLACE_CHOICES
     )
@@ -207,10 +226,47 @@ class Submission(models.Model):
         if feedbacks.exists():
             total = sum(f.score for f in feedbacks)
             self.score = total / feedbacks.count()
-            self.is_reviewed = True
         else:
             self.score = 0
-            self.is_reviewed = False
+
+        event = self.team.event if self.team else None
+        required_judges = event.judges.count() if event else 0
+        completed_judges = 0
+        if event:
+            completed_judges = feedbacks.filter(judge__in=event.judges.all()).count()
+
+        was_complete = self.judging_complete_at is not None
+        is_complete = required_judges > 0 and completed_judges >= required_judges
+        self.is_reviewed = is_complete
+
+        if is_complete and not was_complete:
+            self.judging_complete_at = timezone.now()
+            try:
+                exists = Activity.objects.filter(
+                    user=event.organizer,
+                    submission=self,
+                    type='review'
+                ).exists()
+                if not exists:
+                    Activity.objects.create(
+                        user=event.organizer,
+                        type='review',
+                        title='Judging Complete',
+                        description=f'All judges scored "{self.title}".',
+                        metadata={
+                            'event_id': event.id,
+                            'submission_id': self.id,
+                            'required_judges': required_judges,
+                            'completed_judges': completed_judges
+                        },
+                        submission=self,
+                        event=event
+                    )
+            except Exception:
+                pass
+        elif not is_complete:
+            self.judging_complete_at = None
+
         self.save()
         return self.score
 

@@ -111,7 +111,7 @@ export default function CreatePostModal({ user, onClose, onPost }) {
             }}
             onClick={() => setPostType("post")}
           >
-            📝 Post
+            Post
           </button>
           {canPostSpecial && (
             <button
@@ -121,7 +121,7 @@ export default function CreatePostModal({ user, onClose, onPost }) {
               }}
               onClick={() => setPostType("announcement")}
             >
-              📢 Announcement
+              Announcement
             </button>
           )}
           {canPostSpecial && (
@@ -132,7 +132,7 @@ export default function CreatePostModal({ user, onClose, onPost }) {
               }}
               onClick={() => setPostType("result")}
             >
-              🏆 Results
+              Results
             </button>
           )}
         </div>

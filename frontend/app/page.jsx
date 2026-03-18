@@ -1,471 +1,638 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import Link from "next/link";
+import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import axios from "../utils/axios";
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import useSSE from "@/utils/useSSE";
 
-/* ─────────────────────────────────────────────────────────────
-   DESIGN SYSTEM (keep your existing ICONS and SparkChart here)
-───────────────────────────────────────────────────────────── */
-
-/* ─── ICONS ─── (keep your existing ICONS object) */
-const Icon = ({ d, size = 16, ...props }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" className="icon" style={{ display: "block" }} {...props}>
+const Icon = ({ d, size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" className="rt-icon">
     {Array.isArray(d) ? d.map((p, i) => <path key={i} d={p} />) : <path d={d} />}
   </svg>
 );
 
 const ICONS = {
-  logo:        "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
-  events:      ["M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"],
-  teams:       ["M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2", "M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75", "M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0"],
-  submit:      ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"],
-  posts:       ["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"],
-  profile:     ["M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2", "M12 3m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0"],
-  arrow:       "M5 12h14M12 5l7 7-7 7",
-  arrowRight:  "M9 18l6-6-6-6",
-  plus:        "M12 5v14M5 12h14",
-  bell:        ["M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9", "M13.73 21a2 2 0 0 1-3.46 0"],
-  search:      ["M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0"],
-  team_act:    ["M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2", "M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0", "M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"],
-  file:        ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z", "M14 2v6h6M16 13H8M16 17H8M10 9H8"],
-  zap:         "M13 2L3 14h9l-1 8 10-12h-9l1-8z",
-  trophy:      ["M6 9H3l3-7h12l3 7h-3", "M6 9c0 5.523 2.686 10 6 10s6-4.477 6-10", "M12 19v3M8 22h8"],
+  events: ["M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"],
+  users: ["M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2", "M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0", "M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"],
+  teams: ["M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2", "M9 7m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0"],
+  submit: ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"],
+  pulse: ["M3 12h4l2-5 4 10 2-5h4"],
+  trophy: ["M6 9H3l3-7h12l3 7h-3", "M6 9c0 5.523 2.686 10 6 10s6-4.477 6-10", "M12 19v3M8 22h8"],
+  arrowRight: ["M5 12h14M12 5l7 7-7 7"],
 };
 
-/* ─── SVG SPARKLINE CHART ─── */
-function SparkChart({ data, color = "var(--accent)", h = 52 }) {
-  const max = Math.max(...data), min = Math.min(...data), w = 200;
-  const xs = w / (data.length - 1);
-  const pts = data.map((v, i) => {
-    const x = i * xs;
+function LineChart({ series, color = "#6EE7B7" }) {
+  const w = 200;
+  const h = 60;
+  const values = series?.map((s) => s.count) || [];
+  const max = Math.max(1, ...values);
+  const min = Math.min(...values, 0);
+  const step = values.length > 1 ? w / (values.length - 1) : w;
+  const points = values.map((v, i) => {
+    const x = i * step;
     const y = h - ((v - min) / (max - min || 1)) * (h - 8) - 4;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" L");
-  const area = `M0,${h} L${pts} L${w},${h} Z`;
-  const id = `sg${Math.random().toString(36).slice(2,6)}`;
+  });
+  const path = points.join(" L");
+  const area = `M0,${h} L${path} L${w},${h} Z`;
+  const id = `grad-${Math.random().toString(36).slice(2, 6)}`;
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: h }} preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="rt-chart">
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.18" />
+          <stop offset="0%" stopColor={color} stopOpacity="0.2" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
       <path d={area} fill={`url(#${id})`} />
-      <path d={`M${pts}`} fill="none" stroke={color} strokeWidth="1.5"
-        strokeLinecap="round" strokeLinejoin="round" />
+      <path d={`M${path}`} fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-/* ─── MAIN COMPONENT ─── */
+const timeAgo = (ts) => {
+  if (!ts) return "";
+  const date = new Date(ts);
+  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+  const mins = Math.floor(diff / 60);
+  const hrs = Math.floor(mins / 60);
+  const days = Math.floor(hrs / 24);
+  if (mins < 60) return `${mins}m ago`;
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${days}d ago`;
+};
+
 export default function DashboardPage() {
-  const [stats, setStats] = useState({ events: { total: 0, live: 0, upcoming: 0 }, teams: 0, submissions: 0, users: 0 });
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
   const router = useRouter();
+  const { user } = useAuth();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const hasToken = typeof window !== "undefined" && !!localStorage.getItem("access");
+  const { data: sseData } = useSSE("/analytics/stream/?channel=overview", {
+    enabled: hasToken,
+    onMessage: (payload) => {
+      setData(payload);
+      setLoading(false);
+    },
+  });
 
   useEffect(() => {
-  const fetchData = async () => {
-    try {
-      // Fetch all data in parallel with error handling for each
-      const [eR, tR, sR, uR] = await Promise.allSettled([
-        axios.get("/events/"),
-        axios.get("/teams/"),
-        axios.get("/submissions/"),
-        axios.get("/users/")
-      ]);
-
-      // Handle events
-      const evts = eR.status === 'fulfilled' ? (eR.value.data.results || eR.value.data || []) : [];
-      const teams = tR.status === 'fulfilled' ? (tR.value.data.results || tR.value.data || []) : [];
-      const subs = sR.status === 'fulfilled' ? (sR.value.data.results || sR.value.data || []) : [];
-      
-      // FIX: Get the TOTAL user count from the API response
-      let userCount = 0;
-      if (uR.status === 'fulfilled') {
-        // If paginated, use the count field
-        if (uR.value.data.count !== undefined) {
-          userCount = uR.value.data.count;
-        } 
-        // Otherwise count the results array
-        else {
-          const usersArray = uR.value.data.results || uR.value.data || [];
-          userCount = usersArray.length;
-        }
+    const fetchInitial = async () => {
+      try {
+        const res = await axios.get("/analytics/overview/");
+        setData(res.data);
+      } catch (e) {
+        setError("Failed to load analytics.");
+      } finally {
+        setLoading(false);
       }
+    };
+    fetchInitial();
+  }, []);
 
-      const now = new Date();
-      const live = evts.filter(e => new Date(e.start_date) <= now && new Date(e.end_date) >= now);
-      const upcoming = evts.filter(e => new Date(e.start_date) > now);
+  useEffect(() => {
+    if (sseData) setData(sseData);
+  }, [sseData]);
 
-      setStats({
-        events: { total: evts.length, live: live.length, upcoming: upcoming.length },
-        teams: teams.length,
-        submissions: subs.length,
-        users: userCount // Now using the total count, not just first page
-      });
-      
-      setEvents(evts.slice(0, 5));
-    } catch (err) {
-      console.error("Error fetching dashboard data:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-  fetchData();
-}, []);
+  // All hooks at the top level - FIXED
+  const stats = data?.stats || {};
+  const series = data?.series || {};
+  const recentActivity = data?.recent_activity || [];
+  const recentEvents = data?.recent_events || [];
+  const topTeams = data?.top_teams || [];
 
-  const chartData = [14, 22, 18, 35, 28, 44, 38, 52, 46, 61, 55, 68];
-  const subChartData = [8, 12, 9, 20, 15, 28, 22, 35, 30, 42, 38, 48];
-
-  const recentActivity = [
-    { id: 1, icon: "team_act",  accent: true,  msg: <><strong>Code Warriors</strong> registered a new team</>, time: "2 hours ago" },
-    { id: 2, icon: "file",      accent: false, msg: <><strong>Project Atlas</strong> submitted to TechFest 2025</>, time: "5 hours ago" },
-    { id: 3, icon: "zap",       accent: true,  msg: <><strong>HackBuild Spring</strong> is now live</>, time: "1 day ago" },
-    { id: 4, icon: "profile",   accent: false, msg: <><strong>jane_dev</strong> joined the platform</>, time: "2 days ago" },
-    { id: 5, icon: "trophy",    accent: true,  msg: <><strong>Team Quantum</strong> won Best Innovation award</>, time: "3 days ago" },
-  ];
-
-  const mockTeams = [
-    { name: "Code Warriors", event: "TechFest 2025",    members: 4, completion: 60,  status: "active" },
-    { name: "Team Quantum",  event: "HackBuild Spring", members: 3, completion: 100, status: "done" },
-    { name: "Dev Ninjas",    event: "HackBuild Spring", members: 5, completion: 25,  status: "active" },
-    { name: "BuildFast",     event: "OpenHack III",     members: 2, completion: 10,  status: "active" },
-  ];
-
-  const eventStatus = (e) => {
-    const now = new Date();
-    if (new Date(e.start_date) > now) return "soon";
-    if (new Date(e.end_date) >= now) return "live";
-    return "closed";
-  };
+  const reviewRate = useMemo(() => {
+    const rate = stats.review_rate || 0;
+    return Math.min(100, Math.round(rate * 100));
+  }, [stats.review_rate]);
 
   if (loading) {
     return (
-      <div className="dash-loading">
-        <div className="dash-loading-ring" />
-        <span className="dash-loading-label">Loading dashboard</span>
+      <div className="rt-loading">
+        <div className="rt-loading-ring" />
+        <span>Loading live analytics...</span>
       </div>
     );
   }
 
   return (
-    <>
-      <style jsx>{`
-      /* ── Circular Action Buttons ── */
-.dash-action-outline-circle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.6rem 1.5rem;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 100px;  /* Circular shape */
-  color: #fff;
-  font-size: 0.9rem;
-  font-weight: 500;
-  font-family: 'DM Sans', sans-serif;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-decoration: none;
-  white-space: nowrap;
-  backdrop-filter: blur(5px);
-}
-
-.dash-action-outline-circle:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: #6EE7B7;
-  color: #fff;
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(110, 231, 183, 0.15);
-}
-
-.dash-action-primary-circle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.6rem 1.5rem;
-  background: #6EE7B7;
-  border: 1px solid #4fb88b;
-  border-radius: 100px;  /* Circular shape */
-  color: #0c0c0f;
-  font-size: 0.9rem;
-  font-weight: 600;
-  font-family: 'DM Sans', sans-serif;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-decoration: none;
-  white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(110, 231, 183, 0.2);
-}
-
-.dash-action-primary-circle:hover {
-  background: #86efac;
-  border-color: #3a9e75;
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(110, 231, 183, 0.3);
-}
-
-.dash-action-primary-circle svg {
-  width: 16px;
-  height: 16px;
-  display: block;
-  flex-shrink: 0;
-  stroke: #0c0c0f;
-}
-
-      `}</style>
-    <div className="dash-page">
-      <main className="dash-main">
-        {/* Page header */}
-        <div className="dash-header">
+    <div className="rt-page">
+      <main className="rt-wrap">
+        <div className="rt-header">
           <div>
-            <div className="dash-header-eyebrow">
-              <div className="dash-header-dot" />
-              <span className="dash-header-label">Overview</span>
+            <div className="rt-eyebrow">
+              <span className="rt-dot" />
+              <span className="rt-label">Realtime Control Room</span>
             </div>
-            <h1 className="dash-title">
-              {user ? `Welcome back, ${user.username}` : "Platform Dashboard"}
+            <h1 className="rt-title">
+              {user ? `Welcome back, ${user.username}` : "Analytics Dashboard"}
             </h1>
-            <p className="dash-subtitle">
-              Everything happening across your hackathon platform, at a glance.
+            <p className="rt-subtitle">
+              Live activity across events, teams, and submissions. Updated every few seconds.
             </p>
           </div>
-          <div className="dash-header-actions">
-  <button 
-    onClick={() => router.push('/events')} 
-    className="dash-action-outline-circle"
-  >
-    Browse events
-  </button>
-  <button 
-    onClick={() => router.push('/teams/create')} 
-    className="dash-action-primary-circle"
-  >
-    <Icon d={ICONS.plus} size={16} />
-    Create team
-  </button>
-</div>
+          <div className="rt-actions">
+            {/* FIXED: Replaced Links with proper buttons */}
+            <button 
+              onClick={() => router.push('/events')} 
+              className="rt-btn rt-btn-ghost"
+            >
+              Browse Events
+            </button>
+            <button 
+              onClick={() => router.push('/submissions')} 
+              className="rt-btn rt-btn-primary"
+            >
+              View Submissions
+            </button>
+          </div>
         </div>
 
-        {/* Stat strip */}
-        <div className="dash-stats">
+        {error && <div className="rt-error">{error}</div>}
+
+        <div className="rt-stats">
           {[
-            {
-              label: "Total events",
-              value: stats.events.total,
-              sub: <><span className="dash-stat-badge badge-green">{stats.events.live} live</span><span style={{color:"var(--muted)"}}>·</span><span className="dash-stat-badge badge-yellow">{stats.events.upcoming} upcoming</span></>,
-            },
-            {
-              label: "Registered teams",
-              value: stats.teams,
-              sub: <span className="dash-stat-badge badge-neutral">across all events</span>,
-            },
-            {
-              label: "Submissions",
-              value: stats.submissions,
-              sub: <span className="dash-stat-badge badge-green">+8% this week</span>,
-            },
-            {
-              label: "Platform users",
-              value: stats.users,
-              sub: <span className="dash-stat-badge badge-neutral">total registered</span>,
-            },
+            { label: "Events", value: stats.events_total, sub: `${stats.events_live || 0} live / ${stats.events_upcoming || 0} upcoming`, icon: "events" },
+            { label: "Teams", value: stats.teams_total, sub: "Registered teams", icon: "teams" },
+            { label: "Submissions", value: stats.submissions_total, sub: `${stats.reviewed_total || 0} reviewed`, icon: "submit" },
+            { label: "Users", value: stats.users_total, sub: `${stats.judges_total || 0} judges`, icon: "users" },
           ].map((s, i) => (
-            <div className="dash-stat" key={i}>
-              <div className="dash-stat-label">{s.label}</div>
-              <div className="dash-stat-value">{s.value}</div>
-              <div className="dash-stat-sub" style={{ flexWrap: "wrap", gap: 6 }}>{s.sub}</div>
+            <div className="rt-stat" key={i}>
+              <div className="rt-stat-icon"><Icon d={ICONS[s.icon]} size={18} /></div>
+              <div>
+                <div className="rt-stat-label">{s.label}</div>
+                <div className="rt-stat-value">{s.value ?? 0}</div>
+                <div className="rt-stat-sub">{s.sub}</div>
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Welcome + sparklines */}
-        <div className="dash-welcome">
-          <div className="dash-welcome-left">
-            <div className="dash-welcome-greeting">
-              {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+        <div className="rt-grid">
+          <div className="rt-card">
+            <div className="rt-card-head">
+              <h3>Submissions Trend</h3>
+              <span className="rt-pill">Last 30 days</span>
             </div>
-            <div className="dash-welcome-name">
-              {user ? `Good to see you, ${user.username}` : "Your hackathon hub"}
-            </div>
-            <div className="dash-welcome-desc">
-              {stats.events.live > 0
-                ? `${stats.events.live} event${stats.events.live > 1 ? "s are" : " is"} live right now. Don't miss the deadline.`
-                : "No events live right now. Check upcoming events below."}
-            </div>
+            <LineChart series={series.submissions || []} color="#6EE7B7" />
           </div>
-          <div className="dash-welcome-right">
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6, letterSpacing: "0.5px", textTransform: "uppercase", fontWeight: 600 }}>Submissions</div>
-              <div style={{ width: 160 }}>
-                <SparkChart data={subChartData} />
+          <div className="rt-card">
+            <div className="rt-card-head">
+              <h3>User Growth</h3>
+              <span className="rt-pill rt-pill-warn">Live</span>
+            </div>
+            <LineChart series={series.users || []} color="#fbbf24" />
+          </div>
+          <div className="rt-card">
+            <div className="rt-card-head">
+              <h3>Review Completion</h3>
+              <span className="rt-pill rt-pill-calm">{reviewRate}%</span>
+            </div>
+            <div className="rt-progress">
+              <div className="rt-progress-bar">
+                <span style={{ width: `${reviewRate}%` }} />
+              </div>
+              <div className="rt-progress-meta">
+                <span>{stats.reviewed_total || 0} reviewed</span>
+                <span>{stats.submissions_total || 0} total</span>
               </div>
             </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6, letterSpacing: "0.5px", textTransform: "uppercase", fontWeight: 600 }}>Users</div>
-              <div style={{ width: 160 }}>
-                <SparkChart data={chartData} color="#fbbf24" />
+            <div className="rt-mini-grid">
+              <div className="rt-mini">
+                <div className="rt-mini-label">Live Events</div>
+                <div className="rt-mini-value">{stats.events_live || 0}</div>
+              </div>
+              <div className="rt-mini">
+                <div className="rt-mini-label">Judges</div>
+                <div className="rt-mini-value">{stats.judges_total || 0}</div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Events + Activity */}
-        <div className="dash-grid" style={{ marginBottom: 20 }}>
-          {/* Events */}
-          <div className="dash-card">
-            <div className="dash-card-head">
-              <span className="dash-card-title">Active Events</span>
-              <Link href="/events" className="dash-card-link">
-                View all <Icon d={ICONS.arrowRight} size={12} />
-              </Link>
+        <div className="rt-grid rt-grid-2">
+          <div className="rt-card">
+            <div className="rt-card-head">
+              <h3>Recent Activity</h3>
+              <span className="rt-activity-badge">
+                {recentActivity.length > 0 ? `${recentActivity.length} updates` : ''}
+              </span>
             </div>
-            <div style={{ padding: "0 0 8px" }}>
-              {events.length > 0 ? (
-                <div className="dash-event-list">
-                  {events.map((ev, i) => {
-                    const st = eventStatus(ev);
-                    return (
-                      <Link href={`/events/${ev.id}`} key={ev.id} className="dash-event-item">
-                        <div className={`dash-event-dot ${st === "live" ? "dot-live" : st === "soon" ? "dot-soon" : "dot-closed"}`} />
-                        <div className="dash-event-info">
-                          <div className="dash-event-name">{ev.name}</div>
-                          <div className="dash-event-meta">
-                            {new Date(ev.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                            {ev.end_date ? ` – ${new Date(ev.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
-                          </div>
-                        </div>
-                        <span className={`dash-event-tag ${st === "live" ? "tag-live" : st === "soon" ? "tag-soon" : "tag-closed"}`}>
-                          {st === "live" ? "Live" : st === "soon" ? "Soon" : "Ended"}
-                        </span>
-                      </Link>
-                    );
-                  })}
-                </div>
+            <div className="rt-activity">
+              {recentActivity.length === 0 ? (
+                <div className="rt-empty">No recent activity.</div>
               ) : (
-                <div className="dash-empty">
-                  <Icon d={ICONS.events[0]} size={28} />
-                  <p>No events yet</p>
-                </div>
+                recentActivity.map((a) => (
+                  <div className="rt-activity-item" key={a.id}>
+                    <div className="rt-activity-icon"><Icon d={ICONS.pulse} size={14} /></div>
+                    <div className="rt-activity-text">
+                      <div className="rt-activity-title">{a.title || "Activity"}</div>
+                      <div className="rt-activity-desc">{a.description}</div>
+                    </div>
+                    <div className="rt-activity-time">{timeAgo(a.created_at)}</div>
+                  </div>
+                ))
               )}
             </div>
           </div>
 
-          {/* Activity */}
-          <div className="dash-card">
-            <div className="dash-card-head">
-              <span className="dash-card-title">Recent Activity</span>
+          <div className="rt-card">
+            <div className="rt-card-head">
+              <h3>Top Teams</h3>
+              <button 
+                onClick={() => router.push('/teams')} 
+                className="rt-link-btn"
+              >
+                View all <Icon d={ICONS.arrowRight} size={12} />
+              </button>
             </div>
-            <div className="dash-activity">
-              {recentActivity.map(a => (
-                <div key={a.id} className="dash-activity-item">
-                  <div className={`dash-activity-icon${a.accent ? " accent-icon" : ""}`}>
-                    <Icon d={ICONS[a.icon]} size={14} />
+            <div className="rt-team-list">
+              {topTeams.length === 0 ? (
+                <div className="rt-empty">No teams yet.</div>
+              ) : (
+                topTeams.map((t) => (
+                  <div className="rt-team-row" key={t.id}>
+                    <div className="rt-team-avatar">{t.name?.charAt(0)?.toUpperCase()}</div>
+                    <div className="rt-team-meta">
+                      <div className="rt-team-name">{t.name}</div>
+                      <div className="rt-team-sub">{t.event__name || "Event"}</div>
+                    </div>
+                    <div className="rt-team-stats">
+                      <span>{t.members_count || 0} members</span>
+                      <span>{t.submissions_count || 0} subs</span>
+                    </div>
                   </div>
-                  <div className="dash-activity-text">
-                    <div className="dash-activity-msg">{a.msg}</div>
-                    <div className="dash-activity-time">{a.time}</div>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
 
-        {/* Teams table + Quick actions */}
-        <div className="dash-grid">
-          {/* Teams table */}
-          <div className="dash-card">
-            <div className="dash-card-head">
-              <span className="dash-card-title">Teams</span>
-              <Link href="/teams" className="dash-card-link">
-                View all <Icon d={ICONS.arrowRight} size={12} />
-              </Link>
-            </div>
-            <div>
-              <table className="dash-table">
-                <thead>
-                  <tr>
-                    <th>Team</th>
-                    <th>Event</th>
-                    <th>Members</th>
-                    <th>Progress</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mockTeams.map((t, i) => (
-                    <tr key={i}>
-                      <td>
-                        <div className="dash-team-name">
-                          <div className="dash-team-avatar">{t.name[0]}</div>
-                          {t.name}
-                        </div>
-                      </td>
-                      <td style={{ color: "var(--muted)", fontSize: 12 }}>{t.event}</td>
-                      <td>
-                        <div className="dash-member-stack">
-                          {Array.from({ length: Math.min(t.members, 3) }).map((_, j) => (
-                            <div key={j} className="dash-member-pip">{String.fromCharCode(65 + j)}</div>
-                          ))}
-                          {t.members > 3 && (
-                            <div className="dash-member-pip">+{t.members - 3}</div>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="dash-progress-wrap">
-                          <div className="dash-progress">
-                            <div className="dash-progress-fill" style={{ width: `${t.completion}%` }} />
-                          </div>
-                          <span className="dash-progress-pct">{t.completion}%</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        <div className="rt-card">
+          <div className="rt-card-head">
+            <h3>Latest Events</h3>
+            <button 
+              onClick={() => router.push('/events')} 
+              className="rt-link-btn"
+            >
+              Explore all <Icon d={ICONS.arrowRight} size={12} />
+            </button>
           </div>
-
-          {/* Quick actions */}
-          <div className="dash-card">
-            <div className="dash-card-head">
-              <span className="dash-card-title">Quick Actions</span>
-            </div>
-            <div className="dash-card-body">
-              <div className="dash-actions-grid">
-                {[
-                  { icon: "events",  href: "/events",           label: "Browse Events",   sub: "Find hackathons"       },
-                  { icon: "teams",   href: "/teams/create",     label: "Create Team",     sub: "Start collaborating"   },
-                  { icon: "submit",  href: "/submissions/create",label: "Submit Project",  sub: "Upload your work"      },
-                  { icon: "posts",   href: "/posts",            label: "Community",        sub: "Posts & discussions"   },
-                  { icon: "profile", href: "/profile",          label: "Edit Profile",    sub: "Update your info"      },
-                  { icon: "trophy",  href: "/submissions",      label: "Leaderboard",     sub: "See top submissions"   },
-                ].map((a, i) => (
-                  <Link key={i} href={a.href} className="dash-action-card">
-                    <div className="dash-action-card-icon">
-                      <Icon d={ICONS[a.icon]} size={16} />
-                    </div>
-                    <div>
-                      <div className="dash-action-card-label">{a.label}</div>
-                      <div className="dash-action-card-sub">{a.sub}</div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </div>
+          <div className="rt-event-grid">
+            {recentEvents.length === 0 ? (
+              <div className="rt-empty">No events available.</div>
+            ) : (
+              recentEvents.map((e) => (
+                <div 
+                  onClick={() => router.push(`/events/${e.id}`)} 
+                  key={e.id} 
+                  className="rt-event-tile"
+                >
+                  <div className="rt-event-title">{e.name}</div>
+                  <div className="rt-event-sub">
+                    {new Date(e.start_date).toLocaleDateString()} - {new Date(e.end_date).toLocaleDateString()}
+                  </div>
+                  <div className="rt-event-footer">
+                    <span>{e.teams_count || 0} teams</span>
+                    <span>{e.judges_count || 0} judges</span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </main>
+
+      <style jsx>{`
+        .rt-page {
+          min-height: 100vh;
+          background: radial-gradient(circle at top, rgba(110,231,183,0.08), transparent 55%), #0b0b0f;
+          color: #f0f0f3;
+        }
+        .rt-wrap {
+          max-width: 1320px;
+          margin: 0 auto;
+          padding: 40px 28px 80px;
+        }
+        .rt-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 20px;
+          margin-bottom: 32px;
+        }
+        .rt-eyebrow {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+        .rt-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: #6EE7B7;
+          box-shadow: 0 0 10px rgba(110,231,183,0.5);
+        }
+        .rt-label {
+          font-size: 11px;
+          letter-spacing: 1.2px;
+          text-transform: uppercase;
+          color: #6EE7B7;
+          font-weight: 600;
+        }
+        .rt-title {
+          font-family: 'Syne', sans-serif;
+          font-size: 32px;
+          margin: 0 0 6px;
+        }
+        .rt-subtitle {
+          font-size: 14px;
+          color: #8b8b9b;
+          max-width: 520px;
+        }
+        .rt-actions {
+          display: flex;
+          gap: 10px;
+        }
+        .rt-btn {
+          padding: 10px 18px;
+          border-radius: 999px;
+          font-size: 13px;
+          font-weight: 600;
+          border: 1px solid #1e1e24;
+          color: #f0f0f3;
+          background: transparent;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .rt-btn-ghost:hover {
+          border-color: #6EE7B7;
+          color: #6EE7B7;
+        }
+        .rt-btn-primary {
+          background: #6EE7B7;
+          color: #0b0b0f;
+          border-color: #6EE7B7;
+        }
+        .rt-btn-primary:hover {
+          background: #86efac;
+        }
+        .rt-link-btn {
+          background: transparent;
+          border: none;
+          color: #6EE7B7;
+          font-size: 12px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 8px;
+          border-radius: 6px;
+          transition: all 0.2s ease;
+        }
+        .rt-link-btn:hover {
+          background: rgba(110,231,183,0.1);
+        }
+        .rt-error {
+          background: rgba(248,113,113,0.08);
+          border: 1px solid rgba(248,113,113,0.3);
+          color: #f87171;
+          padding: 12px 16px;
+          border-radius: 12px;
+          margin-bottom: 20px;
+        }
+        .rt-stats {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 14px;
+          margin-bottom: 26px;
+        }
+        .rt-stat {
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 16px;
+          padding: 18px;
+          display: flex;
+          gap: 12px;
+          align-items: center;
+        }
+        .rt-stat-icon {
+          width: 42px;
+          height: 42px;
+          border-radius: 12px;
+          background: rgba(110,231,183,0.12);
+          border: 1px solid rgba(110,231,183,0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .rt-stat-label { font-size: 12px; color: #8b8b9b; text-transform: uppercase; letter-spacing: 0.6px; }
+        .rt-stat-value { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; margin: 2px 0; }
+        .rt-stat-sub { font-size: 12px; color: #5c5c6e; }
+
+        .rt-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 16px;
+          margin-bottom: 16px;
+        }
+        .rt-grid-2 {
+          grid-template-columns: 1.3fr 1fr;
+        }
+        .rt-card {
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 18px;
+          padding: 18px;
+        }
+        .rt-card-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 12px;
+        }
+        .rt-card-head h3 {
+          font-size: 15px;
+          font-weight: 700;
+          margin: 0;
+        }
+        .rt-pill {
+          font-size: 10px;
+          padding: 4px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(110,231,183,0.25);
+          color: #6EE7B7;
+        }
+        .rt-pill-warn {
+          border-color: rgba(251,191,36,0.3);
+          color: #fbbf24;
+        }
+        .rt-pill-calm {
+          border-color: rgba(96,165,250,0.3);
+          color: #60a5fa;
+        }
+        .rt-activity-badge {
+          font-size: 11px;
+          color: #8b8b9b;
+        }
+        .rt-chart {
+          width: 100%;
+          height: 70px;
+        }
+        .rt-progress {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .rt-progress-bar {
+          height: 8px;
+          background: #1e1e24;
+          border-radius: 999px;
+          overflow: hidden;
+        }
+        .rt-progress-bar span {
+          display: block;
+          height: 100%;
+          background: linear-gradient(90deg, #6EE7B7, #60a5fa);
+        }
+        .rt-progress-meta {
+          display: flex;
+          justify-content: space-between;
+          font-size: 12px;
+          color: #8b8b9b;
+        }
+        .rt-mini-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 10px;
+          margin-top: 6px;
+        }
+        .rt-mini {
+          background: #17171b;
+          border: 1px solid #1e1e24;
+          padding: 10px;
+          border-radius: 12px;
+        }
+        .rt-mini-label { font-size: 11px; color: #8b8b9b; }
+        .rt-mini-value { font-size: 16px; font-weight: 700; }
+
+        .rt-activity {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .rt-activity-item {
+          display: grid;
+          grid-template-columns: 32px 1fr auto;
+          gap: 10px;
+          align-items: center;
+          padding: 10px;
+          border-radius: 12px;
+          background: #17171b;
+          border: 1px solid #1e1e24;
+        }
+        .rt-activity-icon {
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(110,231,183,0.12);
+          color: #6EE7B7;
+        }
+        .rt-activity-title { font-size: 13px; font-weight: 600; }
+        .rt-activity-desc { font-size: 12px; color: #8b8b9b; }
+        .rt-activity-time { font-size: 11px; color: #5c5c6e; }
+
+        .rt-team-list { display: flex; flex-direction: column; gap: 10px; }
+        .rt-team-row {
+          display: grid;
+          grid-template-columns: 36px 1fr auto;
+          gap: 10px;
+          align-items: center;
+          padding: 10px;
+          border-radius: 12px;
+          background: #17171b;
+          border: 1px solid #1e1e24;
+        }
+        .rt-team-avatar {
+          width: 34px;
+          height: 34px;
+          border-radius: 10px;
+          background: rgba(110,231,183,0.1);
+          border: 1px solid rgba(110,231,183,0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 700;
+          color: #6EE7B7;
+        }
+        .rt-team-name { font-size: 13px; font-weight: 600; }
+        .rt-team-sub { font-size: 11px; color: #8b8b9b; }
+        .rt-team-stats { display: flex; gap: 12px; font-size: 11px; color: #5c5c6e; }
+
+        .rt-event-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 12px;
+        }
+        .rt-event-tile {
+          cursor: pointer;
+          padding: 14px;
+          border-radius: 14px;
+          border: 1px solid #1e1e24;
+          background: #17171b;
+          transition: all 0.2s ease;
+        }
+        .rt-event-tile:hover {
+          border-color: rgba(110,231,183,0.4);
+          transform: translateY(-2px);
+        }
+        .rt-event-title { font-size: 13.5px; font-weight: 600; margin-bottom: 4px; }
+        .rt-event-sub { font-size: 11px; color: #8b8b9b; margin-bottom: 8px; }
+        .rt-event-footer { display: flex; gap: 12px; font-size: 11px; color: #5c5c6e; }
+        .rt-icon { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+        .rt-loading {
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-direction: column;
+          gap: 12px;
+          color: #8b8b9b;
+        }
+        .rt-loading-ring {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          border: 3px solid rgba(255,255,255,0.08);
+          border-top-color: #6EE7B7;
+          animation: spin 0.8s linear infinite;
+        }
+        .rt-empty { font-size: 12px; color: #8b8b9b; padding: 8px; }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 1024px) {
+          .rt-grid { grid-template-columns: 1fr; }
+          .rt-grid-2 { grid-template-columns: 1fr; }
+          .rt-stats { grid-template-columns: repeat(2, 1fr); }
+          .rt-header { flex-direction: column; }
+        }
+        @media (max-width: 640px) {
+          .rt-stats { grid-template-columns: 1fr; }
+          .rt-actions { width: 100%; flex-direction: column; }
+          .rt-btn { width: 100%; text-align: center; }
+        }
+      `}</style>
     </div>
-    </>
   );
 }

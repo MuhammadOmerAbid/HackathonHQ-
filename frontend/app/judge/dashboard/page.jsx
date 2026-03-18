@@ -1,21 +1,54 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "@/utils/axios";
 import { useAuth } from "@/context/AuthContext";
+import useSSE from "@/utils/useSSE";
+
+const LineChart = ({ series, color = "#6EE7B7" }) => {
+  const w = 200;
+  const h = 60;
+  const values = series?.map((s) => s.count) || [];
+  const max = Math.max(1, ...values);
+  const min = Math.min(...values, 0);
+  const step = values.length > 1 ? w / (values.length - 1) : w;
+  const points = values.map((v, i) => {
+    const x = i * step;
+    const y = h - ((v - min) / (max - min || 1)) * (h - 8) - 4;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const path = points.join(" L");
+  const area = `M0,${h} L${path} L${w},${h} Z`;
+  const id = `grad-${Math.random().toString(36).slice(2, 6)}`;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="jd-chart">
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.2" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${id})`} />
+      <path d={`M${path}`} fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+};
 
 export default function JudgeDashboardPage() {
   const router = useRouter();
-  const { user, isJudge, loading: authLoading } = useAuth();
-  const [submissions, setSubmissions] = useState([]);
+  const { isJudge, loading: authLoading } = useAuth();
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    total: 0,
-    pending: 0,
-    reviewed: 0,
-    myFeedbacks: 0
+
+  const hasToken = typeof window !== "undefined" && !!localStorage.getItem("access");
+  const { data: sseData } = useSSE("/analytics/stream/?channel=judge", {
+    enabled: hasToken,
+    onMessage: (payload) => {
+      setData(payload);
+      setLoading(false);
+    },
   });
 
   useEffect(() => {
@@ -24,747 +57,285 @@ export default function JudgeDashboardPage() {
       router.push("/");
       return;
     }
-    fetchData();
-  }, [isJudge, authLoading]);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const res = await axios.get("/submissions/?expand=event,team");
-      const submissionsData = res.data.results || res.data || [];
-      setSubmissions(submissionsData);
-      
-      // Calculate stats
-      const pending = submissionsData.filter(s => !s.is_reviewed).length;
-      const reviewed = submissionsData.filter(s => s.is_reviewed && !s.is_winner).length;
-      
-      // Get feedback given by current judge
-      let myFeedbacks = 0;
+    const fetchInitial = async () => {
       try {
-        const feedbackRes = await axios.get("/feedback/");
-        const feedbacks = feedbackRes.data.results || feedbackRes.data || [];
-        myFeedbacks = feedbacks.filter(f => f.judge === user?.id).length;
-      } catch (err) {
-        console.error("Error fetching feedback:", err);
+        const res = await axios.get("/analytics/judge/");
+        setData(res.data);
+      } catch (e) {
+        setData(null);
+      } finally {
+        setLoading(false);
       }
-      
-      setStats({
-        total: submissionsData.length,
-        pending,
-        reviewed,
-        myFeedbacks
-      });
-      
-    } catch (err) {
-      console.error("Error fetching submissions:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    fetchInitial();
+  }, [authLoading, isJudge, router]);
 
-  const getStatusBadge = (sub) => {
-    if (sub.is_winner) {
-      return { text: "Winner", color: "#fbbf24", bg: "rgba(251,191,36,0.15)" };
-    }
-    if (sub.is_reviewed) {
-      return { text: "Reviewed", color: "#60a5fa", bg: "rgba(96,165,250,0.15)" };
-    }
-    return { text: "Pending", color: "#9ca3af", bg: "rgba(156,163,175,0.15)" };
-  };
+  useEffect(() => {
+    if (sseData) setData(sseData);
+  }, [sseData]);
 
-  if (loading) {
+  const stats = data?.stats || {};
+  const series = data?.series || {};
+  const queue = data?.assigned_queue || [];
+  const dist = data?.score_distribution || [];
+
+  const completionRate = useMemo(() => {
+    if (!stats.assigned_total) return 0;
+    return Math.round((stats.completed_for_judge / stats.assigned_total) * 100);
+  }, [stats.assigned_total, stats.completed_for_judge]);
+
+  if (authLoading || loading) {
     return (
-      <div className="judge-loading">
-        <div className="judge-spinner" />
-        <p>Loading dashboard...</p>
+      <div className="jd-loading">
+        <div className="jd-spinner" />
+        <p>Loading judge dashboard...</p>
       </div>
     );
   }
 
   return (
-    <div className="judge-page">
-      <div className="judge-container">
-        {/* Header */}
-        <div className="judge-header">
+    <div className="jd-page">
+      <div className="jd-wrap">
+        <div className="jd-header">
           <div>
-            <div className="judge-eyebrow">
-              <span className="judge-eyebrow-dot" />
-              <span className="judge-eyebrow-label">Judge Portal</span>
-            </div>
-            <h1 className="judge-title">Judge Dashboard</h1>
-            <p className="judge-subtitle">Review submissions and provide feedback</p>
+            <div className="jd-eyebrow">Judge Command</div>
+            <h1>Review Pipeline</h1>
+            <p>Assigned submissions update in real time. Keep the queue moving.</p>
           </div>
-          <div className="judge-header-actions">
-            <Link href="/submissions" className="ev-btn-primary">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <span>Browse All</span>
-            </Link>
+          <div className="jd-actions">
+            <Link href="/submissions" className="jd-btn jd-btn-ghost">Browse All</Link>
+            <Link href="/submissions?filter=pending" className="jd-btn jd-btn-primary">Review Pending</Link>
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="judge-stats">
-          <div className="judge-stat-card">
-            <div className="judge-stat-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6EE7B7" strokeWidth="2">
-                <polygon points="12 2 22 7 22 17 12 22 2 17 2 7 12 2" />
-                <line x1="12" y1="22" x2="12" y2="12" />
-                <polyline points="22 7 12 12 2 7" />
-              </svg>
+        <div className="jd-stats">
+          {[
+            { label: "Assigned", value: stats.assigned_total },
+            { label: "Pending", value: stats.pending_for_judge },
+            { label: "Reviewed", value: stats.completed_for_judge },
+            { label: "My Feedbacks", value: stats.my_feedbacks },
+            { label: "Events", value: stats.events_assigned },
+          ].map((s, i) => (
+            <div className="jd-stat radial-card" key={i}>
+              <div className="jd-stat-label">{s.label}</div>
+              <div className="jd-stat-value">{s.value ?? 0}</div>
             </div>
-            <div className="judge-stat-content">
-              <span className="judge-stat-value">{stats.total}</span>
-              <span className="judge-stat-label">Total Submissions</span>
-            </div>
-          </div>
-
-          <div className="judge-stat-card">
-            <div className="judge-stat-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6EE7B7" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
-              </svg>
-            </div>
-            <div className="judge-stat-content">
-              <span className="judge-stat-value">{stats.pending}</span>
-              <span className="judge-stat-label">Pending Review</span>
-            </div>
-          </div>
-
-          <div className="judge-stat-card">
-            <div className="judge-stat-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6EE7B7" strokeWidth="2">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
-            </div>
-            <div className="judge-stat-content">
-              <span className="judge-stat-value">{stats.reviewed}</span>
-              <span className="judge-stat-label">Reviewed</span>
-            </div>
-          </div>
-
-          <div className="judge-stat-card">
-            <div className="judge-stat-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6EE7B7" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 9l5 5 5-5M12 4v10" />
-              </svg>
-            </div>
-            <div className="judge-stat-content">
-              <span className="judge-stat-value judge-stat-highlight">{stats.myFeedbacks}</span>
-              <span className="judge-stat-label">My Feedbacks</span>
-            </div>
-          </div>
+          ))}
         </div>
 
-        {/* Quick Actions and Info */}
-        <div className="judge-grid">
-          {/* Quick Actions */}
-          <div className="judge-card">
-            <div className="judge-card-header">
-              <h2 className="judge-card-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6EE7B7" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                Quick Actions
-              </h2>
+        <div className="jd-grid">
+          <div className="jd-card radial-card">
+            <div className="jd-card-head">
+              <h3>My Review Velocity</h3>
+              <span>{completionRate}% done</span>
             </div>
-            <div className="judge-card-body">
-              <div className="judge-actions">
-                <Link href="/submissions?filter=pending" className="judge-action-item">
-                  <div className="judge-action-icon">⏳</div>
-                  <div>
-                    <h4>Review Pending</h4>
-                    <p>{stats.pending} submissions waiting</p>
-                  </div>
-                </Link>
-                <Link href="/submissions" className="judge-action-item">
-                  <div className="judge-action-icon">📋</div>
-                  <div>
-                    <h4>All Submissions</h4>
-                    <p>Browse all projects</p>
-                  </div>
-                </Link>
-                <Link href="/submissions?filter=reviewed" className="judge-action-item">
-                  <div className="judge-action-icon">✓</div>
-                  <div>
-                    <h4>Reviewed</h4>
-                    <p>See what you've reviewed</p>
-                  </div>
-                </Link>
+            <LineChart series={series.my_scores || []} color="#6EE7B7" />
+            <div className="jd-progress">
+              <div className="jd-progress-bar">
+                <span style={{ width: `${completionRate}%` }} />
+              </div>
+              <div className="jd-progress-meta">
+                <span>{stats.completed_for_judge || 0} completed</span>
+                <span>{stats.assigned_total || 0} assigned</span>
               </div>
             </div>
           </div>
 
-          {/* Tips Card */}
-          <div className="judge-card">
-            <div className="judge-card-header">
-              <h2 className="judge-card-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6EE7B7" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 16v-4M12 8h.01" />
-                </svg>
-                Judging Tips
-              </h2>
+          <div className="jd-card radial-card">
+            <div className="jd-card-head">
+              <h3>Score Distribution</h3>
             </div>
-            <div className="judge-card-body">
-              <ul className="judge-tips-list">
-                <li>Score 1-10 based on quality and innovation</li>
-                <li>Provide constructive, specific feedback</li>
-                <li>Highlight what works and what could improve</li>
-                <li>You can edit your feedback anytime</li>
-                <li>Be fair and consistent across submissions</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Submissions */}
-        <div className="judge-card">
-          <div className="judge-card-header">
-            <h2 className="judge-card-title">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6EE7B7" strokeWidth="2">
-                <polygon points="12 2 22 7 22 17 12 22 2 17 2 7 12 2" />
-                <line x1="12" y1="22" x2="12" y2="12" />
-                <polyline points="22 7 12 12 2 7" />
-              </svg>
-              Recent Submissions
-            </h2>
-            <Link href="/submissions" className="judge-card-link">View All →</Link>
-          </div>
-          <div className="judge-card-body">
-            {submissions.length === 0 ? (
-              <div className="judge-empty">
-                <p>No submissions yet</p>
-              </div>
-            ) : (
-              <div className="judge-recent-list">
-                {submissions.slice(0, 5).map((sub) => {
-                  const status = getStatusBadge(sub);
-                  return (
-                    <Link href={`/submissions/${sub.id}`} key={sub.id} className="judge-recent-item">
-                      <div className="judge-recent-header">
-                        <h3 className="judge-recent-title">{sub.title || "Untitled Project"}</h3>
-                        <span className={`judge-recent-badge judge-badge-${status.text.toLowerCase()}`}>
-                          {status.text}
-                        </span>
-                      </div>
-                      <p className="judge-recent-meta">
-                        {sub.team_name || sub.team?.name || "Team"} · {sub.event_name || sub.event?.name || "Hackathon"}
-                      </p>
-                      <div className="judge-recent-footer">
-                        <span className="judge-recent-date">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="12" r="10" />
-                            <polyline points="12 6 12 12 16 14" />
-                          </svg>
-                          {new Date(sub.created_at).toLocaleDateString()}
-                        </span>
-                        {sub.feedback_count > 0 && (
-                          <span className="judge-recent-feedback">
-                            {sub.feedback_count} feedback{sub.feedback_count !== 1 ? 's' : ''}
-                          </span>
-                        )}
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Your Activity Summary */}
-        {stats.myFeedbacks > 0 && (
-          <div className="judge-card">
-            <div className="judge-card-header">
-              <h2 className="judge-card-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6EE7B7" strokeWidth="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 9l5 5 5-5M12 4v10" />
-                </svg>
-                Your Activity
-              </h2>
-            </div>
-            <div className="judge-card-body">
-              <div className="judge-activity-item">
-                <div className="judge-activity-icon">📝</div>
-                <div className="judge-activity-content">
-                  <p className="judge-activity-message">
-                    You have submitted <strong>{stats.myFeedbacks}</strong> feedback{stats.myFeedbacks !== 1 ? 's' : ''}
-                  </p>
-                  <span className="judge-activity-time">Keep up the great work!</span>
+            <div className="jd-bars">
+              {dist.map((b) => (
+                <div className="jd-bar-row" key={b.label}>
+                  <span>{b.label}</span>
+                  <div className="jd-bar">
+                    <div style={{ width: `${Math.min(100, (b.count || 0) * 10)}%` }} />
+                  </div>
+                  <span>{b.count}</span>
                 </div>
-              </div>
+              ))}
             </div>
           </div>
-        )}
+
+          <div className="jd-card radial-card">
+            <div className="jd-card-head">
+              <h3>Assigned Queue</h3>
+            </div>
+            <div className="jd-queue">
+              {queue.length === 0 ? (
+                <div className="jd-empty">No assigned submissions yet.</div>
+              ) : (
+                queue.map((sub) => (
+                  <Link href={`/submissions/${sub.id}`} key={sub.id} className="jd-queue-item">
+                    <div className="jd-queue-info">
+                      <div className="jd-queue-title">{sub.title}</div>
+                      <div className="jd-queue-meta">
+                        {sub.team_name} / {sub.event_name}
+                      </div>
+                    </div>
+                    <div className="jd-queue-right">
+                      <div className={`jd-pill ${sub.my_score ? "jd-pill-done" : "jd-pill-pending"}`}>
+                        {sub.my_score ? `Scored ${sub.my_score}` : "Pending"}
+                      </div>
+                      <div className="jd-queue-progress">
+                        {sub.completed_judges_count}/{sub.required_judges_count} judges
+                      </div>
+                    </div>
+                  </Link>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       <style jsx>{`
-        .judge-page {
+        .jd-page {
           min-height: 100vh;
-          background: #0a0a0a;
-          font-family: 'DM Sans', sans-serif;
+          background: radial-gradient(circle at top left, rgba(96,165,250,0.12), transparent 45%), #0a0a0f;
+          color: #f0f0f3;
         }
-
-        .judge-container {
+        .jd-wrap {
           max-width: 1280px;
           margin: 0 auto;
-          padding: 2rem;
-          position: relative;
-          z-index: 10;
+          padding: 36px 24px 72px;
         }
-
-        /* Header */
-        .judge-header {
+        .jd-header {
           display: flex;
           justify-content: space-between;
-          align-items: flex-end;
-          margin-bottom: 2rem;
+          align-items: flex-start;
+          gap: 20px;
+          margin-bottom: 24px;
         }
-
-        .judge-eyebrow {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          margin-bottom: 0.5rem;
-        }
-
-        .judge-eyebrow-dot {
-          width: 6px;
-          height: 6px;
-          border-radius: 50%;
-          background: #6EE7B7;
-        }
-
-        .judge-eyebrow-label {
-          font-size: 0.75rem;
-          font-weight: 600;
+        .jd-eyebrow {
+          font-size: 11px;
+          text-transform: uppercase;
           letter-spacing: 1px;
-          text-transform: uppercase;
-          color: #6EE7B7;
-        }
-
-        .judge-title {
-          font-family: 'Syne', sans-serif;
-          font-size: 2.5rem;
-          font-weight: 700;
-          color: #fff;
-          margin: 0 0 0.25rem 0;
-          letter-spacing: -0.02em;
-        }
-
-        .judge-subtitle {
-          color: #888;
-          margin: 0;
-          font-size: 1rem;
-        }
-
-        .judge-header-actions {
-          display: flex;
-          gap: 1rem;
-        }
-
-        /* Stats Cards */
-        .judge-stats {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 1rem;
-          margin-bottom: 2rem;
-        }
-
-        .judge-stat-card {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          padding: 1.25rem;
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.05);
-          border-radius: 16px;
-          transition: all 0.2s;
-        }
-
-        .judge-stat-card:hover {
-          border-color: #6EE7B7;
-          background: rgba(110,231,183,0.05);
-          transform: translateY(-2px);
-        }
-
-        .judge-stat-icon {
-          width: 48px;
-          height: 48px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: rgba(110,231,183,0.1);
-          border-radius: 12px;
-          flex-shrink: 0;
-        }
-
-        .judge-stat-icon svg {
-          width: 24px;
-          height: 24px;
-        }
-
-        .judge-stat-content {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .judge-stat-value {
-          font-family: 'Syne', sans-serif;
-          font-size: 1.5rem;
-          font-weight: 700;
-          color: #fff;
-          line-height: 1;
-          margin-bottom: 0.25rem;
-        }
-
-        .judge-stat-highlight {
-          color: #6EE7B7;
-        }
-
-        .judge-stat-label {
-          font-size: 0.75rem;
-          color: #888;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-
-        /* Grid Layout */
-        .judge-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1.5rem;
-          margin-bottom: 1.5rem;
-        }
-
-        /* Cards */
-        .judge-card {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.05);
-          border-radius: 16px;
-          overflow: hidden;
-          transition: all 0.2s;
-        }
-
-        .judge-card:hover {
-          border-color: rgba(255,255,255,0.1);
-        }
-
-        .judge-card-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 1.25rem 1.5rem 0.5rem 1.5rem;
-        }
-
-        .judge-card-title {
-          font-family: 'Syne', sans-serif;
-          font-size: 1.1rem;
-          font-weight: 600;
-          color: #fff;
-          margin: 0;
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-
-        .judge-card-title svg {
-          width: 20px;
-          height: 20px;
-        }
-
-        .judge-card-body {
-          padding: 0.5rem 1.5rem 1.5rem 1.5rem;
-        }
-
-        .judge-card-link {
-          color: #6EE7B7;
-          text-decoration: none;
-          font-size: 0.85rem;
-          font-weight: 500;
-          transition: all 0.2s;
-        }
-
-        .judge-card-link:hover {
-          color: #86efac;
-        }
-
-        /* Quick Actions */
-        .judge-actions {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-        }
-
-        .judge-action-item {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          padding: 0.75rem;
-          background: rgba(255,255,255,0.02);
-          border: 1px solid rgba(255,255,255,0.05);
-          border-radius: 12px;
-          text-decoration: none;
-          transition: all 0.2s;
-        }
-
-        .judge-action-item:hover {
-          background: rgba(255,255,255,0.05);
-          border-color: #6EE7B7;
-          transform: translateX(4px);
-        }
-
-        .judge-action-icon {
-          width: 40px;
-          height: 40px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: rgba(255,255,255,0.05);
-          border-radius: 10px;
-          font-size: 1.25rem;
-        }
-
-        .judge-action-item h4 {
-          font-size: 0.95rem;
-          font-weight: 600;
-          color: #fff;
-          margin: 0 0 0.25rem 0;
-        }
-
-        .judge-action-item p {
-          font-size: 0.75rem;
-          color: #888;
-          margin: 0;
-        }
-
-        /* Tips List */
-        .judge-tips-list {
-          margin: 0;
-          padding-left: 1.25rem;
-          color: rgba(255,255,255,0.7);
-          font-size: 0.9rem;
-          line-height: 1.8;
-        }
-
-        .judge-tips-list li {
-          margin-bottom: 0.25rem;
-        }
-
-        /* Recent Submissions List */
-        .judge-recent-list {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-        }
-
-        .judge-recent-item {
-          display: block;
-          padding: 1rem;
-          background: rgba(255,255,255,0.02);
-          border: 1px solid rgba(255,255,255,0.05);
-          border-radius: 12px;
-          text-decoration: none;
-          transition: all 0.2s;
-        }
-
-        .judge-recent-item:hover {
-          background: rgba(255,255,255,0.05);
-          border-color: #6EE7B7;
-          transform: translateX(4px);
-        }
-
-        .judge-recent-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 0.5rem;
-          gap: 0.5rem;
-        }
-
-        .judge-recent-title {
-          font-size: 1rem;
-          font-weight: 600;
-          color: #fff;
-          margin: 0;
-        }
-
-        .judge-recent-badge {
-          padding: 0.2rem 0.6rem;
-          border-radius: 30px;
-          font-size: 0.7rem;
-          font-weight: 600;
-          white-space: nowrap;
-        }
-
-        .judge-badge-pending {
-          background: rgba(156,163,175,0.15);
-          color: #9ca3af;
-          border: 1px solid rgba(156,163,175,0.3);
-        }
-
-        .judge-badge-reviewed {
-          background: rgba(96,165,250,0.15);
           color: #60a5fa;
-          border: 1px solid rgba(96,165,250,0.3);
+          margin-bottom: 8px;
         }
-
-        .judge-badge-winner {
-          background: rgba(251,191,36,0.15);
-          color: #fbbf24;
-          border: 1px solid rgba(251,191,36,0.3);
+        .jd-header h1 {
+          font-size: 30px;
+          margin: 0 0 6px;
         }
-
-        .judge-recent-meta {
-          font-size: 0.85rem;
-          color: #888;
-          margin: 0 0 0.75rem 0;
+        .jd-header p {
+          font-size: 14px;
+          color: #8b8b9b;
         }
-
-        .judge-recent-footer {
+        .jd-actions {
           display: flex;
-          align-items: center;
+          gap: 10px;
+        }
+        .jd-btn {
+          padding: 9px 16px;
+          border-radius: 999px;
+          border: 1px solid #1e1e24;
+          text-decoration: none;
+          font-size: 12px;
+          font-weight: 600;
+          color: #f0f0f3;
+        }
+        .jd-btn-primary {
+          background: #60a5fa;
+          border-color: #60a5fa;
+          color: #0a0a0f;
+        }
+        .jd-btn-ghost:hover { border-color: #60a5fa; color: #60a5fa; }
+
+        .jd-stats {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+        .jd-stat {
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 14px;
+          padding: 14px;
+        }
+        .jd-stat-label { font-size: 11px; color: #8b8b9b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .jd-stat-value { font-size: 20px; font-weight: 700; margin-top: 6px; }
+
+        .jd-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 16px;
+        }
+        .jd-card {
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 16px;
+          padding: 16px;
+        }
+        .jd-card-head {
+          display: flex;
           justify-content: space-between;
-        }
-
-        .judge-recent-date {
-          display: flex;
           align-items: center;
-          gap: 0.25rem;
-          font-size: 0.75rem;
-          color: rgba(255,255,255,0.4);
+          margin-bottom: 12px;
+          font-size: 13px;
         }
+        .jd-chart { width: 100%; height: 70px; }
+        .jd-progress { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+        .jd-progress-bar { height: 8px; background: #1e1e24; border-radius: 999px; overflow: hidden; }
+        .jd-progress-bar span { display: block; height: 100%; background: linear-gradient(90deg, #60a5fa, #6EE7B7); }
+        .jd-progress-meta { display: flex; justify-content: space-between; font-size: 11px; color: #8b8b9b; }
 
-        .judge-recent-date svg {
-          width: 14px;
-          height: 14px;
-        }
+        .jd-bars { display: flex; flex-direction: column; gap: 10px; }
+        .jd-bar-row { display: grid; grid-template-columns: 50px 1fr 24px; gap: 8px; font-size: 11px; color: #8b8b9b; align-items: center; }
+        .jd-bar { height: 8px; background: #1e1e24; border-radius: 999px; overflow: hidden; }
+        .jd-bar div { height: 100%; background: linear-gradient(90deg, #6EE7B7, #60a5fa); }
 
-        .judge-recent-feedback {
-          font-size: 0.7rem;
-          color: #6EE7B7;
-        }
-
-        /* Activity Item */
-        .judge-activity-item {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          padding: 0.75rem;
-          background: rgba(255,255,255,0.02);
+        .jd-queue { display: flex; flex-direction: column; gap: 10px; }
+        .jd-queue-item {
+          text-decoration: none;
+          color: inherit;
+          background: #17171b;
+          border: 1px solid #1e1e24;
+          padding: 12px;
           border-radius: 12px;
-        }
-
-        .judge-activity-icon {
-          width: 40px;
-          height: 40px;
           display: flex;
-          align-items: center;
-          justify-content: center;
-          background: rgba(110,231,183,0.1);
-          border-radius: 10px;
-          font-size: 1.25rem;
-          color: #6EE7B7;
+          justify-content: space-between;
+          gap: 10px;
         }
+        .jd-queue-item:hover { border-color: rgba(96,165,250,0.4); }
+        .jd-queue-title { font-size: 13px; font-weight: 600; }
+        .jd-queue-meta { font-size: 11px; color: #8b8b9b; }
+        .jd-queue-right { text-align: right; display: flex; flex-direction: column; gap: 6px; }
+        .jd-pill { padding: 3px 8px; border-radius: 999px; font-size: 10px; }
+        .jd-pill-pending { background: rgba(156,163,175,0.15); color: #9ca3af; border: 1px solid rgba(156,163,175,0.3); }
+        .jd-pill-done { background: rgba(110,231,183,0.15); color: #6EE7B7; border: 1px solid rgba(110,231,183,0.3); }
+        .jd-queue-progress { font-size: 11px; color: #5c5c6e; }
 
-        .judge-activity-content {
-          flex: 1;
-        }
-
-        .judge-activity-message {
-          font-size: 0.95rem;
-          color: #fff;
-          margin: 0 0 0.25rem 0;
-        }
-
-        .judge-activity-time {
-          font-size: 0.75rem;
-          color: #888;
-        }
-
-        /* Empty State */
-        .judge-empty {
-          text-align: center;
-          padding: 2rem;
-          color: #888;
-        }
-
-        /* Loading */
-        .judge-loading {
+        .jd-loading {
           min-height: 100vh;
           display: flex;
-          flex-direction: column;
           align-items: center;
           justify-content: center;
-          background: #0a0a0a;
-          color: #888;
-          gap: 1rem;
+          flex-direction: column;
+          gap: 12px;
+          color: #8b8b9b;
         }
-
-        .judge-spinner {
-          width: 40px;
-          height: 40px;
-          border: 3px solid rgba(255,255,255,0.1);
-          border-top-color: #6EE7B7;
+        .jd-spinner {
+          width: 36px;
+          height: 36px;
           border-radius: 50%;
+          border: 3px solid rgba(255,255,255,0.08);
+          border-top-color: #60a5fa;
           animation: spin 0.8s linear infinite;
         }
+        .jd-empty { font-size: 12px; color: #8b8b9b; }
 
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-
-        /* Responsive */
         @media (max-width: 1024px) {
-          .judge-stats {
-            grid-template-columns: repeat(2, 1fr);
-          }
+          .jd-grid { grid-template-columns: 1fr; }
+          .jd-stats { grid-template-columns: repeat(2, 1fr); }
+          .jd-header { flex-direction: column; }
         }
-
-        @media (max-width: 768px) {
-          .judge-container {
-            padding: 1rem;
-          }
-
-          .judge-header {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 1rem;
-          }
-
-          .judge-title {
-            font-size: 2rem;
-          }
-
-          .judge-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .judge-stats {
-            grid-template-columns: repeat(2, 1fr);
-          }
-        }
-
-        @media (max-width: 480px) {
-          .judge-stats {
-            grid-template-columns: 1fr;
-          }
-
-          .judge-header-actions {
-            width: 100%;
-          }
-
-          .ev-btn-primary {
-            width: 100%;
-            justify-content: center;
-          }
+        @media (max-width: 640px) {
+          .jd-stats { grid-template-columns: 1fr; }
+          .jd-actions { width: 100%; flex-direction: column; }
+          .jd-btn { width: 100%; text-align: center; }
         }
       `}</style>
     </div>

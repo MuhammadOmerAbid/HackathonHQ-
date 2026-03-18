@@ -84,6 +84,10 @@ export default function SubmissionDetailPage() {
   };
 
   const status = getStatus();
+  const judgesRequired = submission?.required_judges_count || 0;
+  const judgesCompleted = submission?.completed_judges_count || 0;
+  const allJudgesScored = submission?.all_judges_scored === true;
+  const isAssignedJudge = submission?.is_assigned_judge === true;
 
   // Calculate average score
   const avgScore = feedback.length > 0
@@ -224,6 +228,10 @@ export default function SubmissionDetailPage() {
   };
 
   const handleMarkWinner = async () => {
+    if (!submission?.all_judges_scored) {
+      setError("Cannot mark winner until all assigned judges have scored.");
+      return;
+    }
     if (!confirm("Mark this submission as a winner?")) return;
     
     try {
@@ -535,12 +543,39 @@ export default function SubmissionDetailPage() {
             <div className="evd-teams-head">
               <h3>Judge Feedback {feedback.length > 0 && `(${feedback.length})`}</h3>
               {isOrganizer && !submission.is_winner && (
-                <button onClick={handleMarkWinner} className="evd-btn-winner">
+                <button
+                  onClick={handleMarkWinner}
+                  className="evd-btn-winner"
+                  disabled={!allJudgesScored}
+                  style={{ opacity: allJudgesScored ? 1 : 0.5, cursor: allJudgesScored ? "pointer" : "not-allowed" }}
+                >
                   <span style={{ fontSize: "1.1rem" }}>🏆</span>
-                  Mark as Winner
+                  {allJudgesScored ? "Mark as Winner" : "Awaiting Judges"}
                 </button>
               )}
             </div>
+            {judgesRequired > 0 && (
+              <div style={{ padding: "0 28px 16px" }}>
+                <div style={{ height: 8, background: "var(--border)", borderRadius: 999, overflow: "hidden" }}>
+                  <span
+                    style={{
+                      display: "block",
+                      height: "100%",
+                      width: `${Math.min(100, Math.round((judgesCompleted / judgesRequired) * 100))}%`,
+                      background: "linear-gradient(90deg, var(--accent), #60a5fa)"
+                    }}
+                  />
+                </div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
+                  {judgesCompleted}/{judgesRequired} judges scored
+                </div>
+              </div>
+            )}
+            {judgesRequired === 0 && (
+              <div style={{ padding: "0 28px 16px", fontSize: 12, color: "var(--muted)" }}>
+                No judges assigned to this event yet.
+              </div>
+            )}
 
             {feedback.length > 0 ? (
               <div className="evd-feedback-list">
@@ -645,7 +680,7 @@ export default function SubmissionDetailPage() {
             )}
 
             {/* Judge Feedback Form */}
-            {isJudge && (
+            {isJudge && isAssignedJudge && (
               <div style={{ padding: "28px", borderTop: "1px solid var(--border)" }}>
                 <h3 style={{ fontFamily: "Syne,sans-serif", fontSize: "15px", fontWeight: 700, color: "#f0f0f3", margin: "0 0 20px" }}>
                   Add Your Feedback
@@ -704,6 +739,11 @@ export default function SubmissionDetailPage() {
                     {submittingFeedback ? "Submitting..." : "Submit Feedback"}
                   </button>
                 </form>
+              </div>
+            )}
+            {isJudge && !isAssignedJudge && (
+              <div style={{ padding: "28px", borderTop: "1px solid var(--border)", color: "var(--muted)" }}>
+                You are not assigned to judge this submission.
               </div>
             )}
           </div>

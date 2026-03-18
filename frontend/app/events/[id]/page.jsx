@@ -1,18 +1,110 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "../../../utils/axios";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import { useAuth } from "@/context/AuthContext";
+
+// Professional SVG Icons
+const Icons = {
+  calendar: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+      <line x1="16" y1="2" x2="16" y2="6"></line>
+      <line x1="8" y1="2" x2="8" y2="6"></line>
+      <line x1="3" y1="10" x2="21" y2="10"></line>
+    </svg>
+  ),
+  clock: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="12" r="10"></circle>
+      <polyline points="12 6 12 12 16 14"></polyline>
+    </svg>
+  ),
+  users: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+      <circle cx="12" cy="7" r="4"></circle>
+    </svg>
+  ),
+  team: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+      <circle cx="9" cy="7" r="4"></circle>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+      <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+    </svg>
+  ),
+  judge: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path>
+    </svg>
+  ),
+  submission: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+      <polyline points="14 2 14 8 20 8"></polyline>
+      <line x1="16" y1="13" x2="8" y2="13"></line>
+      <line x1="16" y1="17" x2="8" y2="17"></line>
+      <polyline points="10 9 9 9 8 9"></polyline>
+    </svg>
+  ),
+  trophy: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+      <path d="M4 22h16"></path>
+      <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"></path>
+      <path d="M14 14.66V17c0 .55.47.98.97 1.21 1.18.54 2.03 2.03 2.03 3.79"></path>
+      <path d="M8 2h8v7a4 4 0 1 1-8 0V2z"></path>
+    </svg>
+  ),
+  arrowLeft: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="19" y1="12" x2="5" y2="12"></line>
+      <polyline points="12 19 5 12 12 5"></polyline>
+    </svg>
+  ),
+  arrowRight: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="5" y1="12" x2="19" y2="12"></line>
+      <polyline points="12 5 19 12 12 19"></polyline>
+    </svg>
+  ),
+  search: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="11" cy="11" r="8"></circle>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </svg>
+  ),
+  check: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <polyline points="20 6 9 17 4 12"></polyline>
+    </svg>
+  ),
+  plus: () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="12" y1="5" x2="12" y2="19"></line>
+      <line x1="5" y1="12" x2="19" y2="12"></line>
+    </svg>
+  ),
+};
 
 export default function EventDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { user, isOrganizer } = useAuth();
   const [event, setEvent] = useState(null);
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
+  const [assignedJudges, setAssignedJudges] = useState([]);
+  const [allJudges, setAllJudges] = useState([]);
+  const [judgeSearch, setJudgeSearch] = useState("");
+  const [judgeSaving, setJudgeSaving] = useState(false);
+  const [judgeError, setJudgeError] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -28,119 +120,239 @@ export default function EventDetailPage() {
     })();
   }, [id]);
 
+  const canManageJudges = useMemo(() => {
+    if (!event || !user) return false;
+    if (!isOrganizer) return false;
+    return user.is_staff || user.is_superuser || event.organizer === user.id;
+  }, [event, user, isOrganizer]);
+
+  useEffect(() => {
+    if (!event || !canManageJudges) return;
+    const fetchJudges = async () => {
+      try {
+        const res = await axios.get(`/events/${id}/judges/`);
+        setAssignedJudges(res.data.judges || []);
+      } catch (e) {
+        console.error("Failed to fetch assigned judges", e);
+      }
+    };
+    fetchJudges();
+  }, [event, canManageJudges, id]);
+
+  useEffect(() => {
+    if (!canManageJudges) return;
+    const fetchAll = async () => {
+      try {
+        const res = await axios.get(`/users/judges/?q=${encodeURIComponent(judgeSearch)}`);
+        setAllJudges(res.data || []);
+      } catch (e) {
+        console.error("Failed to fetch judges list", e);
+      }
+    };
+    fetchAll();
+  }, [canManageJudges, judgeSearch]);
+
+  const assignedIds = useMemo(() => new Set(assignedJudges.map((j) => j.id)), [assignedJudges]);
+
+  const toggleJudge = async (judgeId) => {
+    if (!canManageJudges) return;
+    const nextIds = new Set(assignedIds);
+    if (nextIds.has(judgeId)) nextIds.delete(judgeId);
+    else nextIds.add(judgeId);
+    const nextList = Array.from(nextIds);
+    setJudgeSaving(true);
+    setJudgeError("");
+    try {
+      const res = await axios.put(`/events/${id}/judges/`, { judges: nextList });
+      setAssignedJudges(res.data.judges || []);
+    } catch (e) {
+      console.error("Failed to update judges", e);
+      setJudgeError("Failed to update judges. Try again.");
+    } finally {
+      setJudgeSaving(false);
+    }
+  };
+
   const now = new Date();
   const getStatus = () => {
     if (!event) return null;
     const s = new Date(event.start_date), e = new Date(event.end_date);
-    if (s > now) return { label: "Upcoming", cls: "evd-pill-soon" };
-    if (e < now) return { label: "Ended",    cls: "evd-pill-closed" };
-    return { label: "Live Now", cls: "evd-pill-live" };
+    if (s > now) return { label: "Upcoming", cls: "upcoming" };
+    if (e < now) return { label: "Ended", cls: "ended" };
+    return { label: "Live Now", cls: "live" };
   };
 
-  const fmt = (d) => new Date(d).toLocaleDateString("en-US", {
-    month: "long", day: "numeric", year: "numeric",
+  const fmtDate = (d) => new Date(d).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
   });
+
+  const daysLeft = (date) => {
+    const diff = Math.ceil((new Date(date) - now) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? `${diff} days left` : "Ended";
+  };
 
   if (loading) return <LoadingSpinner message="Loading event…" />;
 
   if (!event) return (
-    <div className="evd-page">
-      <button className="evd-back-btn" onClick={() => router.push("/events")}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
-        </svg>
-        Back to Events
-      </button>
-      <div className="evd-error-page">
-        <div className="evd-error-card">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          <h2>Event Not Found</h2>
-          <p>This hackathon doesn't exist or has been removed.</p>
-          <button className="evd-btn-primary" onClick={() => router.push("/events")}>Back to Events</button>
-        </div>
+    <div className="not-found">
+      <div className="not-found-content">
+        <div className="not-found-icon">⚠️</div>
+        <h2>Event Not Found</h2>
+        <p>The hackathon you're looking for doesn't exist or has been removed.</p>
+        <button onClick={() => router.push("/events")} className="btn-primary">
+          Browse Events
+        </button>
       </div>
     </div>
   );
 
   const status = getStatus();
   const totalParticipants = teams.reduce((a, t) => a + (t.members_details?.length || t.members?.length || 0), 0);
+  const teamCapacity = Math.min(100, Math.round((teams.length / 20) * 100));
 
   return (
-    <div className="evd-page">
+    <div className="event-page">
+      {/* Header with back button */}
+      <div className="header">
+        <button onClick={() => router.push("/events")} className="back-btn">
+          <Icons.arrowLeft />
+          <span>Back to Events</span>
+        </button>
+      </div>
 
-      {/* Circular back button — uses evd-back-btn from global.css */}
-      <button className="evd-back-btn" onClick={() => router.push("/events")}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
-        </svg>
-        Back to Events
-      </button>
-
-      {/* Heading */}
-      <div className="evd-head">
-        <div>
-          <div className="evd-eyebrow">
-            <div className="evd-eyebrow-dot" />
-            <span className="evd-eyebrow-label">Hackathon</span>
+      {/* Hero Section */}
+      <div className="hero">
+        <div className="hero-content">
+          <div className="hero-main">
+            <div className="hero-tag">
+              <span className="hero-tag-dot" />
+              <span className="hero-tag-label">Hackathon</span>
+            </div>
+            <div className="hero-title-wrapper">
+              <h1 className="hero-title">{event.name}</h1>
+              {event.is_premium && <span className="premium-badge">PRO</span>}
+            </div>
+            <p className="hero-organizer">by {event.organizer?.username || "HackathonHQ"}</p>
           </div>
-          <h1 className="evd-title">
-            {event.name}
-            {event.is_premium && <span className="evd-premium">PRO</span>}
-          </h1>
-          <p className="evd-organizer">
-            Organized by {event.organizer?.username || "HackathonHQ"}
-          </p>
-        </div>
-        <div className={`evd-status-pill ${status.cls}`}>
-          <span className="evd-pill-dot" />
-          {status.label}
+          <div className={`status-badge ${status.cls}`}>
+            <span className="status-dot" />
+            <span>{status.label}</span>
+          </div>
         </div>
       </div>
 
-      {/* Info strip */}
-      <div className="evd-info-strip">
-        {[
-          { label: "Starts",       value: fmt(event.start_date) },
-          { label: "Ends",         value: fmt(event.end_date) },
-          { label: "Teams",        value: `${teams.length} registered` },
-          { label: "Participants", value: `${totalParticipants} hackers` },
-        ].map((c, i) => (
-          <div className="evd-info-cell" key={i}>
-            <div className="evd-info-label">{c.label}</div>
-            <div className="evd-info-val">{c.value}</div>
-          </div>
-        ))}
-      </div>
+      {/* Metrics Grid */}
+      {/* Metrics Grid - Clean & Elegant */}
+<div className="metrics-grid">
+  <div className="metric-card">
+    <div className="metric-icon">
+      <Icons.calendar />
+    </div>
+    <div className="metric-content">
+      <div className="metric-label">Start Date</div>
+      <div className="metric-value">{fmtDate(event.start_date)}</div>
+      <div className="metric-trend positive">{daysLeft(event.start_date)}</div>
+    </div>
+  </div>
 
-      {/* Tabs */}
-      <div className="evd-tabs">
-        {["overview", "teams", "submissions", "prizes"].map(t => (
+  <div className="metric-card">
+    <div className="metric-icon">
+      <Icons.clock />
+    </div>
+    <div className="metric-content">
+      <div className="metric-label">End Date</div>
+      <div className="metric-value">{fmtDate(event.end_date)}</div>
+      <div className="metric-trend">{daysLeft(event.end_date)}</div>
+    </div>
+  </div>
+
+  <div className="metric-card">
+    <div className="metric-icon">
+      <Icons.team />
+    </div>
+    <div className="metric-content">
+      <div className="metric-label">Teams</div>
+      <div className="metric-value">{teams.length}</div>
+      <div className="metric-progress">
+        <div className="progress-bar">
+          <div className="progress-fill" style={{ width: `${teamCapacity}%` }} />
+        </div>
+        <span className="progress-text">{teamCapacity}%</span>
+      </div>
+    </div>
+  </div>
+
+  <div className="metric-card">
+    <div className="metric-icon">
+      <Icons.users />
+    </div>
+    <div className="metric-content">
+      <div className="metric-label">Participants</div>
+      <div className="metric-value">{totalParticipants}</div>
+      <div className="metric-trend">
+        {totalParticipants > 0 ? 'active' : 'none'}
+      </div>
+    </div>
+  </div>
+
+  <div className="metric-card">
+    <div className="metric-icon">
+      <Icons.judge />
+    </div>
+    <div className="metric-content">
+      <div className="metric-label">Judges</div>
+      <div className="metric-value">{event.judges_count || 0}</div>
+      <div className="metric-trend">
+        {event.judges_count === 1 ? 'assigned' : `${event.judges_count || 0} total`}
+      </div>
+    </div>
+  </div>
+</div>
+
+      {/* Navigation Tabs */}
+      <div className="tabs">
+        {["overview", "teams", "submissions", "judges", "prizes"].map(tab => (
           <button
-            key={t}
-            className={`evd-tab${activeTab === t ? " active" : ""}`}
-            onClick={() => setActiveTab(t)}
+            key={tab}
+            className={`tab ${activeTab === tab ? "active" : ""}`}
+            onClick={() => setActiveTab(tab)}
           >
-            {t.charAt(0).toUpperCase() + t.slice(1)}
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
       </div>
 
-      {/* Panel */}
-      <div className="evd-panel">
-
+      {/* Content Area */}
+      <div className="content">
         {activeTab === "overview" && (
-          <div className="evd-about">
-            <h3>About this Hackathon</h3>
-            <p>{event.description}</p>
+          <div className="overview">
+            <div className="description-card">
+              <h2 className="section-title">About this Hackathon</h2>
+              <p className="description">{event.description}</p>
+            </div>
+            
             {status.label === "Live Now" && (
-              <div className="evd-cta">
-                <Link href={`/events/${id}/register-team`} className="evd-btn-primary">
-                  Register Team
+              <div className="action-cards">
+                <Link href={`/events/${id}/register-team`} className="action-card primary">
+                  <div className="action-icon">
+                    <Icons.plus />
+                  </div>
+                  <div>
+                    <h3>Register Team</h3>
+                    <p>Form a team and join the competition</p>
+                  </div>
+                  <Icons.arrowRight />
                 </Link>
-                <Link href={`/events/${id}/submit`} className="evd-btn-ghost">
-                  Submit Project
+                
+                <Link href={`/events/${id}/submit`} className="action-card">
+                  <div className="action-icon" style={{ background: 'rgba(110,231,183,0.1)' }}>
+                    <Icons.submission />
+                  </div>
+                  <div>
+                    <h3>Submit Project</h3>
+                    <p>Upload your hackathon project</p>
+                  </div>
+                  <Icons.arrowRight />
                 </Link>
               </div>
             )}
@@ -148,76 +360,1124 @@ export default function EventDetailPage() {
         )}
 
         {activeTab === "teams" && (
-          <>
-            <div className="evd-teams-head">
-              <h3>Registered Teams ({teams.length})</h3>
+          <div className="teams-section">
+            <div className="teams-header">
+              <h2 className="section-title">Teams · {teams.length}</h2>
               {status.label === "Live Now" && (
-                <Link href={`/events/${id}/register-team`} className="evd-btn-primary" style={{ fontSize: 12, padding: "6px 14px" }}>
-                  + Create Team
+                <Link href={`/events/${id}/register-team`} className="btn-primary">
+                  <Icons.plus />
+                  <span>Create Team</span>
                 </Link>
               )}
             </div>
+
             {teams.length === 0 ? (
-              <div className="evd-empty">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.25 }}>
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-                <span>No teams registered yet</span>
+              <div className="empty-state">
+                <div className="empty-icon">
+                  <Icons.team />
+                </div>
+                <h3>No teams registered</h3>
+                <p>Be the first to form a team for this hackathon</p>
                 {status.label === "Live Now" && (
-                  <Link href={`/events/${id}/register-team`} className="evd-btn-primary" style={{ marginTop: 8 }}>
-                    Be the first
+                  <Link href={`/events/${id}/register-team`} className="btn-primary">
+                    Create Team
                   </Link>
                 )}
               </div>
             ) : (
-              <div className="evd-team-list">
+              <div className="teams-grid">
                 {teams.map(team => (
-                  <Link href={`/teams/${team.id}`} key={team.id} className="evd-team-row">
-                    <div className="evd-team-avatar">{team.name.charAt(0).toUpperCase()}</div>
-                    <span className="evd-team-name">{team.name}</span>
-                    <div className="evd-member-stack">
-                      {(team.members_details || team.members || []).slice(0, 4).map((m, i) => (
-                        <div key={m.id ?? i} className="evd-member-pip">
+                  <Link href={`/teams/${team.id}`} key={team.id} className="team-card">
+                    <div className="team-card-header">
+                      <div className="team-avatar">{team.name.charAt(0).toUpperCase()}</div>
+                      <div>
+                        <h4 className="team-name">{team.name}</h4>
+                        <p className="team-meta">{team.members_details?.length || team.members?.length || 0} members</p>
+                      </div>
+                    </div>
+                    
+                    <div className="team-members">
+                      {(team.members_details || team.members || []).slice(0, 5).map((m, i) => (
+                        <div key={m.id ?? i} className="member-avatar" title={m.username}>
                           {m.avatar ? <img src={m.avatar} alt="" /> : (m.username?.charAt(0).toUpperCase() || "?")}
                         </div>
                       ))}
-                      {(team.members_details || team.members || []).length > 4 && (
-                        <div className="evd-member-pip">+{(team.members_details || team.members || []).length - 4}</div>
+                      {(team.members_details || team.members || []).length > 5 && (
+                        <div className="member-avatar more">
+                          +{(team.members_details || team.members || []).length - 5}
+                        </div>
                       )}
                     </div>
-                    <span className="evd-team-count">{team.members_details?.length || team.members?.length || 0} members</span>
+                    
+                    <div className="team-card-footer">
+                      <span className="team-submissions">
+                        <Icons.submission />
+                        {team.submissions_count || 0} submissions
+                      </span>
+                      <span className="team-arrow">
+                        <Icons.arrowRight />
+                      </span>
+                    </div>
                   </Link>
                 ))}
               </div>
             )}
-          </>
+          </div>
         )}
 
         {activeTab === "submissions" && (
-          <div className="evd-submissions-ph">
-            Submissions will appear here once teams start submitting their projects.
+          <div className="submissions-section">
+            <h2 className="section-title">Submissions</h2>
+            <div className="empty-state">
+              <div className="empty-icon">
+                <Icons.submission />
+              </div>
+              <h3>No submissions yet</h3>
+              <p>Submissions will appear here once teams start submitting their projects</p>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "judges" && (
+          <div className="judges-section">
+            <div className="judges-header">
+              <h2 className="section-title">Judges · {event.judges_count || assignedJudges.length || 0}</h2>
+            </div>
+
+            {!canManageJudges && (
+              <div className="judges-list">
+                {(event.judges_details || []).length === 0 ? (
+                  <div className="empty-state small">
+                    <p>No judges assigned yet.</p>
+                  </div>
+                ) : (
+                  event.judges_details.map((j) => (
+                    <div className="judge-card" key={j.id}>
+                      <div className="judge-avatar">{j.username?.charAt(0).toUpperCase()}</div>
+                      <div className="judge-info">
+                        <div className="judge-name">{j.username}</div>
+                        <div className="judge-email">{j.email}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {canManageJudges && (
+              <div className="judge-management">
+                <div className="search-box">
+                  <Icons.search />
+                  <input
+                    type="text"
+                    placeholder="Search judges..."
+                    value={judgeSearch}
+                    onChange={(e) => setJudgeSearch(e.target.value)}
+                  />
+                </div>
+                
+                {judgeError && <div className="error-message">{judgeError}</div>}
+                
+                <div className="judges-grid">
+                  {allJudges.length === 0 ? (
+                    <div className="empty-state small">
+                      <p>No judges found</p>
+                    </div>
+                  ) : (
+                    allJudges.map((j) => (
+                      <button
+                        key={j.id}
+                        className={`judge-select-card ${assignedIds.has(j.id) ? "selected" : ""}`}
+                        onClick={() => toggleJudge(j.id)}
+                        disabled={judgeSaving}
+                      >
+                        <div className="judge-select-avatar">{j.username?.charAt(0).toUpperCase()}</div>
+                        <div className="judge-select-info">
+                          <div className="judge-select-name">{j.username}</div>
+                          <div className="judge-select-email">{j.email}</div>
+                        </div>
+                        <div className="judge-select-status">
+                          {assignedIds.has(j.id) ? <Icons.check /> : <Icons.plus />}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+                
+                {judgeSaving && (
+                  <div className="saving-indicator">
+                    <div className="spinner" />
+                    <span>Saving changes...</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
         {activeTab === "prizes" && (
-          <div className="evd-prizes">
-            {[
-              { icon: "🥇", place: "First Place",  reward: "$5,000 + Mentorship" },
-              { icon: "🥈", place: "Second Place", reward: "$3,000 + Swag Pack" },
-              { icon: "🥉", place: "Third Place",  reward: "$1,500 + Swag Pack" },
-            ].map((p, i) => (
-              <div className="evd-prize" key={i}>
-                <div className="evd-prize-icon">{p.icon}</div>
-                <div className="evd-prize-place">{p.place}</div>
-                <div className="evd-prize-val">{p.reward}</div>
-              </div>
-            ))}
+          <div className="prizes-section">
+            <h2 className="section-title">Prizes</h2>
+            <div className="prizes-grid">
+              {[
+                { place: "1st Place", reward: "$5,000 + Mentorship", color: "#ffd700", icon: "🥇" },
+                { place: "2nd Place", reward: "$3,000 + Swag Pack", color: "#c0c0c0", icon: "🥈" },
+                { place: "3rd Place", reward: "$1,500 + Swag Pack", color: "#cd7f32", icon: "🥉" },
+              ].map((prize, i) => (
+                <div className="prize-card" key={i}>
+                  <div className="prize-icon" style={{ background: `${prize.color}15`, color: prize.color }}>
+                    {prize.icon}
+                  </div>
+                  <div>
+                    <h4 className="prize-place">{prize.place}</h4>
+                    <p className="prize-reward">{prize.reward}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
-
       </div>
+
+      <style jsx>{`
+        .event-page {
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 32px 24px 64px;
+          background: #0a0a0a;
+          color: #f0f0f3;
+          font-family: 'DM Sans', sans-serif;
+        }
+
+        /* Header */
+        .header {
+          margin-bottom: 32px;
+        }
+
+        .back-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          background: transparent;
+          border: 1px solid #1e1e24;
+          border-radius: 100px;
+          color: #888;
+          font-size: 13px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .back-btn:hover {
+          border-color: #6EE7B7;
+          color: #6EE7B7;
+          transform: translateX(-4px);
+        }
+
+        .back-btn svg {
+          width: 16px;
+          height: 16px;
+        }
+
+        /* Hero Section */
+        .hero {
+          background: linear-gradient(135deg, #111114 0%, #0a0a0f 100%);
+          border: 1px solid #1e1e24;
+          border-radius: 24px;
+          padding: 32px;
+          margin-bottom: 32px;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .hero::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 2px;
+          background: linear-gradient(90deg, transparent, #6EE7B7, transparent);
+        }
+
+        .hero-content {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 24px;
+        }
+
+        .hero-tag {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+
+        .hero-tag-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #6EE7B7;
+          box-shadow: 0 0 12px rgba(110,231,183,0.6);
+        }
+
+        .hero-tag-label {
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 1.2px;
+          text-transform: uppercase;
+          color: #6EE7B7;
+        }
+
+        .hero-title-wrapper {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 8px;
+        }
+
+        .hero-title {
+          font-family: 'Syne', sans-serif;
+          font-size: 36px;
+          font-weight: 700;
+          color: #f0f0f3;
+          letter-spacing: -0.5px;
+          margin: 0;
+        }
+
+        .premium-badge {
+          padding: 4px 12px;
+          background: linear-gradient(135deg, #6EE7B7, #4fb88b);
+          border-radius: 100px;
+          color: #0c0c0f;
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+        }
+
+        .hero-organizer {
+          font-size: 15px;
+          color: #888;
+          margin: 0;
+        }
+
+        /* Status Badge */
+        .status-badge {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 20px;
+          border-radius: 100px;
+          font-size: 14px;
+          font-weight: 600;
+        }
+
+        .status-badge.live {
+          background: rgba(110,231,183,0.1);
+          border: 1px solid rgba(110,231,183,0.3);
+          color: #6EE7B7;
+        }
+
+        .status-badge.upcoming {
+          background: rgba(251,191,36,0.1);
+          border: 1px solid rgba(251,191,36,0.3);
+          color: #fbbf24;
+        }
+
+        .status-badge.ended {
+          background: rgba(248,113,113,0.1);
+          border: 1px solid rgba(248,113,113,0.3);
+          color: #f87171;
+        }
+
+        .status-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+        }
+
+        .status-badge.live .status-dot {
+          background: #6EE7B7;
+          box-shadow: 0 0 12px rgba(110,231,183,0.6);
+          animation: pulse 2s infinite;
+        }
+
+        .status-badge.upcoming .status-dot {
+          background: #fbbf24;
+        }
+
+        .status-badge.ended .status-dot {
+          background: #f87171;
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+
+        
+
+        /* Tabs */
+        .tabs {
+          display: flex;
+          gap: 4px;
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 100px;
+          padding: 4px;
+          margin-bottom: 32px;
+          overflow-x: auto;
+        }
+
+        .tab {
+          padding: 10px 24px;
+          border: none;
+          border-radius: 100px;
+          background: transparent;
+          color: #888;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+        }
+
+        .tab:hover {
+          color: #f0f0f3;
+          background: rgba(255,255,255,0.03);
+        }
+
+        .tab.active {
+          background: #6EE7B7;
+          color: #0c0c0f;
+          font-weight: 600;
+        }
+
+        /* Content Area */
+        .content {
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 24px;
+          padding: 32px;
+        }
+
+        .section-title {
+          font-family: 'Syne', sans-serif;
+          font-size: 20px;
+          font-weight: 700;
+          color: #f0f0f3;
+          margin: 0 0 20px 0;
+        }
+
+        /* Overview Tab */
+        .description-card {
+          background: #17171b;
+          border: 1px solid #1e1e24;
+          border-radius: 16px;
+          padding: 24px;
+          margin-bottom: 24px;
+        }
+
+        .description {
+          font-size: 15px;
+          color: #b0b0ba;
+          line-height: 1.7;
+          margin: 0;
+        }
+
+        .action-cards {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+        }
+
+        .action-card {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          padding: 20px;
+          background: #17171b;
+          border: 1px solid #1e1e24;
+          border-radius: 16px;
+          text-decoration: none;
+          color: inherit;
+          transition: all 0.2s ease;
+        }
+
+        .action-card:hover {
+          border-color: #6EE7B7;
+          transform: translateY(-2px);
+          box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+        }
+
+        .action-card.primary {
+          background: linear-gradient(135deg, rgba(110,231,183,0.1), transparent);
+        }
+
+        .action-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: 16px;
+          background: rgba(110,231,183,0.1);
+          border: 1px solid rgba(110,231,183,0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #6EE7B7;
+          flex-shrink: 0;
+        }
+
+        .action-card h3 {
+          font-size: 16px;
+          font-weight: 600;
+          margin: 0 0 4px;
+        }
+
+        .action-card p {
+          font-size: 12px;
+          color: #888;
+          margin: 0;
+        }
+
+        /* Teams Tab */
+        .teams-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 24px;
+        }
+
+        .btn-primary {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 20px;
+          background: #6EE7B7;
+          border: 1px solid #4fb88b;
+          border-radius: 100px;
+          color: #0c0c0f;
+          font-size: 13px;
+          font-weight: 600;
+          text-decoration: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .btn-primary:hover {
+          background: #86efac;
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(110,231,183,0.3);
+        }
+
+        .teams-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+          gap: 16px;
+        }
+
+        .team-card {
+          background: #17171b;
+          border: 1px solid #1e1e24;
+          border-radius: 16px;
+          padding: 20px;
+          text-decoration: none;
+          color: inherit;
+          transition: all 0.2s ease;
+        }
+
+        .team-card:hover {
+          border-color: rgba(110,231,183,0.3);
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        }
+
+        .team-card-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 16px;
+        }
+
+        .team-avatar {
+          width: 48px;
+          height: 48px;
+          border-radius: 14px;
+          background: rgba(110,231,183,0.1);
+          border: 1px solid rgba(110,231,183,0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: 'Syne', sans-serif;
+          font-size: 20px;
+          font-weight: 700;
+          color: #6EE7B7;
+        }
+
+        .team-name {
+          font-size: 16px;
+          font-weight: 600;
+          color: #f0f0f3;
+          margin: 0 0 4px;
+        }
+
+        .team-meta {
+          font-size: 11px;
+          color: #888;
+        }
+
+        .team-members {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-bottom: 16px;
+        }
+
+        .member-avatar {
+          width: 32px;
+          height: 32px;
+          border-radius: 10px;
+          background: rgba(110,231,183,0.08);
+          border: 1px solid rgba(110,231,183,0.15);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          font-weight: 600;
+          color: #6EE7B7;
+          overflow: hidden;
+        }
+
+        .member-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .member-avatar.more {
+          background: #1e1e24;
+          color: #888;
+          font-size: 10px;
+        }
+
+        .team-card-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding-top: 16px;
+          border-top: 1px solid #1e1e24;
+        }
+
+        .team-submissions {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+          color: #888;
+        }
+
+        .team-submissions svg {
+          width: 14px;
+          height: 14px;
+        }
+
+        .team-arrow {
+          color: #6EE7B7;
+          transition: transform 0.2s ease;
+        }
+
+        .team-card:hover .team-arrow {
+          transform: translateX(4px);
+        }
+
+        /* Judges Section */
+        .judges-header {
+          margin-bottom: 24px;
+        }
+
+        .judges-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .judge-card {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 16px;
+          background: #17171b;
+          border: 1px solid #1e1e24;
+          border-radius: 14px;
+        }
+
+        .judge-avatar {
+          width: 44px;
+          height: 44px;
+          border-radius: 12px;
+          background: rgba(110,231,183,0.1);
+          border: 1px solid rgba(110,231,183,0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: 'Syne', sans-serif;
+          font-size: 18px;
+          font-weight: 700;
+          color: #6EE7B7;
+        }
+
+        .judge-info {
+          flex: 1;
+        }
+
+        .judge-name {
+          font-size: 15px;
+          font-weight: 600;
+          color: #f0f0f3;
+          margin-bottom: 4px;
+        }
+
+        .judge-email {
+          font-size: 12px;
+          color: #888;
+        }
+
+        .judge-management {
+          margin-top: 24px;
+        }
+
+        .search-box {
+          position: relative;
+          margin-bottom: 24px;
+        }
+
+        .search-box svg {
+          position: absolute;
+          left: 16px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #5c5c6e;
+        }
+
+        .search-box input {
+          width: 100%;
+          padding: 14px 16px 14px 48px;
+          background: #17171b;
+          border: 1px solid #1e1e24;
+          border-radius: 100px;
+          color: #f0f0f3;
+          font-size: 14px;
+          outline: none;
+          transition: all 0.2s ease;
+        }
+
+        .search-box input:focus {
+          border-color: rgba(110,231,183,0.4);
+          box-shadow: 0 0 0 2px rgba(110,231,183,0.1);
+        }
+
+        .judges-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 12px;
+        }
+
+        .judge-select-card {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 16px;
+          background: #17171b;
+          border: 1px solid #1e1e24;
+          border-radius: 14px;
+          cursor: pointer;
+          width: 100%;
+          text-align: left;
+          transition: all 0.2s ease;
+        }
+
+        .judge-select-card:hover {
+          border-color: rgba(110,231,183,0.3);
+          background: #1a1a1f;
+        }
+
+        .judge-select-card.selected {
+          background: rgba(110,231,183,0.08);
+          border-color: rgba(110,231,183,0.3);
+        }
+
+        .judge-select-card:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .judge-select-avatar {
+          width: 40px;
+          height: 40px;
+          border-radius: 10px;
+          background: rgba(110,231,183,0.1);
+          border: 1px solid rgba(110,231,183,0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: 'Syne', sans-serif;
+          font-size: 16px;
+          font-weight: 700;
+          color: #6EE7B7;
+          flex-shrink: 0;
+        }
+
+        .judge-select-info {
+          flex: 1;
+        }
+
+        .judge-select-name {
+          font-size: 14px;
+          font-weight: 600;
+          color: #f0f0f3;
+          margin-bottom: 2px;
+        }
+
+        .judge-select-email {
+          font-size: 11px;
+          color: #888;
+        }
+
+        .judge-select-status {
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(110,231,183,0.1);
+          color: #6EE7B7;
+        }
+
+        .judge-select-card.selected .judge-select-status {
+          background: #6EE7B7;
+          color: #0c0c0f;
+        }
+
+        /* Prizes Grid */
+        .prizes-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+          gap: 16px;
+        }
+
+        .prize-card {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          padding: 24px;
+          background: #17171b;
+          border: 1px solid #1e1e24;
+          border-radius: 16px;
+          transition: all 0.2s ease;
+        }
+
+        .prize-card:hover {
+          border-color: rgba(110,231,183,0.3);
+          transform: translateY(-2px);
+        }
+
+        .prize-icon {
+          width: 56px;
+          height: 56px;
+          border-radius: 18px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 28px;
+          flex-shrink: 0;
+        }
+
+        .prize-place {
+          font-size: 16px;
+          font-weight: 600;
+          color: #f0f0f3;
+          margin: 0 0 4px;
+        }
+
+        .prize-reward {
+          font-size: 13px;
+          color: #888;
+          margin: 0;
+        }
+
+        /* Empty State */
+        .empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 64px 32px;
+          text-align: center;
+          background: #17171b;
+          border: 1px solid #1e1e24;
+          border-radius: 20px;
+        }
+
+        .empty-state.small {
+          padding: 48px 24px;
+        }
+
+        .empty-icon {
+          width: 80px;
+          height: 80px;
+          border-radius: 50%;
+          background: rgba(110,231,183,0.05);
+          border: 1px solid rgba(110,231,183,0.1);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 24px;
+          color: #6EE7B7;
+        }
+
+        .empty-icon svg {
+          width: 40px;
+          height: 40px;
+        }
+
+        .empty-state h3 {
+          font-family: 'Syne', sans-serif;
+          font-size: 18px;
+          font-weight: 600;
+          color: #f0f0f3;
+          margin: 0 0 8px;
+        }
+
+        .empty-state p {
+          font-size: 14px;
+          color: #888;
+          margin: 0 0 24px;
+          max-width: 320px;
+        }
+
+        /* Not Found */
+        .not-found {
+          min-height: 80vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 32px;
+        }
+
+        .not-found-content {
+          text-align: center;
+          max-width: 400px;
+        }
+
+        .not-found-icon {
+          font-size: 48px;
+          margin-bottom: 24px;
+          opacity: 0.5;
+        }
+
+        .not-found h2 {
+          font-family: 'Syne', sans-serif;
+          font-size: 24px;
+          color: #f0f0f3;
+          margin: 0 0 12px;
+        }
+
+        .not-found p {
+          color: #888;
+          margin-bottom: 32px;
+        }
+
+        /* Loading Indicator */
+        .saving-indicator {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          margin-top: 24px;
+          padding: 16px;
+          background: #17171b;
+          border-radius: 100px;
+          color: #888;
+          font-size: 13px;
+        }
+
+        .spinner {
+          width: 18px;
+          height: 18px;
+          border: 2px solid rgba(110,231,183,0.2);
+          border-top-color: #6EE7B7;
+          border-radius: 50%;
+          animation: spin 0.6s linear infinite;
+        }
+
+        .error-message {
+          padding: 12px 16px;
+          background: rgba(248,113,113,0.1);
+          border: 1px solid rgba(248,113,113,0.2);
+          border-radius: 100px;
+          color: #f87171;
+          font-size: 13px;
+          margin-bottom: 20px;
+        }
+
+        /* Metrics Grid - Clean & Elegant */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.metric-card {
+  background: #111114;
+  border: 1px solid #1e1e24;
+  border-radius: 16px;
+  padding: 16px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.metric-card:hover {
+  border-color: rgba(110,231,183,0.2);
+  background: #151519;
+}
+
+.metric-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #6EE7B7;
+  background: rgba(110,231,183,0.08);
+}
+
+.metric-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+}
+
+.metric-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.metric-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #5c5c6e;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 2px;
+}
+
+.metric-value {
+  font-family: 'Syne', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: #f0f0f3;
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+
+.metric-trend {
+  font-size: 11px;
+  color: #6EE7B7;
+}
+
+.metric-trend.positive {
+  color: #4ade80;
+}
+
+.metric-progress {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 3px;
+  background: #1e1e24;
+  border-radius: 100px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #6EE7B7;
+  border-radius: 100px;
+}
+
+.progress-text {
+  font-size: 10px;
+  color: #5c5c6e;
+  white-space: nowrap;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .metrics-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+      
+        @media (max-width: 768px) {
+          .hero-content {
+            flex-direction: column;
+          }
+          
+          .action-cards {
+            grid-template-columns: 1fr;
+          }
+          
+          .hero-title {
+            font-size: 28px;
+          }
+          
+          .content {
+            padding: 20px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          
+          .event-page {
+            padding: 20px 16px;
+          }
+          
+          .hero {
+            padding: 20px;
+          }
+        }
+      `}</style>
     </div>
   );
 }

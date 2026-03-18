@@ -1,5 +1,6 @@
 import { Inter } from "next/font/google";
 import Navbar from "../components/navbar";
+import AuthGate from "../components/AuthGate";
 import { AuthProvider } from '@/context/AuthContext';
 import { MessagingProvider } from "@/context/MessagingContext";
 import FloatingMessageBubble from "@/components/community/FloatingMessageBubble";
@@ -18,11 +19,13 @@ export default function RootLayout({ children }) {
       <body className={inter.className}>
         <AuthProvider>
           <MessagingProvider>
-            <Navbar />
-            <main className="main-content">
-              {children}
-            </main>
-            <FloatingMessageBubble />
+            <AuthGate>
+              <Navbar />
+              <main className="main-content">
+                {children}
+              </main>
+              <FloatingMessageBubble />
+            </AuthGate>
           </MessagingProvider>
         </AuthProvider>
       </body>

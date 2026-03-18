@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import IntegrityError
 from django.contrib.auth import get_user_model
 from .models import (
     Post, Event, Team, Submission, JudgeFeedback,
@@ -344,30 +345,58 @@ class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["username", "email", "password"]
+
+    def validate_username(self, value):
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError("Username already taken.")
+        return value
+
+    def validate_email(self, value):
+        if value and User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("Email already registered.")
+        return value
+
+    def validate_password(self, value):
+        if len(value) < 6:
+            raise serializers.ValidationError("Password must be at least 6 characters long.")
+        return value
     
     def create(self, validated_data):
-        user = User.objects.create_user(
-            username=validated_data["username"],
-            email=validated_data.get("email", ""),
-            password=validated_data["password"]
-        )
-        UserProfile.objects.create(user=user)
-        return user
+        try:
+            user = User.objects.create_user(
+                username=validated_data["username"],
+                email=validated_data.get("email", ""),
+                password=validated_data["password"]
+            )
+            UserProfile.objects.create(user=user)
+            return user
+        except IntegrityError:
+            raise serializers.ValidationError("User with these credentials already exists.")
+        except Exception:
+            raise serializers.ValidationError("Registration failed. Please try again.")
 
 class EventSerializer(serializers.ModelSerializer):
     organizer_details = UserSerializer(source='organizer', read_only=True)
     organizer_username = serializers.ReadOnlyField(source='organizer.username')
     teams_count = serializers.SerializerMethodField()
+    judges_count = serializers.SerializerMethodField()
+    judges_details = UserSerializer(source='judges', many=True, read_only=True)
     
     class Meta:
         model = Event
         fields = ['id', 'name', 'description', 'start_date', 'end_date',
                   'is_premium', 'organizer', 'organizer_username', 'organizer_details',
-                  'teams_count']
+                  'teams_count', 'judges_count', 'judges_details']
         read_only_fields = ['organizer']
     
     def get_teams_count(self, obj):
         return obj.teams.count()
+
+    def get_judges_count(self, obj):
+        try:
+            return obj.judges.count()
+        except Exception:
+            return 0
 
 class TeamSerializer(serializers.ModelSerializer):
     members_details = UserSerializer(source='members', many=True, read_only=True)
@@ -403,6 +432,10 @@ class SubmissionSerializer(serializers.ModelSerializer):
     # Feedback stats
     feedback_count = serializers.SerializerMethodField()
     average_score = serializers.SerializerMethodField()
+    required_judges_count = serializers.SerializerMethodField()
+    completed_judges_count = serializers.SerializerMethodField()
+    all_judges_scored = serializers.SerializerMethodField()
+    is_assigned_judge = serializers.SerializerMethodField()
     
     class Meta:
         model = Submission
@@ -416,6 +449,8 @@ class SubmissionSerializer(serializers.ModelSerializer):
             'is_reviewed', 'is_winner',
             'winner_place', 'winner_prize',
             'feedback_count', 'average_score',
+            'required_judges_count', 'completed_judges_count', 'all_judges_scored',
+            'is_assigned_judge',
         ]
         read_only_fields = ['score', 'submitted_by', 'is_reviewed']
 
@@ -437,6 +472,35 @@ class SubmissionSerializer(serializers.ModelSerializer):
         if obj.feedback.exists():
             return sum(f.score for f in obj.feedback.all()) / obj.feedback.count()
         return None
+
+    def get_required_judges_count(self, obj):
+        try:
+            return obj.team.event.judges.count()
+        except Exception:
+            return 0
+
+    def get_completed_judges_count(self, obj):
+        try:
+            event = obj.team.event
+            return obj.feedback.filter(judge__in=event.judges.all()).count()
+        except Exception:
+            return 0
+
+    def get_all_judges_scored(self, obj):
+        required = self.get_required_judges_count(obj)
+        if required == 0:
+            return False
+        completed = self.get_completed_judges_count(obj)
+        return completed >= required
+
+    def get_is_assigned_judge(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user or not request.user.is_authenticated:
+            return False
+        try:
+            return obj.team.event.judges.filter(id=request.user.id).exists()
+        except Exception:
+            return False
 
 class JudgeFeedbackSerializer(serializers.ModelSerializer):
     judge_details = UserSerializer(source='judge', read_only=True)

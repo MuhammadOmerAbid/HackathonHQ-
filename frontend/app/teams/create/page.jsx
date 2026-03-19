@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import axios from "../../../utils/axios";
 import TeamForm from "../../../components/teams/TeamForm";
@@ -55,6 +55,8 @@ const tmcPageCss = `
 
 export default function CreateTeamPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preselectEventId = searchParams?.get("event") || "";
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -65,6 +67,12 @@ export default function CreateTeamPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    if (preselectEventId) {
+      setFormData((prev) => (prev.event ? prev : { ...prev, event: preselectEventId }));
+    }
+  }, [preselectEventId]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -104,11 +112,12 @@ export default function CreateTeamPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await axios.post("/teams/", {
+      await axios.post("/teams/", {
         ...formData,
         event: parseInt(formData.event),
       });
-      router.push(`/teams/${res.data.id}`);
+      const dest = preselectEventId ? `/teams?event=${preselectEventId}&refresh=1` : "/teams?refresh=1";
+      router.push(dest);
     } catch (err) {
       console.error("Error creating team:", err);
       setError(err.response?.data?.message || "Failed to create team. Please try again.");
@@ -130,7 +139,10 @@ export default function CreateTeamPage() {
       <div className="tmc-page">
 
         {/* ── Back button ── */}
-        <button onClick={() => router.back()} className="tmc-back">
+        <button
+          onClick={() => router.push(preselectEventId ? `/teams?event=${preselectEventId}` : "/teams")}
+          className="tmc-back"
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="19" y1="12" x2="5" y2="12" />
             <polyline points="12 19 5 12 12 5" />
@@ -169,7 +181,7 @@ export default function CreateTeamPage() {
 
           {/* ── Footer with action buttons ── */}
           <div className="tmc-card-footer">
-            <Link href="/teams" className="tmc-btn-cancel">
+            <Link href={preselectEventId ? `/teams?event=${preselectEventId}` : "/teams"} className="tmc-btn-cancel">
               Cancel
             </Link>
             <button

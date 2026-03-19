@@ -236,7 +236,10 @@ export default function SubmissionForm({
   }
 };
 
-  const hasTeams = userTeams.length > 0;
+  const teamsForEvent = formData.event
+    ? userTeams.filter(tm => String(tm.event?.id ?? tm.event) === String(formData.event))
+    : userTeams;
+  const hasTeams = teamsForEvent.length > 0;
   const hasEvents = events.length > 0;
   const canSubmit = hasTeams && hasEvents;
 
@@ -252,7 +255,7 @@ export default function SubmissionForm({
 
   // Get selected event and team names
   const selectedEvent = events.find(ev => ev.id == formData.event);
-  const selectedTeam = userTeams.find(tm => tm.id == formData.team);
+  const selectedTeam = teamsForEvent.find(tm => tm.id == formData.team);
 
   return (
     <>
@@ -276,7 +279,7 @@ export default function SubmissionForm({
             <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
-          You're not in any team yet. <Link href="/teams/create" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Create a team</Link> to submit a project.
+          You're not in any team yet. <Link href={formData.event ? `/teams/create?event=${formData.event}` : "/teams/create"} style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Create a team</Link> to submit a project.
         </div>
       )}
 
@@ -420,8 +423,8 @@ export default function SubmissionForm({
               {/* Team Dropdown Menu */}
               {openDropdown === 'team' && hasTeams && (
                 <div className="sf-select-menu">
-                  {userTeams.length > 0 ? (
-                    userTeams.map(tm => {
+                  {teamsForEvent.length > 0 ? (
+                    teamsForEvent.map(tm => {
                       const isSelected = formData.team == tm.id;
                       const isLeader = tm.leader?.id === user?.id || tm.leader === user?.id;
                       const memberCount = tm.members?.length || 0;
@@ -465,7 +468,7 @@ export default function SubmissionForm({
             )}
             {user && hasTeams && (
               <span className="sf-hint">
-                Showing {userTeams.length} team{userTeams.length !== 1 ? 's' : ''} you belong to
+                Showing {teamsForEvent.length} team{teamsForEvent.length !== 1 ? 's' : ''} you belong to
               </span>
             )}
           </div>

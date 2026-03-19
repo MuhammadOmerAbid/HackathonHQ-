@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import axios from "../../../utils/axios";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -95,9 +95,9 @@ const Icons = {
 export default function EventDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, isOrganizer } = useAuth();
   const [event, setEvent] = useState(null);
-  const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [assignedJudges, setAssignedJudges] = useState([]);
@@ -106,19 +106,32 @@ export default function EventDetailPage() {
   const [judgeSaving, setJudgeSaving] = useState(false);
   const [judgeError, setJudgeError] = useState("");
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [eR, tR] = await Promise.all([
-          axios.get(`/events/${id}/`),
-          axios.get(`/events/${id}/teams/`),
-        ]);
-        setEvent(eR.data);
-        setTeams(tR.data);
-      } catch (e) { console.error(e); }
-      finally { setLoading(false); }
-    })();
+  const loadEventData = useCallback(async (withLoading = true) => {
+    if (!id) return;
+    if (withLoading) setLoading(true);
+    try {
+      const eR = await axios.get(`/events/${id}/`);
+      setEvent(eR.data);
+    } catch (e) { console.error(e); }
+    finally {
+      if (withLoading) setLoading(false);
+    }
   }, [id]);
+
+  useEffect(() => {
+    loadEventData(true);
+  }, [loadEventData]);
+
+  useEffect(() => {
+    if (!id) return;
+    if (searchParams?.get("refresh") === "1") {
+      loadEventData(false);
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("refresh");
+      const qs = params.toString();
+      router.replace(qs ? `/events/${id}?${qs}` : `/events/${id}`);
+    }
+  }, [searchParams, id, loadEventData, router]);
 
   const canManageJudges = useMemo(() => {
     if (!event || !user) return false;
@@ -207,8 +220,12 @@ export default function EventDetailPage() {
   );
 
   const status = getStatus();
-  const totalParticipants = teams.reduce((a, t) => a + (t.members_details?.length || t.members?.length || 0), 0);
-  const teamCapacity = Math.min(100, Math.round((teams.length / 20) * 100));
+  const totalParticipants = event?.participants_count || 0;
+  const teamCapacity = Math.min(100, Math.round(((event?.teams_count || 0) / 20) * 100));
+  const teamsHref = `/teams?event=${id}`;
+  const submissionsHref = `/submissions?event=${id}`;
+  const createTeamHref = `/teams/create?event=${id}`;
+  const submitHref = `/submissions/create?event=${id}`;
 
   return (
     <div className="event-page">
@@ -272,7 +289,7 @@ export default function EventDetailPage() {
     </div>
     <div className="metric-content">
       <div className="metric-label">Teams</div>
-      <div className="metric-value">{teams.length}</div>
+      <div className="metric-value">{event.teams_count || 0}</div>
       <div className="metric-progress">
         <div className="progress-bar">
           <div className="progress-fill" style={{ width: `${teamCapacity}%` }} />
@@ -311,7 +328,7 @@ export default function EventDetailPage() {
 
       {/* Navigation Tabs */}
       <div className="tabs">
-        {["overview", "teams", "submissions", "judges", "prizes"].map(tab => (
+        {["overview", "judges", "prizes"].map(tab => (
           <button
             key={tab}
             className={`tab ${activeTab === tab ? "active" : ""}`}
@@ -329,111 +346,6 @@ export default function EventDetailPage() {
             <div className="description-card">
               <h2 className="section-title">About this Hackathon</h2>
               <p className="description">{event.description}</p>
-            </div>
-            
-            {status.label === "Live Now" && (
-              <div className="action-cards">
-                <Link href={`/events/${id}/register-team`} className="action-card primary">
-                  <div className="action-icon">
-                    <Icons.plus />
-                  </div>
-                  <div>
-                    <h3>Register Team</h3>
-                    <p>Form a team and join the competition</p>
-                  </div>
-                  <Icons.arrowRight />
-                </Link>
-                
-                <Link href={`/events/${id}/submit`} className="action-card">
-                  <div className="action-icon" style={{ background: 'rgba(110,231,183,0.1)' }}>
-                    <Icons.submission />
-                  </div>
-                  <div>
-                    <h3>Submit Project</h3>
-                    <p>Upload your hackathon project</p>
-                  </div>
-                  <Icons.arrowRight />
-                </Link>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "teams" && (
-          <div className="teams-section">
-            <div className="teams-header">
-              <h2 className="section-title">Teams · {teams.length}</h2>
-              {status.label === "Live Now" && (
-                <Link href={`/events/${id}/register-team`} className="btn-primary">
-                  <Icons.plus />
-                  <span>Create Team</span>
-                </Link>
-              )}
-            </div>
-
-            {teams.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-icon">
-                  <Icons.team />
-                </div>
-                <h3>No teams registered</h3>
-                <p>Be the first to form a team for this hackathon</p>
-                {status.label === "Live Now" && (
-                  <Link href={`/events/${id}/register-team`} className="btn-primary">
-                    Create Team
-                  </Link>
-                )}
-              </div>
-            ) : (
-              <div className="teams-grid">
-                {teams.map(team => (
-                  <Link href={`/teams/${team.id}`} key={team.id} className="team-card">
-                    <div className="team-card-header">
-                      <div className="team-avatar">{team.name.charAt(0).toUpperCase()}</div>
-                      <div>
-                        <h4 className="team-name">{team.name}</h4>
-                        <p className="team-meta">{team.members_details?.length || team.members?.length || 0} members</p>
-                      </div>
-                    </div>
-                    
-                    <div className="team-members">
-                      {(team.members_details || team.members || []).slice(0, 5).map((m, i) => (
-                        <div key={m.id ?? i} className="member-avatar" title={m.username}>
-                          {m.avatar ? <img src={m.avatar} alt="" /> : (m.username?.charAt(0).toUpperCase() || "?")}
-                        </div>
-                      ))}
-                      {(team.members_details || team.members || []).length > 5 && (
-                        <div className="member-avatar more">
-                          +{(team.members_details || team.members || []).length - 5}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="team-card-footer">
-                      <span className="team-submissions">
-                        <Icons.submission />
-                        {team.submissions_count || 0} submissions
-                      </span>
-                      <span className="team-arrow">
-                        <Icons.arrowRight />
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "submissions" && (
-          <div className="submissions-section">
-            <h2 className="section-title">Submissions</h2>
-            <div className="empty-state">
-              <div className="empty-icon">
-                <Icons.submission />
-              </div>
-              <h3>No submissions yet</h3>
-              <p>Submissions will appear here once teams start submitting their projects</p>
             </div>
           </div>
         )}
@@ -786,60 +698,6 @@ export default function EventDetailPage() {
           margin: 0;
         }
 
-        .action-cards {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 16px;
-        }
-
-        .action-card {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          padding: 20px;
-          background: #17171b;
-          border: 1px solid #1e1e24;
-          border-radius: 16px;
-          text-decoration: none;
-          color: inherit;
-          transition: all 0.2s ease;
-        }
-
-        .action-card:hover {
-          border-color: #6EE7B7;
-          transform: translateY(-2px);
-          box-shadow: 0 12px 30px rgba(0,0,0,0.4);
-        }
-
-        .action-card.primary {
-          background: linear-gradient(135deg, rgba(110,231,183,0.1), transparent);
-        }
-
-        .action-icon {
-          width: 48px;
-          height: 48px;
-          border-radius: 16px;
-          background: rgba(110,231,183,0.1);
-          border: 1px solid rgba(110,231,183,0.2);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: #6EE7B7;
-          flex-shrink: 0;
-        }
-
-        .action-card h3 {
-          font-size: 16px;
-          font-weight: 600;
-          margin: 0 0 4px;
-        }
-
-        .action-card p {
-          font-size: 12px;
-          color: #888;
-          margin: 0;
-        }
-
         /* Teams Tab */
         .teams-header {
           display: flex;
@@ -988,6 +846,104 @@ export default function EventDetailPage() {
 
         .team-card:hover .team-arrow {
           transform: translateX(4px);
+        }
+
+        /* Submissions Section */
+        .submissions-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 24px;
+        }
+
+        .submissions-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 16px;
+        }
+
+        .submission-card {
+          background: #17171b;
+          border: 1px solid #1e1e24;
+          border-radius: 16px;
+          padding: 18px;
+          text-decoration: none;
+          color: inherit;
+          transition: all 0.2s ease;
+        }
+
+        .submission-card:hover {
+          border-color: rgba(110,231,183,0.3);
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        }
+
+        .submission-card-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          margin-bottom: 14px;
+        }
+
+        .submission-title {
+          font-size: 15px;
+          font-weight: 600;
+          margin: 0 0 4px;
+          color: #f0f0f3;
+        }
+
+        .submission-meta {
+          font-size: 12px;
+          color: #888;
+        }
+
+        .submission-badge {
+          padding: 4px 10px;
+          border-radius: 100px;
+          font-size: 11px;
+          font-weight: 600;
+          border: 1px solid transparent;
+          white-space: nowrap;
+        }
+
+        .submission-badge.winner {
+          background: rgba(251,191,36,0.12);
+          color: #fbbf24;
+          border-color: rgba(251,191,36,0.25);
+        }
+
+        .submission-badge.reviewed {
+          background: rgba(96,165,250,0.12);
+          color: #60a5fa;
+          border-color: rgba(96,165,250,0.25);
+        }
+
+        .submission-badge.pending {
+          background: rgba(148,163,184,0.12);
+          color: #94a3b8;
+          border-color: rgba(148,163,184,0.25);
+        }
+
+        .submission-stats {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          padding-top: 12px;
+          border-top: 1px solid #1e1e24;
+        }
+
+        .submission-stat {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          font-size: 12px;
+          color: #888;
+        }
+
+        .submission-stat strong {
+          font-size: 14px;
+          color: #f0f0f3;
         }
 
         /* Judges Section */
@@ -1454,10 +1410,6 @@ export default function EventDetailPage() {
             flex-direction: column;
           }
           
-          .action-cards {
-            grid-template-columns: 1fr;
-          }
-          
           .hero-title {
             font-size: 28px;
           }
@@ -1481,3 +1433,7 @@ export default function EventDetailPage() {
     </div>
   );
 }
+
+
+
+

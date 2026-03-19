@@ -1,24 +1,42 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import axios from "../../utils/axios";
 import TeamCard from "../../components/teams/TeamCard";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
 export default function TeamsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const eventId = searchParams?.get("event") || "";
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [stats, setStats] = useState({ total: 0, open: 0, full: 0, mine: 0 });
+  const [page, setPage] = useState(1);
+  const pageSize = 9;
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState("all");
   const [user, setUser] = useState(null);
   const [viewMode, setViewMode] = useState("grid");
-   const [userCache, setUserCache] = useState({});
+  const userCacheRef = useRef({});
+  const [eventInfo, setEventInfo] = useState(null);
 
-  useEffect(() => {
-  const fetchData = async () => {
+  const fetchStats = useCallback(async () => {
     try {
+      const params = new URLSearchParams();
+      if (eventId) params.set("event", eventId);
+      const res = await axios.get(`/teams/stats/?${params.toString()}`);
+      setStats(res.data || { total: 0, open: 0, full: 0, mine: 0 });
+    } catch (err) {
+      console.error("Error fetching team stats:", err);
+    }
+  }, [eventId]);
+
+  const fetchData = useCallback(async (withLoading = true) => {
+    try {
+      if (withLoading) setLoading(true);
       const token = localStorage.getItem("access");
       if (token) {
         axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
@@ -28,8 +46,15 @@ export default function TeamsPage() {
         } catch { setUser(null); }
       }
       
-      const teamsRes = await axios.get("/teams/");
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("page_size", String(pageSize));
+      if (searchTerm) params.set("q", searchTerm);
+      if (filter && filter !== "all") params.set("filter", filter);
+      if (eventId) params.set("event", eventId);
+      const teamsRes = await axios.get(`/teams/?${params.toString()}`);
       const teamsData = teamsRes.data.results || teamsRes.data || [];
+      setTotalCount(teamsRes.data.count ?? teamsData.length);
       
       // Fetch member details for all teams
       const memberIds = new Set();
@@ -43,7 +68,7 @@ export default function TeamsPage() {
       });
       
       // Fetch user details for all unique member IDs
-      const cache = { ...userCache };
+      const cache = { ...userCacheRef.current };
       for (const id of memberIds) {
         if (!cache[id]) {
           try {
@@ -55,7 +80,7 @@ export default function TeamsPage() {
           }
         }
       }
-      setUserCache(cache);
+      userCacheRef.current = cache;
       
       // Enhance teams with full member objects
       const enhancedTeams = teamsData.map(team => ({
@@ -70,40 +95,83 @@ export default function TeamsPage() {
     } catch (err) {
       console.error("Error fetching teams:", err);
     } finally {
-      setLoading(false);
+      if (withLoading) setLoading(false);
     }
-  };
-  fetchData();
-}, []);
+  }, [page, pageSize, searchTerm, filter, eventId]);
+  
+  useEffect(() => {
+    fetchData(true);
+    fetchStats();
+  }, [fetchData, fetchStats]);
 
-  const filteredTeams = teams.filter((team) => {
-    const matchesSearch =
-      team.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      team.description?.toLowerCase().includes(searchTerm.toLowerCase());
-    const isFull = (team.members?.length || 0) >= (team.max_members || 4);
-    const matchesFilter =
-      filter === "all" ? true :
-      filter === "open" ? !isFull :
-      filter === "full" ? isFull : true;
-    return matchesSearch && matchesFilter;
-  });
+  useEffect(() => {
+    if (searchParams?.get("refresh") === "1") {
+      fetchData(false);
+      fetchStats();
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("refresh");
+      const qs = params.toString();
+      router.replace(qs ? `/teams?${qs}` : "/teams");
+    }
+  }, [searchParams, router, fetchData, fetchStats]);
 
-  const totalTeams  = teams.length;
-  const openTeams   = teams.filter(t => (t.members?.length || 0) < (t.max_members || 4)).length;
-  const fullTeams   = totalTeams - openTeams;
-  const myTeams     = user
-    ? teams.filter(t =>
-        (t.leader_details?.id ?? t.leader) === user.id ||
-        t.members?.some(m => m.id === user.id)
-      ).length
-    : 0;
+  useEffect(() => {
+    const handleFocus = () => {
+      fetchData(false);
+      fetchStats();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchData(false);
+        fetchStats();
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [fetchData, fetchStats]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filter, eventId]);
+
+  useEffect(() => {
+    if (!eventId) {
+      setEventInfo(null);
+      return;
+    }
+    let active = true;
+    const token = localStorage.getItem("access");
+    if (token) {
+      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    }
+    axios.get(`/events/${eventId}/`)
+      .then((res) => {
+        if (active) setEventInfo(res.data);
+      })
+      .catch(() => {
+        if (active) setEventInfo({ id: eventId, name: `Event #${eventId}` });
+      });
+    return () => { active = false; };
+  }, [eventId]);
+
+  const totalTeams  = stats.total || totalCount || teams.length;
+  const openTeams   = stats.open || 0;
+  const fullTeams   = stats.full || 0;
+  const myTeams     = stats.mine || 0;
+
+  const totalPages = Math.max(1, Math.ceil((totalCount || 0) / pageSize));
 
   const handleCreateClick = () => {
+    const createHref = eventId ? `/teams/create?event=${eventId}` : "/teams/create";
     const token = localStorage.getItem("access");
     if (!token) {
-      router.push("/login?redirect=/teams/create&message=Please login to create a team");
+      router.push(`/login?redirect=${encodeURIComponent(createHref)}&message=Please login to create a team`);
     } else {
-      router.push("/teams/create");
+      router.push(createHref);
     }
   };
 
@@ -189,6 +257,44 @@ export default function TeamsPage() {
         }
 
         /* ── Toolbar ── */
+        .tm-event-filter {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin: 8px 0 20px;
+          padding: 10px 14px;
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 12px;
+        }
+        .tm-filter-label {
+          font-size: 12px;
+          color: #888;
+        }
+        .tm-filter-chip {
+          font-size: 12px;
+          font-weight: 600;
+          color: #0c0c0f;
+          background: #6EE7B7;
+          padding: 4px 10px;
+          border-radius: 999px;
+        }
+        .tm-filter-clear {
+          margin-left: auto;
+          font-size: 12px;
+          color: #5c5c6e;
+          background: transparent;
+          border: 1px solid #26262e;
+          border-radius: 999px;
+          padding: 4px 10px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .tm-filter-clear:hover {
+          color: #f0f0f3;
+          border-color: #3a3a48;
+          background: #17171b;
+        }
 .tm-toolbar {
   display: flex;
   align-items: center;
@@ -320,6 +426,40 @@ export default function TeamsPage() {
   border-radius: 14px;
   overflow: hidden;
   animation: fadeIn 0.4s ease;
+}
+
+.tm-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.tm-page-btn {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #26262e;
+  background: transparent;
+  color: #cbd5f5;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tm-page-btn:hover:not(:disabled) {
+  border-color: #6EE7B7;
+  color: #6EE7B7;
+}
+
+.tm-page-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tm-page-info {
+  font-size: 12px;
+  color: #8b8b9b;
 }
 
 .tm-table {
@@ -537,6 +677,19 @@ export default function TeamsPage() {
 </div>
         </div>
 
+        {eventId && (
+          <div className="tm-event-filter">
+            <span className="tm-filter-label">Filtered by event:</span>
+            <span className="tm-filter-chip">{eventInfo?.name || `Event #${eventId}`}</span>
+            <button
+              className="tm-filter-clear"
+              onClick={() => router.push("/teams")}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         {/* Icon stat cards — matching submissions page */}
         <div className="tp-stats">
           <div className="tp-stat-card">
@@ -624,7 +777,7 @@ export default function TeamsPage() {
         </div>
 
         {/* Grid or Empty */}
-        {filteredTeams.length === 0 ? (
+        {teams.length === 0 ? (
   <div className="tm-empty">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -643,7 +796,7 @@ export default function TeamsPage() {
   </div>
 ) : viewMode === "grid" ? (
   <div className="tm-grid">
-    {filteredTeams.map(team => (
+    {teams.map(team => (
       <TeamCard key={team.id} team={team} user={user} />
     ))}
   </div>
@@ -660,7 +813,7 @@ export default function TeamsPage() {
         </tr>
       </thead>
       <tbody>
-        {filteredTeams.map(team => {
+        {teams.map(team => {
           const isFull = (team.members?.length || 0) >= (team.max_members || 4);
           const memberCount = team.members?.length || 0;
           const maxMembers = team.max_members || 4;
@@ -725,7 +878,30 @@ export default function TeamsPage() {
     </table>
   </div>
 )}
+
+        {totalPages > 1 && (
+          <div className="tm-pagination">
+            <button
+              className="tm-page-btn"
+              disabled={page === 1}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+            >
+              Prev
+            </button>
+            <span className="tm-page-info">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              className="tm-page-btn"
+              disabled={page === totalPages}
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
 }
+

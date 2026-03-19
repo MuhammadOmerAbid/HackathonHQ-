@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.db import IntegrityError
+from django.db.models import Count
 from django.contrib.auth import get_user_model
 from .models import (
     Post, Event, Team, Submission, JudgeFeedback,
@@ -203,6 +204,7 @@ class PostSerializer(serializers.ModelSerializer):
     liked_by = serializers.SerializerMethodField()
     reposted_by = serializers.SerializerMethodField()
     repost_context = serializers.SerializerMethodField()
+    winners = serializers.SerializerMethodField()
     
     class Meta:
         model = Post
@@ -212,7 +214,8 @@ class PostSerializer(serializers.ModelSerializer):
             'author', 'parent', 'event',
             'tags', 'tags_input', 'event_input',
             'likes_count', 'reposts_count', 'comments_count',
-            'liked_by', 'reposted_by', 'repost_context'
+            'liked_by', 'reposted_by', 'repost_context',
+            'winners'
         ]
 
     def get_tags(self, obj):
@@ -307,6 +310,43 @@ class PostSerializer(serializers.ModelSerializer):
         except Exception:
             return None
 
+    def get_winners(self, obj):
+        try:
+            if not obj or obj.post_type != Post.POST_TYPE_RESULT:
+                return []
+            event = obj.event
+            if not event:
+                return []
+            winners = Submission.objects.filter(
+                team__event=event,
+                is_winner=True
+            ).select_related('team')
+
+            order_map = {
+                '1st': 1,
+                '2nd': 2,
+                '3rd': 3,
+                'honorable_mention': 4
+            }
+
+            winner_list = []
+            for sub in winners:
+                winner_list.append({
+                    'id': sub.id,
+                    'title': sub.title,
+                    'team_name': sub.team.name if sub.team else None,
+                    'winner_place': sub.winner_place,
+                    'winner_prize': sub.winner_prize,
+                    'score': sub.score
+                })
+
+            winner_list.sort(key=lambda w: (order_map.get(w.get('winner_place') or '', 99), -(w.get('score') or 0)))
+            for w in winner_list:
+                w.pop('score', None)
+            return winner_list
+        except Exception:
+            return []
+
     def create(self, validated_data):
         if 'event_input' in validated_data:
             validated_data['event'] = validated_data.pop('event_input')
@@ -380,13 +420,16 @@ class EventSerializer(serializers.ModelSerializer):
     organizer_username = serializers.ReadOnlyField(source='organizer.username')
     teams_count = serializers.SerializerMethodField()
     judges_count = serializers.SerializerMethodField()
+    participants_count = serializers.SerializerMethodField()
+    submissions_count = serializers.SerializerMethodField()
     judges_details = UserSerializer(source='judges', many=True, read_only=True)
     
     class Meta:
         model = Event
         fields = ['id', 'name', 'description', 'start_date', 'end_date',
                   'is_premium', 'organizer', 'organizer_username', 'organizer_details',
-                  'teams_count', 'judges_count', 'judges_details']
+                  'teams_count', 'judges_count', 'participants_count', 'submissions_count',
+                  'judges_details']
         read_only_fields = ['organizer']
     
     def get_teams_count(self, obj):
@@ -395,6 +438,19 @@ class EventSerializer(serializers.ModelSerializer):
     def get_judges_count(self, obj):
         try:
             return obj.judges.count()
+        except Exception:
+            return 0
+
+    def get_participants_count(self, obj):
+        try:
+            data = Team.objects.filter(event=obj).aggregate(cnt=Count('members', distinct=True))
+            return data.get('cnt') or 0
+        except Exception:
+            return 0
+
+    def get_submissions_count(self, obj):
+        try:
+            return Submission.objects.filter(team__event=obj).count()
         except Exception:
             return 0
 

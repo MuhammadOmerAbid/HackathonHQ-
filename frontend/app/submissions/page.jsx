@@ -1,52 +1,122 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import axios from "../../utils/axios";
 import SubmissionCard from "../../components/submissions/SubmissionCard";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
 export default function SubmissionsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const eventId = searchParams?.get("event") || "";
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [stats, setStats] = useState({ total: 0, pending: 0, reviewed: 0, winners: 0 });
+  const [page, setPage] = useState(1);
+  const pageSize = 9;
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState("all");
   const [user, setUser] = useState(null);
   const [viewMode, setViewMode] = useState("grid");
+  const [eventInfo, setEventInfo] = useState(null);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (eventId) params.set("event", eventId);
+      const res = await axios.get(`/submissions/stats/?${params.toString()}`);
+      setStats(res.data || { total: 0, pending: 0, reviewed: 0, winners: 0 });
+    } catch (err) {
+      console.error("Error fetching submission stats:", err);
+    }
+  }, [eventId]);
+
+  const fetchData = useCallback(async (withLoading = true) => {
+    try {
+      if (withLoading) setLoading(true);
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("page_size", String(pageSize));
+      if (searchTerm) params.set("q", searchTerm);
+      if (filter && filter !== "all") params.set("filter", filter);
+      if (eventId) params.set("event", eventId);
+      params.set("expand", "event,team,team.members");
+      const [submissionsRes, userRes] = await Promise.all([
+        axios.get(`/submissions/?${params.toString()}`),
+        axios.get("/users/me/").catch(() => null)
+      ]);
+      const list = submissionsRes.data.results || submissionsRes.data || [];
+      setSubmissions(list);
+      setTotalCount(submissionsRes.data.count ?? list.length);
+      setUser(userRes?.data || null);
+    } catch (err) {
+      console.error("Error fetching submissions:", err);
+    } finally {
+      if (withLoading) setLoading(false);
+    }
+  }, [page, pageSize, searchTerm, filter, eventId]);
+  
+  useEffect(() => {
+    fetchData(true);
+    fetchStats();
+  }, [fetchData, fetchStats]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [submissionsRes, userRes] = await Promise.all([
-          axios.get("/submissions/?expand=event,team,team.members"),
-          axios.get("/users/me/").catch(() => null)
-        ]);
-        setSubmissions(submissionsRes.data.results || submissionsRes.data || []);
-        setUser(userRes?.data || null);
-      } catch (err) {
-        console.error("Error fetching submissions:", err);
-      } finally {
-        setLoading(false);
+    if (searchParams?.get("refresh") === "1") {
+      fetchData(false);
+      fetchStats();
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("refresh");
+      const qs = params.toString();
+      router.replace(qs ? `/submissions?${qs}` : "/submissions");
+    }
+  }, [searchParams, router, fetchData, fetchStats]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      fetchData(false);
+      fetchStats();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchData(false);
+        fetchStats();
       }
     };
-    fetchData();
-  }, []);
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [fetchData, fetchStats]);
 
-  const filteredSubmissions = submissions.filter(sub => {
-    const matchesSearch =
-      sub.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sub.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sub.team?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sub.event?.name?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter =
-      filter === "all"      ? true :
-      filter === "pending"  ? !sub.is_reviewed :
-      filter === "reviewed" ? sub.is_reviewed && !sub.is_winner :
-      filter === "winning"  ? sub.is_winner : true;
-    return matchesSearch && matchesFilter;
-  });
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filter, eventId]);
+
+  useEffect(() => {
+    if (!eventId) {
+      setEventInfo(null);
+      return;
+    }
+    let active = true;
+    const token = localStorage.getItem("access");
+    if (token) {
+      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    }
+    axios.get(`/events/${eventId}/`)
+      .then((res) => {
+        if (active) setEventInfo(res.data);
+      })
+      .catch(() => {
+        if (active) setEventInfo({ id: eventId, name: `Event #${eventId}` });
+      });
+    return () => { active = false; };
+  }, [eventId]);
 
   const getStatus = (sub) => {
     if (sub.is_winner)   return { text: "Winner",   cls: "winner"   };
@@ -56,10 +126,12 @@ export default function SubmissionsPage() {
 
   if (loading) return <LoadingSpinner message="Loading submissions…" />;
 
-  const total    = submissions.length;
-  const pending  = submissions.filter(s => !s.is_reviewed).length;
-  const reviewed = submissions.filter(s => s.is_reviewed && !s.is_winner).length;
-  const winners  = submissions.filter(s => s.is_winner).length;
+  const total    = stats.total || totalCount || submissions.length;
+  const pending  = stats.pending || 0;
+  const reviewed = stats.reviewed || 0;
+  const winners  = stats.winners || 0;
+
+  const totalPages = Math.max(1, Math.ceil((totalCount || 0) / pageSize));
 
   return (
     <div className="sub-page">
@@ -76,17 +148,17 @@ export default function SubmissionsPage() {
         </div>
         <div className="sub-header-right">
           {user && (
-  <button 
-    onClick={() => router.push('/submissions/create')} 
-    className="sub-btn-primary"
-  >
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-      <line x1="12" y1="5" x2="12" y2="19"/>
-      <line x1="5" y1="12" x2="19" y2="12"/>
-    </svg>
-    <span>New Submission</span>
-  </button>
-)}
+            <button 
+              onClick={() => router.push(eventId ? `/submissions/create?event=${eventId}` : '/submissions/create')} 
+              className="sub-btn-primary"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              <span>New Submission</span>
+            </button>
+          )}
           <button
             onClick={() => setViewMode(v => v === "grid" ? "list" : "grid")}
             className="sub-btn-ghost"
@@ -101,8 +173,19 @@ export default function SubmissionsPage() {
           </button>
         </div>
       </div>
+      {eventId && (
+        <div className="sub-event-filter">
+          <span className="sub-filter-label">Filtered by event:</span>
+          <span className="sub-filter-chip">{eventInfo?.name || `Event #${eventId}`}</span>
+          <button
+            className="sub-filter-clear"
+            onClick={() => router.push("/submissions")}
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
-      {/* ── STAT CARDS ── */}
       <div className="sub-stats">
         {[
           {
@@ -160,7 +243,7 @@ export default function SubmissionsPage() {
       </div>
 
       {/* ── CONTENT ── */}
-      {filteredSubmissions.length === 0 ? (
+      {submissions.length === 0 ? (
         <div className="sub-empty">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
             <polygon points="12 2 22 7 22 17 12 22 2 17 2 7 12 2"/>
@@ -172,7 +255,7 @@ export default function SubmissionsPage() {
         </div>
       ) : viewMode === "grid" ? (
         <div className="sub-grid">
-          {filteredSubmissions.map(s => <SubmissionCard key={s.id} submission={s} />)}
+          {submissions.map(s => <SubmissionCard key={s.id} submission={s} />)}
         </div>
       ) : (
         <div className="sub-list">
@@ -187,7 +270,7 @@ export default function SubmissionsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredSubmissions.map(sub => {
+              {submissions.map(sub => {
                 const status = getStatus(sub);
                 return (
                   <tr key={sub.id} onClick={() => router.push(`/submissions/${sub.id}`)} className="sub-table-row">
@@ -213,6 +296,28 @@ export default function SubmissionsPage() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="sub-pagination">
+          <button
+            className="sub-page-btn"
+            disabled={page === 1}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+          >
+            Prev
+          </button>
+          <span className="sub-page-info">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            className="sub-page-btn"
+            disabled={page === totalPages}
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+          >
+            Next
+          </button>
         </div>
       )}
 
@@ -353,7 +458,47 @@ export default function SubmissionsPage() {
 }
 
         /* ── Stat cards ── */
-        .sub-stats {
+
+.sub-event-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 20px;
+  padding: 10px 14px;
+  background: #111114;
+  border: 1px solid #1e1e24;
+  border-radius: 12px;
+}
+.sub-filter-label {
+  font-size: 12px;
+  color: #888;
+}
+.sub-filter-chip {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0c0c0f;
+  background: #6EE7B7;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.sub-filter-clear {
+  margin-left: auto;
+  font-size: 12px;
+  color: #5c5c6e;
+  background: transparent;
+  border: 1px solid #26262e;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.sub-filter-clear:hover {
+  color: #f0f0f3;
+  border-color: #3a3a48;
+  background: #17171b;
+}
+
+.sub-stats {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
           gap: 1rem;
@@ -502,6 +647,40 @@ export default function SubmissionsPage() {
           overflow: hidden;
           animation: fadeIn 0.4s ease;
         }
+
+        .sub-pagination {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          margin-top: 18px;
+        }
+
+        .sub-page-btn {
+          padding: 8px 14px;
+          border-radius: 999px;
+          border: 1px solid #26262e;
+          background: transparent;
+          color: #cbd5f5;
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .sub-page-btn:hover:not(:disabled) {
+          border-color: #6EE7B7;
+          color: #6EE7B7;
+        }
+
+        .sub-page-btn:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+        }
+
+        .sub-page-info {
+          font-size: 12px;
+          color: #8b8b9b;
+        }
         .sub-table {
           width: 100%;
           border-collapse: collapse;
@@ -580,12 +759,12 @@ export default function SubmissionsPage() {
         /* ── Responsive ── */
         @media (max-width: 900px) {
           .sub-page { padding: 24px 20px 48px; }
-          .sub-stats { grid-template-columns: repeat(2, 1fr); }
+.sub-stats { grid-template-columns: repeat(2, 1fr); }
           .sub-header { flex-direction: column; gap: 16px; }
         }
         @media (max-width: 600px) {
           .sub-page { padding: 20px 16px 48px; }
-          .sub-stats { grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.sub-stats { grid-template-columns: 1fr 1fr; gap: 0.75rem; }
           .sub-stat-card { padding: 16px; gap: 10px; }
           .sub-stat-icon { width: 38px; height: 38px; }
           .sub-stat-value { font-size: 22px; }
@@ -597,3 +776,13 @@ export default function SubmissionsPage() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+

@@ -19,7 +19,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.permissions import BasePermission
 from rest_framework import filters
 from rest_framework.pagination import PageNumberPagination
-from django.db.models import Count, Q
+from django.db.models import Count, Q, F
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from datetime import timedelta
@@ -842,10 +842,55 @@ class EventViewSet(viewsets.ModelViewSet):
 
 # ========== TEAM VIEWS ==========
 class TeamViewSet(viewsets.ModelViewSet):
-    queryset = Team.objects.all()
+    queryset = Team.objects.all().order_by('-created_at')
     serializer_class = TeamSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = StandardPagination
 
+    def get_queryset(self):
+        qs = Team.objects.all().order_by('-created_at').select_related('event').prefetch_related('members')
+        q = (self.request.query_params.get('q') or '').strip()
+        if q:
+            qs = qs.filter(
+                Q(name__icontains=q) |
+                Q(description__icontains=q) |
+                Q(event__name__icontains=q)
+            )
+        event_id = (self.request.query_params.get('event') or '').strip()
+        if event_id:
+            qs = qs.filter(event_id=event_id)
+        filt = (self.request.query_params.get('filter') or '').strip().lower()
+        if filt in ['open', 'full']:
+            qs = qs.annotate(member_count=Count('members'))
+            if filt == 'open':
+                qs = qs.filter(member_count__lt=F('max_members'))
+            else:
+                qs = qs.filter(member_count__gte=F('max_members'))
+        return qs
+
+    @action(detail=False, methods=["get"])
+    def stats(self, request):
+        qs = Team.objects.annotate(member_count=Count('members'))
+        event_id = (request.query_params.get('event') or '').strip()
+        if event_id:
+            qs = qs.filter(event_id=event_id)
+        total = qs.count()
+        open_count = qs.filter(member_count__lt=F('max_members')).count()
+        full_count = qs.filter(member_count__gte=F('max_members')).count()
+        my_count = 0
+        if request.user and request.user.is_authenticated:
+            my_qs = Team.objects.filter(
+                Q(leader=request.user) | Q(members=request.user)
+            )
+            if event_id:
+                my_qs = my_qs.filter(event_id=event_id)
+            my_count = my_qs.distinct().count()
+        return Response({
+            "total": total,
+            "open": open_count,
+            "full": full_count,
+            "mine": my_count
+        })
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
             return [IsAuthenticated(), IsNotBanned()]
@@ -947,10 +992,49 @@ class TeamViewSet(viewsets.ModelViewSet):
 
 # ========== SUBMISSION VIEWS ==========
 class SubmissionViewSet(viewsets.ModelViewSet):
-    queryset = Submission.objects.all()
+    queryset = Submission.objects.all().order_by('-created_at')
     serializer_class = SubmissionSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = StandardPagination
 
+    def get_queryset(self):
+        qs = Submission.objects.all().order_by('-created_at').select_related('team', 'team__event')
+        q = (self.request.query_params.get('q') or '').strip()
+        if q:
+            qs = qs.filter(
+                Q(title__icontains=q) |
+                Q(description__icontains=q) |
+                Q(team__name__icontains=q) |
+                Q(team__event__name__icontains=q)
+            )
+        event_id = (self.request.query_params.get('event') or '').strip()
+        if event_id:
+            qs = qs.filter(team__event_id=event_id)
+        filt = (self.request.query_params.get('filter') or '').strip().lower()
+        if filt == 'pending':
+            qs = qs.filter(is_reviewed=False)
+        elif filt == 'reviewed':
+            qs = qs.filter(is_reviewed=True, is_winner=False)
+        elif filt == 'winning':
+            qs = qs.filter(is_winner=True)
+        return qs
+
+    @action(detail=False, methods=["get"])
+    def stats(self, request):
+        qs = Submission.objects.all()
+        event_id = (request.query_params.get('event') or '').strip()
+        if event_id:
+            qs = qs.filter(team__event_id=event_id)
+        total = qs.count()
+        pending = qs.filter(is_reviewed=False).count()
+        reviewed = qs.filter(is_reviewed=True, is_winner=False).count()
+        winners = qs.filter(is_winner=True).count()
+        return Response({
+            "total": total,
+            "pending": pending,
+            "reviewed": reviewed,
+            "winners": winners
+        })
     def perform_create(self, serializer):
         user = self.request.user
         if is_judge(user):
@@ -978,6 +1062,11 @@ class SubmissionViewSet(viewsets.ModelViewSet):
 
         elif request.method in ["POST", "PUT"]:
             event = submission.team.event if submission.team else None
+            if not event or event.judges.count() == 0:
+                return Response(
+                    {"error": "No judges assigned to this event yet."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
             is_assigned_judge = False
             if event and request.user.is_authenticated:
                 is_assigned_judge = event.judges.filter(id=request.user.id).exists()
@@ -1047,26 +1136,10 @@ class SubmissionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path='mark-winner')
     def mark_winner(self, request, pk=None):
-        if not is_organizer(request.user):
-            return Response({"error": "Only organizers can mark winners."}, status=status.HTTP_403_FORBIDDEN)
-
-        submission = self.get_object()
-        if not submission.is_reviewed:
-            return Response(
-                {"error": "Cannot mark winner until all assigned judges have scored."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        submission.is_winner = request.data.get('is_winner', True)
-        submission.winner_place = request.data.get('winner_place', '')
-        submission.winner_prize = request.data.get('winner_prize', '')
-        submission.save()
-        
-        from .utils.activity_helpers import create_winner_activity
-        for member in submission.team.members.all():
-            create_winner_activity(member, submission)
-        
-        serializer = self.get_serializer(submission)
-        return Response(serializer.data)
+        return Response(
+            {"error": "Winners are auto-announced based on scoring. Organizer action is not required."},
+            status=status.HTTP_403_FORBIDDEN
+        )
 
     @action(detail=True, methods=["post"])
     def add_score(self, request, pk=None):
@@ -1095,6 +1168,8 @@ class JudgeFeedbackViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         submission = serializer.validated_data.get('submission')
         event = submission.team.event if submission and submission.team else None
+        if not event or event.judges.count() == 0:
+            raise PermissionDenied("No judges assigned to this event yet.")
         if not (self.request.user.is_staff or self.request.user.is_superuser):
             if not event or not event.judges.filter(id=self.request.user.id).exists():
                 raise PermissionDenied("Only assigned judges can submit feedback.")

@@ -13,6 +13,11 @@ export default function CreateEventPage() {
   const [checking, setChecking] = useState(true);
   const [user, setUser] = useState(null);
   const [canCreate, setCanCreate] = useState(false);
+  const [judgeSearch, setJudgeSearch] = useState("");
+  const [availableJudges, setAvailableJudges] = useState([]);
+  const [selectedJudgeIds, setSelectedJudgeIds] = useState([]);
+  const [judgeLoading, setJudgeLoading] = useState(false);
+  const [judgeError, setJudgeError] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -38,6 +43,31 @@ export default function CreateEventPage() {
     })();
   }, [router]);
 
+  useEffect(() => {
+    if (!canCreate) return;
+    let active = true;
+    const fetchJudges = async () => {
+      try {
+        setJudgeLoading(true);
+        setJudgeError("");
+        const res = await axios.get(`/users/judges/?q=${encodeURIComponent(judgeSearch)}`);
+        if (active) setAvailableJudges(res.data || []);
+      } catch (e) {
+        if (active) setJudgeError("Failed to load judges.");
+      } finally {
+        if (active) setJudgeLoading(false);
+      }
+    };
+    fetchJudges();
+    return () => { active = false; };
+  }, [judgeSearch, canCreate]);
+
+  const toggleJudge = (judgeId) => {
+    setSelectedJudgeIds((prev) => (
+      prev.includes(judgeId) ? prev.filter(id => id !== judgeId) : [...prev, judgeId]
+    ));
+  };
+
   const getMinDate = () => {
     const n = new Date();
     n.setMinutes(n.getMinutes() - n.getTimezoneOffset());
@@ -59,6 +89,13 @@ export default function CreateEventPage() {
         name: formData.name, description: formData.description,
         start_date: s.toISOString(), end_date: en.toISOString(), is_premium: formData.is_premium,
       });
+      if (selectedJudgeIds.length > 0) {
+        try {
+          await axios.put(`/events/${res.data.id}/judges/`, { judges: selectedJudgeIds });
+        } catch (e) {
+          console.error("Failed to assign judges:", e);
+        }
+      }
       router.push(`/events/${res.data.id}`);
     } catch (e) {
       if (e.response?.status === 403) setError("You don't have permission to create events.");
@@ -138,6 +175,55 @@ export default function CreateEventPage() {
                 <span className="evc-hint">{formData.description.length}/2000 characters</span>
               </div>
 
+              <div className="evc-group">
+                <label className="evc-label">Select Judges <span className="evc-optional">(optional)</span></label>
+                <div className="evc-judge-search">
+                  <input
+                    className="evc-input" type="text"
+                    placeholder="Search judges by name or email..."
+                    value={judgeSearch}
+                    onChange={(e) => setJudgeSearch(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+                {judgeError && (
+                  <div className="evc-error">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <line x1="12" y1="8" x2="12" y2="12"/>
+                      <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    {judgeError}
+                  </div>
+                )}
+                <div className="evc-judge-grid">
+                  {judgeLoading ? (
+                    <div className="evc-judge-empty">Loading judges...</div>
+                  ) : availableJudges.length === 0 ? (
+                    <div className="evc-judge-empty">No judges found</div>
+                  ) : (
+                    availableJudges.map(j => (
+                      <button
+                        type="button"
+                        key={j.id}
+                        className={`evc-judge-card ${selectedJudgeIds.includes(j.id) ? "selected" : ""}`}
+                        onClick={() => toggleJudge(j.id)}
+                        disabled={loading}
+                      >
+                        <div className="evc-judge-avatar">{j.username?.charAt(0).toUpperCase()}</div>
+                        <div className="evc-judge-info">
+                          <div className="evc-judge-name">{j.username}</div>
+                          <div className="evc-judge-email">{j.email}</div>
+                        </div>
+                        <div className="evc-judge-status">
+                          {selectedJudgeIds.includes(j.id) ? "Selected" : "Select"}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+                <span className="evc-hint">{selectedJudgeIds.length} judge{selectedJudgeIds.length !== 1 ? "s" : ""} selected</span>
+              </div>
               <div className="evc-row">
                 <div className="evc-group">
                   <label className="evc-label">Start Date <span className="evc-required">*</span></label>
@@ -205,3 +291,5 @@ export default function CreateEventPage() {
     </>
   );
 }
+
+

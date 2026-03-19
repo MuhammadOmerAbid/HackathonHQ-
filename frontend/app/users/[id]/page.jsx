@@ -124,26 +124,16 @@ export default function UserProfilePage() {
   if (error) {
     return (
       <div className="profile-page">
-        <button className="back-btn" onClick={() => router.back()}>Back</button>
+        <div className="hero-section error-hero">
+          <button className="back-btn" onClick={() => router.push("/users")}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+            Back to Users
+          </button>
+        </div>
         <div className="error-card">{error}</div>
-        <style jsx>{`
-          .profile-page { padding: 32px; color: #f0f0f3; }
-          .back-btn {
-            margin-bottom: 16px;
-            padding: 8px 16px;
-            border-radius: 999px;
-            border: 1px solid #26262e;
-            background: transparent;
-            color: #cbd5f5;
-            cursor: pointer;
-          }
-          .error-card {
-            padding: 20px;
-            border-radius: 16px;
-            background: #111114;
-            border: 1px solid #1e1e24;
-          }
-        `}</style>
       </div>
     );
   }
@@ -155,6 +145,18 @@ export default function UserProfilePage() {
         style={profileUser?.cover_image ? { backgroundImage: `url(${profileUser.cover_image})` } : undefined}
       >
         <div className="hero-overlay" />
+        
+        {/* Back button inside hero */}
+        <div className="hero-back">
+          <button className="back-btn" onClick={() => router.push("/users")}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+            Back to Users
+          </button>
+        </div>
+
         <div className="profile-header">
           <div className="profile-avatar">
             {profileUser?.avatar ? (
@@ -244,19 +246,56 @@ export default function UserProfilePage() {
           color: #f0f0f3;
           padding-bottom: 40px;
         }
+
         .profile-hero {
           position: relative;
           background: linear-gradient(120deg, #111114, #0c0c0f);
           background-size: cover;
           background-position: center;
           border-bottom: 1px solid #1e1e24;
-          padding: 32px;
+          padding: 24px 32px 32px;
         }
+
         .hero-overlay {
           position: absolute;
           inset: 0;
           background: linear-gradient(180deg, rgba(0,0,0,0.4), rgba(0,0,0,0.8));
         }
+
+        /* Back button positioned inside hero */
+        .hero-back {
+          position: relative;
+          z-index: 3;
+          margin-bottom: 16px;
+        }
+
+        .back-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 16px;
+          border-radius: 100px;
+          border: 1px solid rgba(255,255,255,0.1);
+          background: rgba(0,0,0,0.3);
+          backdrop-filter: blur(4px);
+          color: #f0f0f3;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .back-btn:hover {
+          border-color: #6EE7B7;
+          color: #6EE7B7;
+          transform: translateX(-4px);
+          background: rgba(0,0,0,0.5);
+        }
+
+        .back-btn svg {
+          stroke: currentColor;
+        }
+
         .profile-header {
           position: relative;
           display: grid;
@@ -264,7 +303,10 @@ export default function UserProfilePage() {
           gap: 20px;
           align-items: center;
           z-index: 2;
+          max-width: 1200px;
+          margin: 0 auto;
         }
+
         .profile-avatar {
           width: 96px;
           height: 96px;
@@ -280,21 +322,25 @@ export default function UserProfilePage() {
           color: #6EE7B7;
           overflow: hidden;
         }
+
         .profile-avatar img {
           width: 100%;
           height: 100%;
           object-fit: cover;
         }
+
         .profile-main h1 {
           font-family: 'Syne', sans-serif;
           font-size: 28px;
           margin: 0 0 6px 0;
         }
+
         .profile-badges {
           display: flex;
           gap: 8px;
           margin-bottom: 10px;
         }
+
         .badge {
           padding: 2px 8px;
           border-radius: 999px;
@@ -302,36 +348,43 @@ export default function UserProfilePage() {
           font-weight: 600;
           border: 1px solid transparent;
         }
+
         .badge.admin {
           background: rgba(96,165,250,0.12);
           color: #60a5fa;
           border-color: rgba(96,165,250,0.25);
         }
+
         .badge.organizer {
           background: rgba(167,139,250,0.12);
           color: #a78bfa;
           border-color: rgba(167,139,250,0.25);
         }
+
         .badge.judge {
           background: rgba(96,165,250,0.12);
           color: #60a5fa;
           border-color: rgba(96,165,250,0.25);
         }
+
         .profile-bio {
           color: #cbd5f5;
           font-size: 14px;
           margin: 0 0 8px 0;
         }
+
         .profile-meta {
           display: flex;
           gap: 12px;
           color: #8b8b9e;
           font-size: 12px;
         }
+
         .profile-actions {
           display: flex;
           align-items: center;
         }
+
         .follow-btn {
           padding: 10px 22px;
           border-radius: 999px;
@@ -343,19 +396,23 @@ export default function UserProfilePage() {
           cursor: pointer;
           transition: all 0.2s ease;
         }
+
         .follow-btn:hover {
           border-color: rgba(110,231,183,0.4);
           color: #6EE7B7;
         }
+
         .follow-btn.following {
           background: rgba(110,231,183,0.12);
           border-color: rgba(110,231,183,0.3);
           color: #6EE7B7;
         }
+
         .follow-btn:disabled {
           opacity: 0.6;
           cursor: not-allowed;
         }
+
         .btn-spinner {
           width: 14px;
           height: 14px;
@@ -365,6 +422,7 @@ export default function UserProfilePage() {
           animation: spin 0.6s linear infinite;
           display: inline-block;
         }
+
         .profile-stats {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
@@ -373,25 +431,30 @@ export default function UserProfilePage() {
           border-bottom: 1px solid #1e1e24;
           background: #0f0f12;
         }
+
         .stat {
           text-align: center;
         }
+
         .stat-value {
           font-size: 18px;
           font-weight: 700;
           display: block;
         }
+
         .stat-label {
           font-size: 11px;
           color: #5c5c6e;
           text-transform: uppercase;
           letter-spacing: 0.6px;
         }
+
         .profile-posts {
           max-width: 900px;
           margin: 0 auto;
           padding: 20px 16px;
         }
+
         .empty-posts {
           padding: 40px;
           text-align: center;
@@ -400,11 +463,13 @@ export default function UserProfilePage() {
           border: 1px solid #1e1e24;
           border-radius: 16px;
         }
+
         .posts-skeleton {
           display: flex;
           flex-direction: column;
           gap: 16px;
         }
+
         .post-skeleton {
           display: flex;
           gap: 16px;
@@ -413,6 +478,7 @@ export default function UserProfilePage() {
           border-radius: 14px;
           background: #111114;
         }
+
         .skeleton-avatar {
           width: 44px;
           height: 44px;
@@ -422,12 +488,14 @@ export default function UserProfilePage() {
           animation: shimmer 1.6s infinite;
           flex-shrink: 0;
         }
+
         .skeleton-lines {
           flex: 1;
           display: flex;
           flex-direction: column;
           gap: 10px;
         }
+
         .skeleton-line {
           height: 10px;
           border-radius: 6px;
@@ -435,27 +503,57 @@ export default function UserProfilePage() {
           background-size: 400% 100%;
           animation: shimmer 1.6s infinite;
         }
+
         .skeleton-line.short {
           width: 40%;
         }
+
+        .hero-section.error-hero {
+          padding: 20px 32px;
+          margin-bottom: 24px;
+        }
+
+        .error-card {
+          max-width: 900px;
+          margin: 0 auto;
+          padding: 20px;
+          border-radius: 16px;
+          background: #111114;
+          border: 1px solid #1e1e24;
+        }
+
         @keyframes shimmer {
           0% { background-position: 100% 0; }
           100% { background-position: -100% 0; }
         }
+
         @keyframes spin {
           to { transform: rotate(360deg); }
         }
+
         @media (max-width: 800px) {
+          .profile-hero {
+            padding: 16px 20px 24px;
+          }
+
           .profile-header {
             grid-template-columns: 72px 1fr;
             grid-template-rows: auto auto;
           }
+
           .profile-actions {
             grid-column: 1 / -1;
+            justify-content: flex-start;
+            margin-top: 8px;
           }
+
           .profile-avatar {
             width: 72px;
             height: 72px;
+            font-size: 24px;
+          }
+
+          .profile-main h1 {
             font-size: 24px;
           }
         }

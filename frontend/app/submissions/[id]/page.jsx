@@ -86,7 +86,6 @@ export default function SubmissionDetailPage() {
   const status = getStatus();
   const judgesRequired = submission?.required_judges_count || 0;
   const judgesCompleted = submission?.completed_judges_count || 0;
-  const allJudgesScored = submission?.all_judges_scored === true;
   const isAssignedJudge = submission?.is_assigned_judge === true;
 
   // Calculate average score
@@ -227,29 +226,8 @@ export default function SubmissionDetailPage() {
     }
   };
 
-  const handleMarkWinner = async () => {
-    if (!submission?.all_judges_scored) {
-      setError("Cannot mark winner until all assigned judges have scored.");
-      return;
-    }
-    if (!confirm("Mark this submission as a winner?")) return;
-    
-    try {
-      setError("");
-      await axios.post(`/submissions/${id}/mark-winner/`);
-      
-      // Refresh submission data
-      const res = await axios.get(`/submissions/${id}/`);
-      setSubmission(res.data);
-      
-    } catch (err) {
-      console.error("Error marking as winner:", err);
-      setError(err.response?.data?.detail || "Failed to mark as winner");
-    }
-  };
-
   const handleBack = () => {
-    router.push("/submissions");
+    router.push("/submissions?refresh=1");
   };
 
   const openLink = (url) => {
@@ -542,17 +520,9 @@ export default function SubmissionDetailPage() {
           <div>
             <div className="evd-teams-head">
               <h3>Judge Feedback {feedback.length > 0 && `(${feedback.length})`}</h3>
-              {isOrganizer && !submission.is_winner && (
-                <button
-                  onClick={handleMarkWinner}
-                  className="evd-btn-winner"
-                  disabled={!allJudgesScored}
-                  style={{ opacity: allJudgesScored ? 1 : 0.5, cursor: allJudgesScored ? "pointer" : "not-allowed" }}
-                >
-                  <span style={{ fontSize: "1.1rem" }}>🏆</span>
-                  {allJudgesScored ? "Mark as Winner" : "Awaiting Judges"}
-                </button>
-              )}
+              <div style={{ fontSize: "12px", color: "var(--muted)" }}>
+                Winners are auto-announced once all assigned judges have scored.
+              </div>
             </div>
             {judgesRequired > 0 && (
               <div style={{ padding: "0 28px 16px" }}>
@@ -752,3 +722,4 @@ export default function SubmissionDetailPage() {
     </div>
   );
 }
+

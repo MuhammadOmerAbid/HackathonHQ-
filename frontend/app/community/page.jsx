@@ -526,7 +526,7 @@ export default function CommunityPage() {
             <div className="event-name">{event.name}</div>
             <div className="event-participants">
               <span className="participant-count">
-                {Math.floor(Math.random() * 50) + 20}
+                {event.participants_count ?? event.teams_count ?? 0}
               </span> participants
             </div>
           </div>
@@ -653,9 +653,10 @@ export default function CommunityPage() {
 
         /* Left Sidebar - Brand Hero */
         .community-left {
-          position: sticky;
-          top: 24px;
-          height: fit-content;
+          height: 100%;
+          max-height: 100%;
+          overflow-y: auto;
+          min-height: 0;
         }
 
         
@@ -914,6 +915,7 @@ export default function CommunityPage() {
           flex-direction: column;
           height: 100%;
           max-height: calc(100vh - 70px);
+          min-height: 0;
           scrollbar-gutter: stable;
           scroll-behavior: smooth;
         }
@@ -1139,12 +1141,36 @@ export default function CommunityPage() {
 
         /* Right Sidebar */
         .community-right {
-          position: sticky;
-          top: 24px;
-          height: fit-content;
+          height: 100%;
+          max-height: 100%;
+          overflow-y: auto;
+          min-height: 0;
           display: flex;
           flex-direction: column;
           gap: 16px;
+        }
+
+        .community-left::-webkit-scrollbar,
+        .community-right::-webkit-scrollbar {
+          width: 6px;
+        }
+        .community-left::-webkit-scrollbar-track,
+        .community-right::-webkit-scrollbar-track {
+          background: #151519;
+        }
+        .community-left::-webkit-scrollbar-thumb,
+        .community-right::-webkit-scrollbar-thumb {
+          background: #26262e;
+          border-radius: 6px;
+        }
+        .community-left::-webkit-scrollbar-thumb:hover,
+        .community-right::-webkit-scrollbar-thumb:hover {
+          background: rgba(110,231,183,0.4);
+        }
+        .community-left,
+        .community-right {
+          scrollbar-width: thin;
+          scrollbar-color: #26262e #151519;
         }
 
         .right-card {

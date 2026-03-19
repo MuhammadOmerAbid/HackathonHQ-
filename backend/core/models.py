@@ -268,7 +268,98 @@ class Submission(models.Model):
             self.judging_complete_at = None
 
         self.save()
+        if event:
+            try:
+                _auto_assign_event_winners(event)
+            except Exception:
+                pass
         return self.score
+
+def _auto_assign_event_winners(event):
+    """Auto-announce winners once all submissions are fully reviewed."""
+    if not event:
+        return
+    submissions_qs = Submission.objects.filter(team__event=event)
+    if not submissions_qs.exists():
+        return
+    # Only announce when all submissions are reviewed
+    if submissions_qs.filter(is_reviewed=False).exists():
+        return
+
+    ranked = list(submissions_qs.order_by('-score', 'created_at'))
+    if not ranked:
+        return
+
+    # Reset winners first
+    submissions_qs.update(is_winner=False, winner_place=None, winner_prize=None)
+
+    places = ['1st', '2nd', '3rd', 'honorable_mention']
+    winners = []
+    for idx, sub in enumerate(ranked[:len(places)]):
+        sub.is_winner = True
+        sub.winner_place = places[idx]
+        if sub.winner_prize is None:
+            sub.winner_prize = ''
+        sub.save(update_fields=['is_winner', 'winner_place', 'winner_prize'])
+        winners.append(sub)
+
+    # Winner activities (avoid duplicates)
+    try:
+        from .utils.activity_helpers import create_winner_activity
+        for sub in winners:
+            for member in sub.team.members.all():
+                exists = Activity.objects.filter(
+                    user=member,
+                    submission=sub,
+                    type='winner'
+                ).exists()
+                if not exists:
+                    create_winner_activity(member, sub)
+    except Exception:
+        pass
+
+    # Upsert results post
+    try:
+        winners_qs = Submission.objects.filter(team__event=event, is_winner=True).select_related('team')
+        winners_count = winners_qs.count()
+
+        order_map = {
+            '1st': 1,
+            '2nd': 2,
+            '3rd': 3,
+            'honorable_mention': 4
+        }
+        winners_list = list(winners_qs)
+        winners_list.sort(key=lambda s: (order_map.get(s.winner_place or '', 99), -(s.score or 0)))
+
+        if winners_count == 0:
+            content = f"Results for {event.name}. No winners announced yet."
+        else:
+            lines = [f"Results for {event.name}. Winners announced: {winners_count}."]
+            for w in winners_list[:5]:
+                place = w.winner_place or "winner"
+                team_name = w.team.name if w.team else "Team"
+                title = w.title or "Submission"
+                prize = f" - {w.winner_prize}" if w.winner_prize else ""
+                lines.append(f"- {place}: {team_name} ({title}){prize}")
+            content = "\n".join(lines)
+
+        post = Post.objects.filter(post_type=Post.POST_TYPE_RESULT, event=event).first()
+        if post:
+            post.title = f"Results: {event.name}"
+            post.content = content
+            post.owner = event.organizer
+            post.save()
+        else:
+            Post.objects.create(
+                title=f"Results: {event.name}",
+                content=content,
+                owner=event.organizer,
+                post_type=Post.POST_TYPE_RESULT,
+                event=event
+            )
+    except Exception:
+        pass
 
 class JudgeFeedback(models.Model):
     submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name="feedback")

@@ -1,17 +1,20 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import SubmissionForm from "../../../components/submissions/SubmissionForm";
 
 export default function CreateSubmissionPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preselectEventId = searchParams?.get("event") || "";
+  const backHref = preselectEventId ? `/submissions?event=${preselectEventId}` : "/submissions";
 
   return (
     <div className="subc-page">
 
       {/* Back button */}
-      <button onClick={() => router.push("/submissions")} className="evd-back-btn">
+      <button onClick={() => router.push(backHref)} className="evd-back-btn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <line x1="19" y1="12" x2="5" y2="12"/>
           <polyline points="12 19 5 12 12 5"/>
@@ -30,7 +33,10 @@ export default function CreateSubmissionPage() {
       {/* Form card */}
       <div className="subc-card">
         <div className="subc-card-body">
-          <SubmissionForm cancelHref="/submissions" />
+          <SubmissionForm
+            cancelHref={backHref}
+            initialData={preselectEventId ? { event: preselectEventId } : {}}
+          />
         </div>
       </div>
 

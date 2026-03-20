@@ -18,7 +18,6 @@ export default function CommunityPage() {
   const [trendingTags, setTrendingTags] = useState([]);
   const [activeUsers, setActiveUsers] = useState([]);
   const [liveEvents, setLiveEvents] = useState([]);
-  const [onlineCount, setOnlineCount] = useState(0);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [recentActivity, setRecentActivity] = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -132,7 +131,6 @@ export default function CommunityPage() {
         setUnreadNotifications(notifRes.data.count);
       }
 
-      setOnlineCount((usersRes?.data?.results || usersRes?.data || []).length || 0);
     } catch (err) {
       console.error("Error fetching community data:", err);
     } finally {
@@ -169,7 +167,6 @@ export default function CommunityPage() {
       const res = await axios.get("/users/active/?limit=8&scope=following");
       const list = res.data.results || res.data || [];
       setActiveUsers(list);
-      setOnlineCount(list.length || 0);
     } catch (err) {
       console.error("Error fetching active users:", err);
     } finally {
@@ -284,14 +281,14 @@ export default function CommunityPage() {
   return (
     <div className="community-container">
       {/* Left Sidebar - Brand Hero & Navigation */}
-<div className="community-left">
-  <div className="community-logo">
-    <div className="logo-eyebrow">
-      <span className="logo-eyebrow-dot" />
-      <span className="logo-eyebrow-label">community</span>
-    </div>
-    <span className="logo-text">HackathonHQ</span>
-  </div>
+      <div className="community-left">
+        <div className="community-logo">
+          <div className="logo-eyebrow">
+            <span className="logo-eyebrow-dot" />
+            <span className="logo-eyebrow-label">community</span>
+          </div>
+          <span className="logo-text">HackathonHQ</span>
+        </div>
 
         <nav className="community-nav">
           <button
@@ -395,10 +392,7 @@ export default function CommunityPage() {
           </div>
         )}
 
-        <div className="online-indicator">
-          <span className="online-dot"></span>
-          <span className="online-text">{onlineCount} active now</span>
-        </div>
+        {/* REMOVED: online-indicator section */}
       </div>
 
       {/* Main Feed - Clean, just posts */}
@@ -512,122 +506,121 @@ export default function CommunityPage() {
       </div>
 
       {/* Right Sidebar - Discover & Activity */}
-<div className="community-right">
-  {/* Live Events */}
-  {liveEvents.length > 0 && (
-    <div className="right-card live-card">
-      <div className="card-header">
-        <span className="live-indicator"></span>
-        <h3>Live Now</h3>
-      </div>
-      <div className="live-events">
-        {liveEvents.map(event => (
-          <div key={event.id} className="live-event-item">
-            <div className="event-name">{event.name}</div>
-            <div className="event-participants">
-              <span className="participant-count">
-                {event.participants_count ?? event.teams_count ?? 0}
-              </span> participants
+      <div className="community-right">
+        {/* Live Events */}
+        {liveEvents.length > 0 && (
+          <div className="right-card live-card">
+            <div className="card-header">
+              <span className="live-indicator"></span>
+              <h3>Live Now</h3>
+            </div>
+            <div className="live-events">
+              {liveEvents.map(event => (
+                <div key={event.id} className="live-event-item">
+                  <div className="event-name">{event.name}</div>
+                  <div className="event-participants">
+                    <span className="participant-count">
+                      {event.participants_count ?? event.teams_count ?? 0}
+                    </span> participants
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-        ))}
-      </div>
-    </div>
-  )}
+        )}
 
-  {/* Direct Messages - Main Messaging Hub */}
-  {user && (
-  <div className="right-card">
-      <h3>Messages</h3>
-      <button
-        className="dm-open-btn"
-        onClick={() => openInbox()}
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-        Open Messages
-      </button>
-    </div>
-  )}
-
-  {/* Active Users - Quick Message Access */}
-  <ActiveUsers 
-    users={activeUsers} 
-    loading={activeUsersLoading || loading}
-    onMessageClick={(user) => {
-      openChat(user);
-    }} 
-  />
-
-  {/* Recent Activity */}
-  <div className="right-card">
-    <h3>Recent Activity</h3>
-    <div className="activity-feed">
-      {activityLoading ? (
-        <div className="activity-skeleton">
-          {Array.from({ length: 4 }).map((_, idx) => (
-            <div key={`activity-skel-${idx}`} className="activity-skeleton-row">
-              <span className="skeleton-dot" />
-              <span className="skeleton-line wide" />
-              <span className="skeleton-line tiny" />
-            </div>
-          ))}
-        </div>
-      ) : recentActivity.length === 0 ? (
-        <div className="activity-empty">No recent interactions yet.</div>
-      ) : (
-        recentActivity.slice(0, 6).map((item) => (
-          <div key={item.id} className="activity-item">
-            <span className="activity-icon">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
+        {/* Direct Messages - Main Messaging Hub */}
+        {user && (
+          <div className="right-card">
+            <h3>Messages</h3>
+            <button
+              className="dm-open-btn"
+              onClick={() => openInbox()}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               </svg>
-            </span>
-            <span className="activity-text">
-              <strong>{item.title || "Update"}</strong> {item.description || ""}
-            </span>
-            <span className="activity-time">{timeAgo(item.created_at)}</span>
+              Open Messages
+            </button>
           </div>
-        ))
-      )}
-    </div>
-  </div>
+        )}
 
-  {/* Footer Links */}
-  <div className="sidebar-footer">
-    <a href="#">About</a>
-    <span>•</span>
-    <a href="#">Guidelines</a>
-    <span>•</span>
-    <a href="#">Support</a>
-  </div>
-</div>
+        {/* Active Users - Quick Message Access */}
+        <ActiveUsers 
+          users={activeUsers} 
+          loading={activeUsersLoading || loading}
+          onMessageClick={(user) => {
+            openChat(user);
+          }} 
+        />
+
+        {/* Recent Activity */}
+        <div className="right-card">
+          <h3>Recent Activity</h3>
+          <div className="activity-feed">
+            {activityLoading ? (
+              <div className="activity-skeleton">
+                {Array.from({ length: 4 }).map((_, idx) => (
+                  <div key={`activity-skel-${idx}`} className="activity-skeleton-row">
+                    <span className="skeleton-dot" />
+                    <span className="skeleton-line wide" />
+                    <span className="skeleton-line tiny" />
+                  </div>
+                ))}
+              </div>
+            ) : recentActivity.length === 0 ? (
+              <div className="activity-empty">No recent interactions yet.</div>
+            ) : (
+              recentActivity.slice(0, 6).map((item) => (
+                <div key={item.id} className="activity-item">
+                  <span className="activity-icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                  </span>
+                  <span className="activity-text">
+                    <strong>{item.title || "Update"}</strong> {item.description || ""}
+                  </span>
+                  <span className="activity-time">{timeAgo(item.created_at)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Footer Links */}
+        <div className="sidebar-footer">
+          <a href="#">About</a>
+          <span>•</span>
+          <a href="#">Guidelines</a>
+          <span>•</span>
+          <a href="#">Support</a>
+        </div>
+      </div>
 
       <style jsx>{`
-
-/* Right sidebar message button */
-.dm-open-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 12px 16px;
-  background: #17171b;
-  border: 1px solid #26262e;
-  border-radius: 12px;
-  color: #888;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.dm-open-btn:hover {
-  background: #1e1e24;
-  border-color: rgba(110,231,183,0.3);
-  color: #f0f0f3;
-}
+        /* Right sidebar message button */
+        .dm-open-btn {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+          padding: 12px 16px;
+          background: #17171b;
+          border: 1px solid #26262e;
+          border-radius: 12px;
+          color: #888;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .dm-open-btn:hover {
+          background: #1e1e24;
+          border-color: rgba(110,231,183,0.3);
+          color: #f0f0f3;
+        }
 
         :global(html) {
           height: 100%;
@@ -651,52 +644,44 @@ export default function CommunityPage() {
           font-family: 'DM Sans', sans-serif;
         }
 
-        /* Left Sidebar - Brand Hero */
+        /* Left Sidebar - Brand Hero - NO SCROLLBAR */
         .community-left {
           height: 100%;
           max-height: 100%;
-          overflow-y: auto;
+          overflow-y: visible;
           min-height: 0;
         }
 
-        
-
         .community-logo {
-  margin-bottom: 32px;
-  padding: 0 8px;
-}
-.logo-eyebrow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.logo-eyebrow-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #6EE7B7;
-}
-.logo-eyebrow-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 1.2px;
-  text-transform: uppercase;
-  color: #6EE7B7;
-}
-.logo-text {
-  font-family: 'Syne', sans-serif;
-  font-size: 28px;
-  font-weight: 700;
-  color: #f0f0f3;
-  display: block;
-  line-height: 1.2;
-}
-        .logo-badge {
+          margin-bottom: 32px;
+          padding: 0 8px;
+        }
+        .logo-eyebrow {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+        }
+        .logo-eyebrow-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: #6EE7B7;
+        }
+        .logo-eyebrow-label {
           font-size: 11px;
-          color: #5c5c6e;
+          font-weight: 600;
+          letter-spacing: 1.2px;
           text-transform: uppercase;
-          letter-spacing: 1px;
+          color: #6EE7B7;
+        }
+        .logo-text {
+          font-family: 'Syne', sans-serif;
+          font-size: 28px;
+          font-weight: 700;
+          color: #f0f0f3;
+          display: block;
+          line-height: 1.2;
         }
 
         .community-nav {
@@ -883,28 +868,9 @@ export default function CommunityPage() {
           background: #86efac;
         }
 
-        .online-indicator {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 12px 16px;
-          background: rgba(110,231,183,0.05);
-          border-radius: 100px;
-        }
-        .online-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #6EE7B7;
-          box-shadow: 0 0 12px rgba(110,231,183,0.8);
-          animation: pulse 2s infinite;
-        }
-        .online-text {
-          font-size: 13px;
-          color: #f0f0f3;
-        }
+        /* REMOVED: .online-indicator styles */
 
-        /* Main Feed - Clean, just posts */
+        /* Main Feed */
         .community-feed {
           background: #111114;
           border: 1px solid #1e1e24;
@@ -1084,14 +1050,6 @@ export default function CommunityPage() {
           height: 48px;
           stroke: currentColor;
         }
-        .feed-spinner {
-          width: 32px;
-          height: 32px;
-          border: 3px solid #1e1e24;
-          border-top-color: #6EE7B7;
-          border-radius: 50%;
-          animation: spin 0.7s linear infinite;
-        }
         .empty-feed h3 {
           font-family: 'Syne', sans-serif;
           font-size: 20px;
@@ -1118,27 +1076,6 @@ export default function CommunityPage() {
           transform: translateY(-2px);
         }
 
-        .load-more {
-          padding: 20px;
-          text-align: center;
-          border-top: 1px solid #1e1e24;
-        }
-        .load-more-btn {
-          padding: 10px 28px;
-          background: transparent;
-          border: 1px solid #1e1e24;
-          border-radius: 100px;
-          color: #888;
-          font-size: 13px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        .load-more-btn:hover {
-          border-color: #6EE7B7;
-          color: #6EE7B7;
-        }
-
         /* Right Sidebar */
         .community-right {
           height: 100%;
@@ -1150,24 +1087,19 @@ export default function CommunityPage() {
           gap: 16px;
         }
 
-        .community-left::-webkit-scrollbar,
         .community-right::-webkit-scrollbar {
           width: 6px;
         }
-        .community-left::-webkit-scrollbar-track,
         .community-right::-webkit-scrollbar-track {
           background: #151519;
         }
-        .community-left::-webkit-scrollbar-thumb,
         .community-right::-webkit-scrollbar-thumb {
           background: #26262e;
           border-radius: 6px;
         }
-        .community-left::-webkit-scrollbar-thumb:hover,
         .community-right::-webkit-scrollbar-thumb:hover {
           background: rgba(110,231,183,0.4);
         }
-        .community-left,
         .community-right {
           scrollbar-width: thin;
           scrollbar-color: #26262e #151519;
@@ -1225,34 +1157,6 @@ export default function CommunityPage() {
         }
         .participant-count {
           font-weight: 700;
-        }
-
-        .trending-tags {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
-        .trending-tag {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          padding: 6px 14px;
-          background: #17171b;
-          border: 1px solid #1e1e24;
-          border-radius: 100px;
-          color: #888;
-          font-size: 12px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        .trending-tag:hover {
-          border-color: #6EE7B7;
-          color: #6EE7B7;
-          background: rgba(110,231,183,0.04);
-        }
-        .tag-count {
-          font-size: 10px;
-          color: #5c5c6e;
         }
 
         .activity-feed {

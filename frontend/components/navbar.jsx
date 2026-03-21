@@ -9,6 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 export default function LiquidGlassNavbar() {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [bubblePosition, setBubblePosition] = useState(0);
+  const [showBubble, setShowBubble] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
   const pathname = usePathname();
@@ -16,27 +17,29 @@ export default function LiquidGlassNavbar() {
 
   const { user, isOrganizer, isJudge, logout, loading } = useAuth();
 
-  const navItems = [
+  const marketingNavItems = [
+    { path: "/#features",     icon: "M13 10V3L4 14h7v7l9-11h-7z",                                                      label: "Features"    },
+    { path: "/#how-it-works", icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",                                    label: "How It Works"},
+    { path: "/#about",        icon: "M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 110-16 8 8 0 010 16z",                       label: "About"       },
+  ];
+
+  const appNavItems = [
     {
-      id: 0,
-      path: "/",
+      path: "/dashboard",
       icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
       label: "Dashboard",
     },
     {
-      id: 1,
       path: "/events",
       icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
       label: "Events",
     },
     {
-      id: 2,
       path: "/teams",
       icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
       label: "Teams",
     },
     {
-      id: 3,
       path: "/submissions",
       icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
       label: "Submissions",
@@ -44,13 +47,11 @@ export default function LiquidGlassNavbar() {
     ...(user
       ? [
           {
-            id: 4,
             path: "/community",
             icon: "M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z",
             label: "Community",
           },
           {
-            id: 5,
             path: "/users",
             icon: "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z",
             label: "Users",
@@ -60,7 +61,6 @@ export default function LiquidGlassNavbar() {
     ...(isJudge
       ? [
           {
-            id: 7,
             path: "/judge/dashboard",
             icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
             label: "Judge",
@@ -70,7 +70,6 @@ export default function LiquidGlassNavbar() {
     ...(isOrganizer
       ? [
           {
-            id: 6,
             path: "/events/create",
             icon: "M12 4v16m8-8H4",
             label: "Create Event",
@@ -79,7 +78,14 @@ export default function LiquidGlassNavbar() {
       : []),
   ];
 
+  const navItems = user ? appNavItems : marketingNavItems;
+
   const getActiveIndex = () => {
+    const hash = typeof window !== "undefined" ? window.location.hash : "";
+    if (hash && pathname === "/") {
+      const hashIndex = navItems.findIndex((item) => item.path.endsWith(hash));
+      if (hashIndex >= 0) return hashIndex;
+    }
     const index = navItems.findIndex(
       (item) =>
         pathname === item.path ||
@@ -93,6 +99,14 @@ export default function LiquidGlassNavbar() {
   useEffect(() => {
     setActiveIndex(getActiveIndex());
   }, [pathname, user, isOrganizer, isJudge]);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setActiveIndex(getActiveIndex());
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [pathname, user, isOrganizer, isJudge, navItems.length]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -155,7 +169,7 @@ export default function LiquidGlassNavbar() {
           >
             <Link href="/" className="glass-logo">
               <Image src="/logo.png" alt="HackathonHQ Logo" width={32} height={32} className="glass-logo-image" priority />
-              <Image src="/HackathonHQ.png" alt="HackathonHQ" width={120} height={32} className="glass-logo-text-image" priority />
+              
             </Link>
             <div className="glass-nav-placeholder"></div>
           </div>
@@ -178,16 +192,20 @@ export default function LiquidGlassNavbar() {
         >
           <Link href="/" className="glass-logo">
             <Image src="/logo.png" alt="HackathonHQ Logo" width={32} height={32} className="glass-logo-image" priority />
-            <Image src="/HackathonHQ.png" alt="HackathonHQ" width={120} height={32} className="glass-logo-text-image" priority />
+            
           </Link>
 
           <div className="glass-nav">
-            <div className="glass-nav-bubble" style={bubbleStyle} />
-            {navItems.map((item) => (
+            {showBubble && <div className="glass-nav-bubble" style={bubbleStyle} />}
+            {navItems.map((item, index) => (
               <Link
-                key={item.id}
+                key={item.path}
                 href={item.path}
-                className={`glass-nav-item ${activeIndex === item.id ? "active" : ""}`}
+                className={`glass-nav-item ${activeIndex === index ? "active" : ""}`}
+                onClick={() => {
+                  setActiveIndex(index);
+                  setShowBubble(true);
+                }}
               >
                 <svg className="glass-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d={item.icon} />
@@ -285,12 +303,16 @@ export default function LiquidGlassNavbar() {
 
       <nav className="glass-mobile-nav">
         <div className="glass-mobile-nav-container">
-          <div className="glass-mobile-bubble" style={mobileBubbleStyle} />
-          {navItems.slice(0, 5).map((item) => (
+          {showBubble && <div className="glass-mobile-bubble" style={mobileBubbleStyle} />}
+          {navItems.slice(0, 5).map((item, index) => (
             <Link
-              key={item.id}
+              key={item.path}
               href={item.path}
-              className={`glass-mobile-item ${activeIndex === item.id ? "active" : ""}`}
+              className={`glass-mobile-item ${activeIndex === index ? "active" : ""}`}
+              onClick={() => {
+                setActiveIndex(index);
+                setShowBubble(true);
+              }}
             >
               <svg className="glass-mobile-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d={item.icon} />

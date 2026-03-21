@@ -10,14 +10,14 @@ import "../../styles/global.css";
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { login } = useAuth(); // Add this line
+  const { user, loading, login } = useAuth(); // Add this line
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   
   // Get redirect URL and message from query parameters
-  const redirectUrl = searchParams.get('redirect') || '/'; // Changed from /posts to /
+  const redirectUrl = searchParams.get('redirect') || '/dashboard';
   const messageText = searchParams.get('message');
 
   // Show message from URL if present
@@ -26,6 +26,13 @@ export default function LoginPage() {
       setMessage({ type: "info", text: messageText });
     }
   }, [messageText]);
+  
+  // If already logged in, go to dashboard
+  useEffect(() => {
+    if (!loading && user) {
+      router.push("/dashboard");
+    }
+  }, [user, loading, router]);
 
   const handleLogin = async (e) => {
     e.preventDefault();

@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import ProfileSidebar from "@/components/profile/ProfileSidebar";
 import ProfileInfoCard from "@/components/profile/ProfileInfoCard";
 import SettingsCard from "@/components/profile/SettingsCard";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -313,12 +314,7 @@ export default function ProfilePage() {
   };
 
   if (loading) {
-    return (
-      <div className="profile-loading">
-        <div className="profile-spinner" />
-        <p>Loading profile...</p>
-      </div>
-    );
+    return <LoadingSpinner message="Loading profile..." />;
   }
 
   return (
@@ -412,26 +408,6 @@ export default function ProfilePage() {
         .profile-container {
           max-width: 1200px;
           margin: 0 auto;
-        }
-
-        .profile-loading {
-          min-height: 100vh;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          background: #0a0a0a;
-          color: #888;
-          gap: 1rem;
-        }
-
-        .profile-spinner {
-          width: 40px;
-          height: 40px;
-          border: 3px solid rgba(255,255,255,0.1);
-          border-top-color: #6EE7B7;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
         }
 
         @keyframes spin {

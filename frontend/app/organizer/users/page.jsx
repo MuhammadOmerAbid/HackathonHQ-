@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "@/utils/axios";
 import { useAuth } from "@/context/AuthContext";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 export default function OrganizerUsersPage() {
   const router = useRouter();
@@ -81,12 +82,7 @@ export default function OrganizerUsersPage() {
   );
 
   if (loading) {
-    return (
-      <div className="dashboard-loading">
-        <div className="dashboard-spinner" />
-        <p>Loading users...</p>
-      </div>
-    );
+    return <LoadingSpinner message="Loading users..." />;
   }
 
   return (

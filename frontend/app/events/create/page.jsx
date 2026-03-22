@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "../../../utils/axios";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 
 export default function CreateEventPage() {
@@ -106,15 +107,7 @@ export default function CreateEventPage() {
     } finally { setLoading(false); }
   };
 
-  if (checking) return (
-    <>
-      
-      <div className="evc-loading">
-        <div className="evc-spinner" />
-        <span>Checking permissions…</span>
-      </div>
-    </>
-  );
+  if (checking) return <LoadingSpinner message="Checking permissions..." />;
 
   if (!canCreate) return null;
 

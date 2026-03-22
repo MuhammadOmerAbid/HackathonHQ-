@@ -51,29 +51,11 @@ export default function ActiveUsers({ users = [], loading = false }) {
           margin: 0 0 16px 0;
         }
         .active-users-row {
-          display: flex;
-          gap: 14px;
-          overflow-x: auto;
-          padding-bottom: 4px;
-          scroll-behavior: smooth;
-        }
-        .active-users-row::-webkit-scrollbar {
-          height: 6px;
-        }
-        .active-users-row::-webkit-scrollbar-track {
-          background: #151519;
-          border-radius: 6px;
-        }
-        .active-users-row::-webkit-scrollbar-thumb {
-          background: #26262e;
-          border-radius: 6px;
-        }
-        .active-users-row::-webkit-scrollbar-thumb:hover {
-          background: rgba(110,231,183,0.4);
-        }
-        .active-users-row {
-          scrollbar-width: thin;
-          scrollbar-color: #26262e #151519;
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+          gap: 12px;
+          overflow: hidden;
+          padding-bottom: 2px;
         }
         .active-user {
           display: flex;
@@ -82,7 +64,7 @@ export default function ActiveUsers({ users = [], loading = false }) {
           gap: 6px;
           cursor: pointer;
           transition: transform 0.2s ease;
-          min-width: 64px;
+          width: 100%;
         }
         .active-user:hover {
           transform: translateY(-2px);
@@ -92,8 +74,8 @@ export default function ActiveUsers({ users = [], loading = false }) {
         }
         .active-user-avatar-wrap {
           position: relative;
-          width: 48px;
-          height: 48px;
+          width: 40px;
+          height: 40px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -101,8 +83,8 @@ export default function ActiveUsers({ users = [], loading = false }) {
         }
         .active-user-avatar {
           position: relative;
-          width: 48px;
-          height: 48px;
+          width: 40px;
+          height: 40px;
           border-radius: 50%;
           background: rgba(110,231,183,0.12);
           border: 2px solid rgba(110,231,183,0.3);
@@ -110,7 +92,7 @@ export default function ActiveUsers({ users = [], loading = false }) {
           align-items: center;
           justify-content: center;
           font-family: 'Syne', sans-serif;
-          font-size: 16px;
+          font-size: 14px;
           font-weight: 700;
           color: #6EE7B7;
           overflow: hidden;
@@ -138,17 +120,17 @@ export default function ActiveUsers({ users = [], loading = false }) {
         }
         .active-user-name {
           display: block;
-          font-size: 11px;
+          font-size: 10px;
           color: #888;
           text-align: center;
-          max-width: 64px;
+          max-width: 100%;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
         }
         .skeleton-circle {
-          width: 48px;
-          height: 48px;
+          width: 40px;
+          height: 40px;
           border-radius: 50%;
           background: linear-gradient(90deg, #17171b 25%, #1f1f26 37%, #17171b 63%);
           background-size: 400% 100%;
@@ -156,7 +138,7 @@ export default function ActiveUsers({ users = [], loading = false }) {
           border: 1px solid #1e1e24;
         }
         .skeleton-line {
-          width: 52px;
+          width: 44px;
           height: 8px;
           border-radius: 6px;
           background: linear-gradient(90deg, #17171b 25%, #1f1f26 37%, #17171b 63%);

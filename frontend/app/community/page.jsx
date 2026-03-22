@@ -589,14 +589,7 @@ export default function CommunityPage() {
           </div>
         </div>
 
-        {/* Footer Links */}
-        <div className="sidebar-footer">
-          <a href="#">About</a>
-          <span>•</span>
-          <a href="#">Guidelines</a>
-          <span>•</span>
-          <a href="#">Support</a>
-        </div>
+       
       </div>
 
       <style jsx>{`

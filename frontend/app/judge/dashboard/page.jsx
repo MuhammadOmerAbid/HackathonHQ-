@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import axios from "@/utils/axios";
 import { useAuth } from "@/context/AuthContext";
 import useSSE from "@/utils/useSSE";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 const LineChart = ({ series, color = "#6EE7B7" }) => {
   const w = 200;
@@ -85,12 +86,7 @@ export default function JudgeDashboardPage() {
   }, [stats.assigned_total, stats.completed_for_judge]);
 
   if (authLoading || loading) {
-    return (
-      <div className="jd-loading">
-        <div className="jd-spinner" />
-        <p>Loading judge dashboard...</p>
-      </div>
-    );
+    return <LoadingSpinner message="Loading judge dashboard..." />;
   }
 
   return (
@@ -308,23 +304,6 @@ export default function JudgeDashboardPage() {
         .jd-pill-done { background: rgba(110,231,183,0.15); color: #6EE7B7; border: 1px solid rgba(110,231,183,0.3); }
         .jd-queue-progress { font-size: 11px; color: #5c5c6e; }
 
-        .jd-loading {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-direction: column;
-          gap: 12px;
-          color: #8b8b9b;
-        }
-        .jd-spinner {
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          border: 3px solid rgba(255,255,255,0.08);
-          border-top-color: #60a5fa;
-          animation: spin 0.8s linear infinite;
-        }
         .jd-empty { font-size: 12px; color: #8b8b9b; }
 
         @media (max-width: 1024px) {

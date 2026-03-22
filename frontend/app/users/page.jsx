@@ -166,31 +166,32 @@ export default function UsersPage() {
       <div className="blob blob2" aria-hidden="true"></div>
       <div className="blob blob3" aria-hidden="true"></div>
 
-      {/* Header */}
-      <div className="users-header">
-        <div>
-          <div className="users-eyebrow">
-            <span className="users-eyebrow-dot" />
-            <span className="users-eyebrow-label">Community</span>
+      <div className="users-container">
+        {/* Header */}
+        <div className="users-header">
+          <div>
+            <div className="users-eyebrow">
+              <span className="users-eyebrow-dot" />
+              <span className="users-eyebrow-label">Community</span>
+            </div>
+            <h1 className="users-title">Users</h1>
+            <p className="users-subtitle">Connect with fellow hackers, organizers, and judges</p>
           </div>
-          <h1 className="users-title">Users</h1>
-          <p className="users-subtitle">Connect with fellow hackers, organizers, and judges</p>
+          <div className="users-header-right">
+            <button
+              onClick={() => setViewMode(v => v === "grid" ? "list" : "grid")}
+              className="users-btn-ghost"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                {viewMode === "grid"
+                  ? <path d="M4 6h16M4 12h16M4 18h16" />
+                  : <path d="M4 4h4v4H4zM10 4h4v4h-4zM16 4h4v4h-4zM4 10h4v4H4zM10 10h4v4h-4zM16 10h4v4h-4zM4 16h4v4H4zM10 16h4v4h-4zM16 16h4v4h-4z" />
+                }
+              </svg>
+              {viewMode === "grid" ? "List" : "Grid"}
+            </button>
+          </div>
         </div>
-        <div className="users-header-right">
-          <button
-            onClick={() => setViewMode(v => v === "grid" ? "list" : "grid")}
-            className="users-btn-ghost"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              {viewMode === "grid"
-                ? <path d="M4 6h16M4 12h16M4 18h16" />
-                : <path d="M4 4h4v4H4zM10 4h4v4h-4zM16 4h4v4h-4zM4 10h4v4H4zM10 10h4v4h-4zM16 10h4v4h-4zM4 16h4v4H4zM10 16h4v4h-4zM16 16h4v4h-4z" />
-              }
-            </svg>
-            {viewMode === "grid" ? "List" : "Grid"}
-          </button>
-        </div>
-      </div>
 
       {/* Stats Cards */}
       <div className="users-stats">
@@ -366,16 +367,23 @@ export default function UsersPage() {
           </p>
         </div>
       )}
+      </div>
 
       <style jsx>{`
         .users-page {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 36px 32px 64px;
           font-family: 'DM Sans', sans-serif;
           min-height: calc(100vh - 70px);
           position: relative;
-          background: #0a0a0a;
+          background: var(--bg);
+          overflow: hidden;
+        }
+
+        .users-container {
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 36px 32px 64px;
+          position: relative;
+          z-index: 1;
         }
 
         /* Header */
@@ -744,12 +752,12 @@ export default function UsersPage() {
 
         /* Responsive */
         @media (max-width: 900px) {
-          .users-page { padding: 24px 20px 48px; }
+          .users-container { padding: 24px 20px 48px; }
           .users-stats { grid-template-columns: repeat(2, 1fr); }
           .users-header { flex-direction: column; gap: 16px; }
         }
         @media (max-width: 600px) {
-          .users-page { padding: 20px 16px 48px; }
+          .users-container { padding: 20px 16px 48px; }
           .users-stats { grid-template-columns: 1fr; }
           .users-grid { grid-template-columns: 1fr; }
         }

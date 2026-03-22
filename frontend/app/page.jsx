@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 /* ══ useReveal ══ */
 function useReveal(threshold = 0.1) {
@@ -263,12 +264,7 @@ export default function LandingPage() {
     return () => window.removeEventListener("mousemove", onMouse);
   }, []);
 
-  if (loading) return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0c0c0f" }}>
-      <div style={{ width: 32, height: 32, border: "2px solid #1e1e24", borderTopColor: "#6EE7B7", borderRadius: "50%", animation: "spin .8s linear infinite" }} />
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  );
+  if (loading) return <LoadingSpinner message="Loading..." />;
   if (user) return null;
 
   const TICKER_ITEMS = ["AI Hackathon 2026", "Web3 BuildWeek", "Open Source Sprint", "Climate Tech Challenge", "Mobile Dev Jam", "DeFi Hackathon", "Health AI Challenge", "Gaming & XR Build", "EdTech Sprint", "Fintech Forge", "Robotics Open", "Cybersecurity CTF"];

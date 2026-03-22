@@ -1,954 +1,757 @@
 "use client";
 
-import React, { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { useAuth } from "@/context/AuthContext";
+import api from "../../utils/axios";
+import LoadingSpinner from "@/components/LoadingSpinner";
+import UserCard from "../../components/users/UserCard";
+import UserSearch from "../../components/users/UserSearch";
+import UserFilters from "../../components/users/UserFilters";
+import { useMessaging } from "@/context/MessagingContext";
 
-export default function HomePage() {
+export default function UsersPage() {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const [users, setUsers] = useState([]);
+  const [filteredUsers, setFilteredUsers] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [viewMode, setViewMode] = useState("grid");
+  const [currentUser, setCurrentUser] = useState(null);
+  const { openChat } = useMessaging();
+  const [pagination, setPagination] = useState({
+    count: 0,
+    next: null,
+    previous: null,
+    currentPage: 1,
+    totalPages: 1
+  });
 
-  // Redirect to dashboard if already logged in
-  useEffect(() => {
-    if (!loading && user) {
-      router.push("/dashboard");
+  const [filterCounts, setFilterCounts] = useState({
+    all: 0,
+    following: 0,
+    admins: 0,
+    organizers: 0,
+    judges: 0
+  });
+
+  const fetchUsers = async (pageUrl = null) => {
+    if (pageUrl) {
+      setLoadingMore(true);
+    } else {
+      setIsLoading(true);
     }
-  }, [user, loading, router]);
+    
+    try {
+      const url = pageUrl || "/users/directory/";
+      const res = await api.get(url);
+      console.log("Raw API response:", res.data);
 
-  // Show nothing while checking auth
-  if (loading) {
-    return (
-      <div className="home-loading">
-        <div className="loading-spinner" />
-      </div>
-    );
-  }
+      const usersArray = res.data.results || [];
+      const activeUsers = usersArray.filter(user => user.is_active);
+      
+      if (pageUrl) {
+        setUsers(prev => [...prev, ...activeUsers]);
+      } else {
+        setUsers(activeUsers);
+      }
 
-  // If user is logged in, don't render the landing page (redirect will happen)
-  if (user) {
-    return null;
+      setPagination({
+        count: res.data.count || 0,
+        next: res.data.next,
+        previous: res.data.previous,
+        currentPage: pageUrl ? pagination.currentPage + 1 : 1,
+        totalPages: res.data.count ? Math.ceil(res.data.count / 20) : 1
+      });
+
+      // Update filter counts
+      setFilterCounts({
+        all: res.data.count || 0,
+        following: activeUsers.filter(u => u.is_following).length,
+        admins: activeUsers.filter(u => u.is_staff).length,
+        organizers: activeUsers.filter(u => u.is_organizer).length,
+        judges: activeUsers.filter(u => u.is_judge).length
+      });
+
+    } catch (err) {
+      console.error("Error fetching users:", err);
+    } finally {
+      setIsLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const res = await api.get("/users/me/");
+        setCurrentUser(res.data);
+      } catch (err) {
+        console.error("Error fetching current user:", err);
+      }
+    };
+    
+    fetchCurrentUser();
+    fetchUsers();
+  }, []);
+
+  useEffect(() => {
+    let filtered = [...users];
+
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter(user => 
+        user.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.organization_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Apply role filter
+    switch (activeFilter) {
+      case "following":
+        filtered = filtered.filter(u => u.is_following);
+        break;
+      case "admins":
+        filtered = filtered.filter(u => u.is_staff);
+        break;
+      case "organizers":
+        filtered = filtered.filter(u => u.is_organizer);
+        break;
+      case "judges":
+        filtered = filtered.filter(u => u.is_judge);
+        break;
+      default:
+        break;
+    }
+
+    setFilteredUsers(filtered);
+  }, [users, searchTerm, activeFilter]);
+
+  const loadMore = () => {
+    if (pagination.next) {
+      fetchUsers(pagination.next);
+    }
+  };
+
+  const handleFollow = async (userId, isFollowing) => {
+    setUsers(prev => prev.map(u => 
+      u.id === userId 
+        ? { ...u, is_following: isFollowing }
+        : u
+    ));
+  };
+
+  const handleMessage = (user) => {
+    openChat(user);
+  };
+
+  const stats = {
+    total: pagination.count,
+    admins: users.filter(u => u.is_staff).length,
+    organizers: users.filter(u => u.is_organizer).length,
+    judges: users.filter(u => u.is_judge).length,
+    online: users.filter(u => u.is_active).length
+  };
+
+  if (isLoading && users.length === 0) {
+    return <LoadingSpinner message="Loading users..." />;
   }
 
   return (
-    <div className="home-page">
-      {/* Background Elements */}
-      <div className="home-bg-gradient" />
-      <div className="home-bg-grid" />
-      
-      {/* Navigation */}
-      <nav className="home-nav">
-        <div className="nav-container">
-          <div className="nav-logo">
-            <span className="logo-text">HackForge</span>
-            <span className="logo-badge">beta</span>
+    <div className="users-page">
+      {/* Background Blobs */}
+      <div className="blob blob1" aria-hidden="true"></div>
+      <div className="blob blob2" aria-hidden="true"></div>
+      <div className="blob blob3" aria-hidden="true"></div>
+
+      {/* Header */}
+      <div className="users-header">
+        <div>
+          <div className="users-eyebrow">
+            <span className="users-eyebrow-dot" />
+            <span className="users-eyebrow-label">Community</span>
           </div>
-          <div className="nav-links">
-            <Link href="/features" className="nav-link">Features</Link>
-            <Link href="/about" className="nav-link">About</Link>
-            <Link href="/contact" className="nav-link">Contact</Link>
-          </div>
-          <div className="nav-buttons">
-            <Link href="/login" className="nav-btn-secondary">
-              Log in
-            </Link>
-            <Link href="/register" className="nav-btn-primary">
-              Sign up free
-            </Link>
-          </div>
+          <h1 className="users-title">Users</h1>
+          <p className="users-subtitle">Connect with fellow hackers, organizers, and judges</p>
         </div>
-      </nav>
-
-      {/* Hero Section */}
-      <section className="home-hero">
-        <div className="hero-container">
-          <div className="hero-content">
-            <div className="hero-eyebrow">
-              <span className="eyebrow-dot" />
-              <span className="eyebrow-text">HACKATHON PLATFORM</span>
-            </div>
-            <h1 className="hero-title">
-              Build, Compete, <br />
-              <span className="hero-title-gradient">Win Together</span>
-            </h1>
-            <p className="hero-subtitle">
-              Join the ultimate hackathon community. Form teams, submit projects, 
-              get feedback from judges, and showcase your skills.
-            </p>
-            <div className="hero-cta">
-              <Link href="/register" className="cta-primary">
-                Get started
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                  <polyline points="12 5 19 12 12 19" />
-                </svg>
-              </Link>
-              <Link href="/about" className="cta-secondary">
-                Learn more
-              </Link>
-            </div>
-          </div>
-          <div className="hero-visual">
-            <div className="visual-card card-1">
-              <div className="card-glow" />
-              <div className="card-content">
-                <div className="card-header">
-                  <div className="card-avatars">
-                    <div className="avatar">👤</div>
-                    <div className="avatar">👤</div>
-                    <div className="avatar">👤</div>
-                  </div>
-                  <span className="card-badge">Live now</span>
-                </div>
-                <div className="card-title">AI Hackathon 2026</div>
-                <div className="card-meta">24 teams · 3 days left</div>
-              </div>
-            </div>
-            <div className="visual-card card-2">
-              <div className="card-glow" />
-              <div className="card-content">
-                <div className="card-stats">
-                  <div className="stat">
-                    <span className="stat-value">156</span>
-                    <span className="stat-label">projects</span>
-                  </div>
-                  <div className="stat">
-                    <span className="stat-value">42</span>
-                    <span className="stat-label">judges</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="visual-card card-3">
-              <div className="card-glow" />
-              <div className="card-content">
-                <div className="card-progress">
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: '75%' }} />
-                  </div>
-                  <span className="progress-label">75% reviewed</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Stats Section */}
-      <section className="home-stats">
-        <div className="stats-container">
-          <div className="stat-item">
-            <span className="stat-number">500+</span>
-            <span className="stat-name">Hackathons</span>
-          </div>
-          <div className="stat-divider" />
-          <div className="stat-item">
-            <span className="stat-number">10k+</span>
-            <span className="stat-name">Participants</span>
-          </div>
-          <div className="stat-divider" />
-          <div className="stat-item">
-            <span className="stat-number">2.5k+</span>
-            <span className="stat-name">Projects</span>
-          </div>
-          <div className="stat-divider" />
-          <div className="stat-item">
-            <span className="stat-number">150+</span>
-            <span className="stat-name">Judges</span>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section className="home-features">
-        <div className="features-container">
-          <div className="features-header">
-            <h2 className="features-title">Everything you need to hack</h2>
-            <p className="features-subtitle">
-              From team formation to final submissions, we've got you covered
-            </p>
-          </div>
-
-          <div className="features-grid">
-            <div className="feature-card">
-              <div className="feature-icon">🎯</div>
-              <h3 className="feature-title">Discover Events</h3>
-              <p className="feature-desc">
-                Find hackathons that match your interests and skill level
-              </p>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon">👥</div>
-              <h3 className="feature-title">Form Teams</h3>
-              <p className="feature-desc">
-                Connect with like-minded hackers and build dream teams
-              </p>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon">🚀</div>
-              <h3 className="feature-title">Submit Projects</h3>
-              <p className="feature-desc">
-                Showcase your work and get feedback from expert judges
-              </p>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon">⚖️</div>
-              <h3 className="feature-title">Expert Judging</h3>
-              <p className="feature-desc">
-                Get scored by industry professionals and win prizes
-              </p>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon">💬</div>
-              <h3 className="feature-title">Community</h3>
-              <p className="feature-desc">
-                Engage with fellow hackers, share ideas, and grow together
-              </p>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon">🏆</div>
-              <h3 className="feature-title">Win Recognition</h3>
-              <p className="feature-desc">
-                Get featured as winners and build your portfolio
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="home-cta">
-        <div className="cta-container">
-          <h2 className="cta-title">Ready to start your journey?</h2>
-          <p className="cta-subtitle">
-            Join thousands of hackers building the future, one hackathon at a time
-          </p>
-          <Link href="/register" className="cta-button">
-            Create your account
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="5" y1="12" x2="19" y2="12" />
-              <polyline points="12 5 19 12 12 19" />
+        <div className="users-header-right">
+          <button
+            onClick={() => setViewMode(v => v === "grid" ? "list" : "grid")}
+            className="users-btn-ghost"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              {viewMode === "grid"
+                ? <path d="M4 6h16M4 12h16M4 18h16" />
+                : <path d="M4 4h4v4H4zM10 4h4v4h-4zM16 4h4v4h-4zM4 10h4v4H4zM10 10h4v4h-4zM16 10h4v4h-4zM4 16h4v4H4zM10 16h4v4h-4zM16 16h4v4h-4z" />
+              }
             </svg>
-          </Link>
+            {viewMode === "grid" ? "List" : "Grid"}
+          </button>
         </div>
-      </section>
+      </div>
 
-      {/* Footer */}
-      <footer className="home-footer">
-        <div className="footer-container">
-          <div className="footer-logo">
-            <span className="footer-logo-text">HackForge</span>
-            <span className="footer-copyright">© 2026 HackForge. All rights reserved.</span>
+      {/* Stats Cards */}
+      <div className="users-stats">
+        {[
+          { label: "Total Users", value: stats.total, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> },
+          { label: "Online Now", value: stats.online, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg> },
+          { label: "Admins", value: stats.admins, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4-6.2-4.5-6.2 4.5 2.4-7.4L2 9.4h7.6z"/></svg> },
+          { label: "Organizers", value: stats.organizers, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> },
+          { label: "Judges", value: stats.judges, accent: true, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> },
+        ].map((s, i) => (
+          <div className="users-stat-card" key={i}>
+            <div className="users-stat-icon">{s.icon}</div>
+            <div className="users-stat-body">
+              <div className={`users-stat-value${s.accent ? " accent" : ""}`}>{s.value}</div>
+              <div className="users-stat-label">{s.label}</div>
+            </div>
           </div>
-          <div className="footer-links">
-            <Link href="/privacy" className="footer-link">Privacy</Link>
-            <Link href="/terms" className="footer-link">Terms</Link>
-            <Link href="/contact" className="footer-link">Contact</Link>
-          </div>
+        ))}
+      </div>
+
+      {/* Search and Filters */}
+      <div className="users-search-section">
+        <UserSearch 
+          onSelect={(user) => router.push(`/users/${user.id}`)}
+          placeholder="Search by username, email, or organization..."
+        />
+        
+        <UserFilters 
+          activeFilter={activeFilter}
+          onFilterChange={setActiveFilter}
+          counts={filterCounts}
+        />
+      </div>
+
+      {/* Users Grid/List */}
+      {filteredUsers.length === 0 ? (
+        <div className="users-empty">
+          <svg className="users-empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <h3 className="users-empty-title">
+            {searchTerm ? "No users match your search" : "No users found"}
+          </h3>
+          <p className="users-empty-text">
+            {searchTerm ? "Try adjusting your search terms" : "Check back later for new members"}
+          </p>
         </div>
-      </footer>
+      ) : viewMode === "grid" ? (
+        <div className="users-grid">
+          {filteredUsers.map((user, index) => (
+            <UserCard
+              key={user.id}
+              user={user}
+              currentUser={currentUser}
+              onFollow={handleFollow}
+              onMessage={handleMessage}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="users-list-container">
+          <table className="users-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Role</th>
+                <th>Stats</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.map((user, index) => {
+                const role = user.is_staff ? "Admin" : 
+                            user.is_organizer ? "Organizer" :
+                            user.is_judge ? "Judge" : "Member";
+                const roleColor = user.is_staff ? "#fbbf24" :
+                                 user.is_organizer ? "#a78bfa" :
+                                 user.is_judge ? "#60a5fa" : "#5c5c6e";
+                
+                return (
+                  <tr
+                    key={user.id}
+                    className="users-table-row"
+                    onClick={() => router.push(`/users/${user.id}`)}
+                  >
+                    <td className="users-table-user">
+                      <div className="users-table-avatar">
+                        {user.avatar ? <img src={user.avatar} alt="" /> : user.username?.[0]?.toUpperCase()}
+                        {user.is_active && <span className="users-table-active" />}
+                      </div>
+                      <div>
+                        <div className="users-table-username">{user.username}</div>
+                        <div className="users-table-email">{user.email}</div>
+                      </div>
+                    </td>
+                    <td>
+                      <span 
+                        className="users-table-badge"
+                        style={{ background: `${roleColor}15`, color: roleColor }}
+                      >
+                        {role}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="users-table-stats">
+                        <span>📝 {user.posts_count || 0}</span>
+                        <span>👥 {user.followers_count || 0}</span>
+                      </div>
+                    </td>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {currentUser && currentUser.id !== user.id && (
+                        <div className="users-table-actions">
+                          <button
+                            className={`users-table-follow ${user.is_following ? 'following' : ''}`}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                if (user.is_following) {
+                                  await api.post(`/users/${user.id}/unfollow/`);
+                                } else {
+                                  await api.post(`/users/${user.id}/follow/`);
+                                }
+                                handleFollow(user.id, !user.is_following);
+                              } catch (error) {
+                                console.error("Error:", error);
+                              }
+                            }}
+                          >
+                            {user.is_following ? 'Following' : 'Follow'}
+                          </button>
+                          <button
+                            className="users-table-message"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMessage(user);
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Load More */}
+      {pagination.next && filteredUsers.length > 0 && (
+        <div className="users-load-more">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="users-load-more-btn"
+          >
+            {loadingMore ? (
+              <>
+                <span className="users-spinner"></span>
+                Loading...
+              </>
+            ) : (
+              "Load More Users"
+            )}
+          </button>
+          <p className="users-pagination-info">
+            Page {pagination.currentPage} of {pagination.totalPages}
+          </p>
+        </div>
+      )}
 
       <style jsx>{`
-        .home-page {
-          min-height: 100vh;
-          background: #0a0a0a;
-          color: #f0f0f3;
+        .users-page {
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 36px 32px 64px;
           font-family: 'DM Sans', sans-serif;
+          min-height: calc(100vh - 70px);
           position: relative;
-          overflow-x: hidden;
-        }
-
-        /* Background Effects */
-        .home-bg-gradient {
-          position: fixed;
-          top: -50vh;
-          left: -50vw;
-          width: 200vw;
-          height: 200vh;
-          background: radial-gradient(circle at 30% 30%, rgba(110,231,183,0.05) 0%, transparent 70%);
-          pointer-events: none;
-          z-index: 0;
-        }
-
-        .home-bg-grid {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background-image: 
-            linear-gradient(rgba(110,231,183,0.02) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(110,231,183,0.02) 1px, transparent 1px);
-          background-size: 40px 40px;
-          pointer-events: none;
-          z-index: 0;
-        }
-
-        .home-loading {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
           background: #0a0a0a;
         }
 
-        .loading-spinner {
-          width: 40px;
-          height: 40px;
-          border: 3px solid rgba(110,231,183,0.1);
-          border-top-color: #6EE7B7;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-        }
-
-        /* Navigation */
-        .home-nav {
-          position: relative;
-          z-index: 10;
-          padding: 20px 0;
-          border-bottom: 1px solid rgba(110,231,183,0.1);
-          backdrop-filter: blur(10px);
-          background: rgba(10,10,10,0.8);
-        }
-
-        .nav-container {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 0 24px;
+        /* Header */
+        .users-header {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           justify-content: space-between;
+          margin-bottom: 32px;
+          gap: 20px;
         }
-
-        .nav-logo {
+        .users-eyebrow {
           display: flex;
           align-items: center;
           gap: 8px;
+          margin-bottom: 8px;
         }
-
-        .logo-text {
-          font-family: 'Syne', sans-serif;
-          font-size: 24px;
-          font-weight: 700;
-          background: linear-gradient(135deg, #f0f0f3, #6EE7B7);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-        }
-
-        .logo-badge {
-          font-size: 10px;
-          padding: 2px 6px;
-          background: rgba(110,231,183,0.1);
-          border: 1px solid rgba(110,231,183,0.2);
-          border-radius: 100px;
-          color: #6EE7B7;
-          text-transform: uppercase;
-        }
-
-        .nav-links {
-          display: flex;
-          gap: 32px;
-        }
-
-        .nav-link {
-          color: #888;
-          text-decoration: none;
-          font-size: 14px;
-          transition: color 0.2s ease;
-        }
-
-        .nav-link:hover {
-          color: #6EE7B7;
-        }
-
-        .nav-buttons {
-          display: flex;
-          gap: 12px;
-        }
-
-        .nav-btn-secondary {
-          padding: 8px 20px;
-          border: 1px solid #1e1e24;
-          border-radius: 100px;
-          color: #f0f0f3;
-          text-decoration: none;
-          font-size: 13px;
-          font-weight: 500;
-          transition: all 0.2s ease;
-        }
-
-        .nav-btn-secondary:hover {
-          border-color: #6EE7B7;
-          color: #6EE7B7;
-        }
-
-        .nav-btn-primary {
-          padding: 8px 20px;
-          background: #6EE7B7;
-          border: 1px solid #4fb88b;
-          border-radius: 100px;
-          color: #0c0c0f;
-          text-decoration: none;
-          font-size: 13px;
-          font-weight: 600;
-          transition: all 0.2s ease;
-        }
-
-        .nav-btn-primary:hover {
-          background: #86efac;
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(110,231,183,0.3);
-        }
-
-        /* Hero Section */
-        .home-hero {
-          position: relative;
-          z-index: 5;
-          padding: 80px 24px;
-        }
-
-        .hero-container {
-          max-width: 1200px;
-          margin: 0 auto;
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 60px;
-          align-items: center;
-        }
-
-        .hero-eyebrow {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-bottom: 24px;
-        }
-
-        .eyebrow-dot {
+        .users-eyebrow-dot {
           width: 6px;
           height: 6px;
           border-radius: 50%;
           background: #6EE7B7;
-          box-shadow: 0 0 12px rgba(110,231,183,0.6);
         }
-
-        .eyebrow-text {
+        .users-eyebrow-label {
           font-size: 11px;
           font-weight: 600;
           letter-spacing: 1.2px;
           text-transform: uppercase;
           color: #6EE7B7;
         }
-
-        .hero-title {
+        .users-title {
           font-family: 'Syne', sans-serif;
-          font-size: 56px;
-          font-weight: 800;
+          font-size: 30px;
+          font-weight: 700;
+          color: #f0f0f3;
+          letter-spacing: -0.5px;
           line-height: 1.1;
-          margin: 0 0 24px;
-          letter-spacing: -1px;
+          margin: 0;
         }
-
-        .hero-title-gradient {
-          background: linear-gradient(135deg, #6EE7B7, #4fb88b);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
+        .users-subtitle {
+          font-size: 14px;
+          color: #5c5c6e;
+          margin-top: 6px;
+          line-height: 1.6;
         }
-
-        .hero-subtitle {
-          font-size: 16px;
-          color: #888;
-          line-height: 1.7;
-          margin: 0 0 32px;
-          max-width: 500px;
-        }
-
-        .hero-cta {
+        .users-header-right {
           display: flex;
-          gap: 16px;
           align-items: center;
+          gap: 10px;
+          flex-shrink: 0;
         }
 
-        .cta-primary {
+        /* Buttons */
+        .users-btn-ghost {
           display: inline-flex;
           align-items: center;
-          gap: 8px;
-          padding: 14px 32px;
-          background: #6EE7B7;
-          border: 1px solid #4fb88b;
+          justify-content: center;
+          gap: 0.5rem;
+          padding: 0.6rem 1.2rem;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
           border-radius: 100px;
-          color: #0c0c0f;
-          text-decoration: none;
-          font-size: 15px;
-          font-weight: 600;
+          color: #fff;
+          font-size: 0.9rem;
+          font-weight: 500;
+          font-family: 'DM Sans', sans-serif;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          backdrop-filter: blur(5px);
+        }
+        .users-btn-ghost:hover {
+          background: rgba(255,255,255,0.1);
+          border-color: #6EE7B7;
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(110,231,183,0.15);
+        }
+
+        /* Stats Cards */
+        .users-stats {
+          display: grid;
+          grid-template-columns: repeat(5, 1fr);
+          gap: 1rem;
+          margin-bottom: 28px;
+        }
+        .users-stat-card {
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 14px;
+          padding: 20px 22px;
+          display: flex;
+          align-items: center;
+          gap: 14px;
           transition: all 0.2s ease;
         }
-
-        .cta-primary:hover {
-          background: #86efac;
-          transform: translateY(-2px);
-          box-shadow: 0 12px 30px rgba(110,231,183,0.4);
-        }
-
-        .cta-secondary {
-          padding: 14px 24px;
-          color: #888;
-          text-decoration: none;
-          font-size: 15px;
-          transition: color 0.2s ease;
-        }
-
-        .cta-secondary:hover {
-          color: #6EE7B7;
-        }
-
-        /* Hero Visual Cards */
-        .hero-visual {
-          position: relative;
-          height: 400px;
-        }
-
-        .visual-card {
-          position: absolute;
-          background: rgba(17,17,20,0.8);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(110,231,183,0.1);
-          border-radius: 24px;
-          overflow: hidden;
-          transition: all 0.3s ease;
-        }
-
-        .visual-card:hover {
-          transform: translateY(-4px);
+        .users-stat-card:hover {
           border-color: rgba(110,231,183,0.3);
-          box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+          background: #17171b;
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.3);
         }
-
-        .card-glow {
-          position: absolute;
-          inset: 0;
-          background: radial-gradient(circle at top right, rgba(110,231,183,0.1), transparent 70%);
-          opacity: 0;
-          transition: opacity 0.3s ease;
-        }
-
-        .visual-card:hover .card-glow {
-          opacity: 1;
-        }
-
-        .card-content {
-          position: relative;
-          z-index: 1;
-          padding: 24px;
-        }
-
-        .card-1 {
-          top: 20px;
-          right: 40px;
-          width: 280px;
-        }
-
-        .card-2 {
-          bottom: 40px;
-          left: 20px;
-          width: 240px;
-        }
-
-        .card-3 {
-          top: 50%;
-          right: 0;
-          transform: translateY(-50%);
-          width: 200px;
-        }
-
-        .card-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 16px;
-        }
-
-        .card-avatars {
-          display: flex;
-          align-items: center;
-        }
-
-        .avatar {
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          background: rgba(110,231,183,0.1);
-          border: 2px solid rgba(110,231,183,0.2);
+        .users-stat-icon {
+          width: 44px;
+          height: 44px;
+          border-radius: 11px;
+          background: rgba(110,231,183,0.08);
+          border: 1px solid rgba(110,231,183,0.15);
           display: flex;
           align-items: center;
           justify-content: center;
-          margin-right: -8px;
-          font-size: 14px;
-        }
-
-        .avatar:first-child {
-          margin-left: 0;
-        }
-
-        .card-badge {
-          padding: 4px 10px;
-          background: rgba(110,231,183,0.1);
-          border: 1px solid rgba(110,231,183,0.2);
-          border-radius: 100px;
-          font-size: 10px;
+          flex-shrink: 0;
           color: #6EE7B7;
         }
-
-        .card-title {
+        .users-stat-icon svg {
+          width: 20px;
+          height: 20px;
+          stroke: #6EE7B7;
+        }
+        .users-stat-value {
           font-family: 'Syne', sans-serif;
-          font-size: 18px;
+          font-size: 26px;
           font-weight: 700;
+          color: #f0f0f3;
+          letter-spacing: -1px;
+          line-height: 1;
           margin-bottom: 4px;
         }
-
-        .card-meta {
-          font-size: 12px;
-          color: #888;
-        }
-
-        .card-stats {
-          display: flex;
-          gap: 24px;
-        }
-
-        .stat {
-          text-align: center;
-        }
-
-        .stat-value {
-          display: block;
-          font-family: 'Syne', sans-serif;
-          font-size: 24px;
-          font-weight: 700;
-          color: #6EE7B7;
-        }
-
-        .stat-label {
+        .users-stat-value.accent { color: #6EE7B7; }
+        .users-stat-label {
           font-size: 11px;
-          color: #888;
+          font-weight: 500;
+          color: #5c5c6e;
           text-transform: uppercase;
+          letter-spacing: 0.7px;
         }
 
-        .card-progress {
-          width: 100%;
+        /* Search Section */
+        .users-search-section {
+          margin-bottom: 24px;
         }
 
-        .progress-bar {
-          height: 6px;
-          background: #1e1e24;
-          border-radius: 100px;
+        /* Grid View */
+        .users-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+          gap: 1.2rem;
+          margin-bottom: 2rem;
+        }
+
+        /* List View */
+        .users-list-container {
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 16px;
           overflow: hidden;
-          margin-bottom: 8px;
+          margin-bottom: 2rem;
         }
-
-        .progress-fill {
-          height: 100%;
-          background: linear-gradient(90deg, #6EE7B7, #4fb88b);
-          border-radius: 100px;
+        .users-table {
+          width: 100%;
+          border-collapse: collapse;
         }
-
-        .progress-label {
+        .users-table th {
+          text-align: left;
+          padding: 16px 20px;
+          background: #0c0c0f;
+          color: #5c5c6e;
           font-size: 11px;
-          color: #6EE7B7;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.7px;
         }
-
-        /* Stats Section */
-        .home-stats {
-          position: relative;
-          z-index: 5;
-          padding: 60px 24px;
-          border-top: 1px solid rgba(110,231,183,0.05);
-          border-bottom: 1px solid rgba(110,231,183,0.05);
+        .users-table td {
+          padding: 16px 20px;
+          color: #f0f0f3;
+          font-size: 13px;
+          border-top: 1px solid #1e1e24;
         }
-
-        .stats-container {
-          max-width: 1000px;
-          margin: 0 auto;
+        .users-table-row {
+          cursor: pointer;
+          transition: background 0.2s ease;
+        }
+        .users-table-row:hover td {
+          background: #17171b;
+        }
+        .users-table-user {
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          gap: 12px;
         }
-
-        .stat-item {
-          text-align: center;
-          flex: 1;
-        }
-
-        .stat-number {
-          display: block;
-          font-family: 'Syne', sans-serif;
-          font-size: 42px;
-          font-weight: 800;
-          color: #f0f0f3;
-          margin-bottom: 8px;
-          background: linear-gradient(135deg, #f0f0f3, #6EE7B7);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-        }
-
-        .stat-name {
-          font-size: 14px;
-          color: #888;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-        }
-
-        .stat-divider {
-          width: 1px;
-          height: 40px;
-          background: rgba(110,231,183,0.15);
-        }
-
-        /* Features Section */
-        .home-features {
+        .users-table-avatar {
           position: relative;
-          z-index: 5;
-          padding: 100px 24px;
-        }
-
-        .features-container {
-          max-width: 1200px;
-          margin: 0 auto;
-        }
-
-        .features-header {
-          text-align: center;
-          margin-bottom: 60px;
-        }
-
-        .features-title {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: rgba(110,231,183,0.1);
+          border: 1px solid rgba(110,231,183,0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
           font-family: 'Syne', sans-serif;
-          font-size: 36px;
-          font-weight: 700;
-          color: #f0f0f3;
-          margin: 0 0 16px;
-        }
-
-        .features-subtitle {
           font-size: 16px;
+          font-weight: 700;
+          color: #6EE7B7;
+          flex-shrink: 0;
+          overflow: hidden;
+        }
+        .users-table-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .users-table-active {
+          position: absolute;
+          bottom: 0;
+          right: 0;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: #4ade80;
+          border: 2px solid #111114;
+        }
+        .users-table-username {
+          font-weight: 600;
+          color: #f0f0f3;
+          margin-bottom: 2px;
+          font-size: 14px;
+        }
+        .users-table-email {
+          font-size: 11px;
           color: #888;
-          max-width: 600px;
-          margin: 0 auto;
+        }
+        .users-table-badge {
+          display: inline-block;
+          padding: 4px 12px;
+          border-radius: 100px;
+          font-size: 11px;
+          font-weight: 600;
+        }
+        .users-table-stats {
+          display: flex;
+          gap: 12px;
+          color: #888;
+          font-size: 12px;
+        }
+        .users-table-actions {
+          display: flex;
+          gap: 8px;
+        }
+        .users-table-follow {
+          padding: 6px 16px;
+          border-radius: 100px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          border: 1px solid;
+          background: transparent;
+        }
+        .users-table-follow:not(.following) {
+          border-color: #6EE7B7;
+          color: #6EE7B7;
+        }
+        .users-table-follow:not(.following):hover {
+          background: #6EE7B7;
+          color: #0c0c0f;
+        }
+        .users-table-follow.following {
+          border-color: #1e1e24;
+          color: #888;
+        }
+        .users-table-follow.following:hover {
+          border-color: #f87171;
+          color: #f87171;
+        }
+        .users-table-message {
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: transparent;
+          border: 1px solid #1e1e24;
+          border-radius: 50%;
+          color: #888;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .users-table-message:hover {
+          border-color: #6EE7B7;
+          color: #6EE7B7;
         }
 
-        .features-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 30px;
-        }
-
-        .feature-card {
-          background: rgba(17,17,20,0.6);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(110,231,183,0.08);
-          border-radius: 24px;
-          padding: 32px;
+        /* Empty State */
+        .users-empty {
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 20px;
+          padding: 64px 32px;
           text-align: center;
-          transition: all 0.3s ease;
+          margin: 2rem 0;
         }
-
-        .feature-card:hover {
-          transform: translateY(-4px);
-          border-color: rgba(110,231,183,0.2);
-          box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        .users-empty-icon {
+          width: 64px;
+          height: 64px;
+          color: #3a3a48;
+          margin-bottom: 16px;
         }
-
-        .feature-icon {
-          font-size: 42px;
-          margin-bottom: 20px;
-        }
-
-        .feature-title {
+        .users-empty-title {
           font-family: 'Syne', sans-serif;
           font-size: 20px;
           font-weight: 700;
           color: #f0f0f3;
-          margin: 0 0 12px;
+          margin: 0 0 8px;
         }
-
-        .feature-desc {
+        .users-empty-text {
           font-size: 14px;
           color: #888;
-          line-height: 1.6;
           margin: 0;
         }
 
-        /* CTA Section */
-        .home-cta {
-          position: relative;
-          z-index: 5;
-          padding: 80px 24px;
-          background: linear-gradient(135deg, rgba(110,231,183,0.05), transparent);
-          border-top: 1px solid rgba(110,231,183,0.1);
-          border-bottom: 1px solid rgba(110,231,183,0.1);
-        }
-
-        .cta-container {
-          max-width: 800px;
-          margin: 0 auto;
+        /* Load More */
+        .users-load-more {
           text-align: center;
+          margin-top: 2rem;
         }
-
-        .cta-title {
-          font-family: 'Syne', sans-serif;
-          font-size: 42px;
-          font-weight: 700;
-          color: #f0f0f3;
-          margin: 0 0 16px;
-        }
-
-        .cta-subtitle {
-          font-size: 18px;
-          color: #888;
-          margin: 0 0 32px;
-        }
-
-        .cta-button {
+        .users-load-more-btn {
           display: inline-flex;
           align-items: center;
+          justify-content: center;
           gap: 8px;
-          padding: 16px 42px;
+          padding: 12px 32px;
           background: #6EE7B7;
           border: 1px solid #4fb88b;
           border-radius: 100px;
           color: #0c0c0f;
-          text-decoration: none;
-          font-size: 16px;
+          font-size: 14px;
           font-weight: 600;
+          cursor: pointer;
           transition: all 0.2s ease;
         }
-
-        .cta-button:hover {
+        .users-load-more-btn:hover:not(:disabled) {
           background: #86efac;
           transform: translateY(-2px);
-          box-shadow: 0 12px 30px rgba(110,231,183,0.4);
+          box-shadow: 0 8px 20px rgba(110,231,183,0.3);
         }
-
-        /* Footer */
-        .home-footer {
-          position: relative;
-          z-index: 5;
-          padding: 40px 24px;
-          background: rgba(10,10,10,0.9);
-          backdrop-filter: blur(10px);
-          border-top: 1px solid rgba(110,231,183,0.1);
+        .users-load-more-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
-
-        .footer-container {
-          max-width: 1200px;
-          margin: 0 auto;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
+        .users-spinner {
+          width: 16px;
+          height: 16px;
+          border: 2px solid rgba(12,12,15,0.2);
+          border-top-color: #0c0c0f;
+          border-radius: 50%;
+          animation: spin 0.6s linear infinite;
         }
-
-        .footer-logo {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .footer-logo-text {
-          font-family: 'Syne', sans-serif;
-          font-size: 20px;
-          font-weight: 700;
-          color: #f0f0f3;
-        }
-
-        .footer-copyright {
-          font-size: 12px;
+        .users-pagination-info {
           color: #5c5c6e;
+          font-size: 12px;
+          margin-top: 12px;
         }
 
-        .footer-links {
-          display: flex;
-          gap: 32px;
-        }
-
-        .footer-link {
-          color: #888;
-          text-decoration: none;
-          font-size: 14px;
-          transition: color 0.2s ease;
-        }
-
-        .footer-link:hover {
-          color: #6EE7B7;
-        }
-
+        /* Animations */
         @keyframes spin {
           to { transform: rotate(360deg); }
         }
 
         /* Responsive */
-        @media (max-width: 1024px) {
-          .hero-container {
-            grid-template-columns: 1fr;
-            text-align: center;
-          }
-
-          .hero-subtitle {
-            margin: 0 auto 32px;
-          }
-
-          .hero-cta {
-            justify-content: center;
-          }
-
-          .features-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-
-          .hero-visual {
-            display: none;
-          }
+        @media (max-width: 900px) {
+          .users-page { padding: 24px 20px 48px; }
+          .users-stats { grid-template-columns: repeat(2, 1fr); }
+          .users-header { flex-direction: column; gap: 16px; }
         }
-
-        @media (max-width: 768px) {
-          .nav-container {
-            flex-direction: column;
-            gap: 16px;
-          }
-
-          .nav-links {
-            gap: 20px;
-          }
-
-          .hero-title {
-            font-size: 42px;
-          }
-
-          .stats-container {
-            flex-direction: column;
-            gap: 30px;
-          }
-
-          .stat-divider {
-            display: none;
-          }
-
-          .features-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .footer-container {
-            flex-direction: column;
-            gap: 20px;
-            text-align: center;
-          }
-
-          .cta-title {
-            font-size: 32px;
-          }
+        @media (max-width: 600px) {
+          .users-page { padding: 20px 16px 48px; }
+          .users-stats { grid-template-columns: 1fr; }
+          .users-grid { grid-template-columns: 1fr; }
         }
       `}</style>
     </div>

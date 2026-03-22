@@ -565,19 +565,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ═══════════ FAQ ═══════════ */}
-      <section className="ll-section ll-alt-bg">
-        <div className="ll-wrap">
-          <div className="ll-sec-hd">
-            <SlideUp><div className="ll-ey"><span className="ll-eydot" /><span>FAQ</span></div></SlideUp>
-            <SlideUp delay={0.1}><h2 className="ll-h2">Common questions,<br /><em className="ll-em">straight answers.</em></h2></SlideUp>
-          </div>
-          <div className="ll-faq-wrap">
-            <FAQAccordion />
-          </div>
-        </div>
-      </section>
-
       {/* ═══════════ CTA ═══════════ */}
       <section className="ll-section ll-cta-section">
         <div className="ll-wrap">
@@ -601,6 +588,19 @@ export default function LandingPage() {
                 </div>
               </SlideUp>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════ FAQ ═══════════ */}
+      <section className="ll-section ll-alt-bg">
+        <div className="ll-wrap">
+          <div className="ll-sec-hd">
+            <SlideUp><div className="ll-ey"><span className="ll-eydot" /><span>FAQ</span></div></SlideUp>
+            <SlideUp delay={0.1}><h2 className="ll-h2">Common questions,<br /><em className="ll-em">straight answers.</em></h2></SlideUp>
+          </div>
+          <div className="ll-faq-wrap">
+            <FAQAccordion />
           </div>
         </div>
       </section>

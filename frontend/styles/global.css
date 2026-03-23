@@ -217,24 +217,26 @@ h1, h2, h3, h4, h5, h6 {
 .glass-auth-btn.login { color: white; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
 .glass-auth-btn.register { color: white; background: rgba(59,130,246,0.3); border: 1px solid rgba(59,130,246,0.3); }
 .glass-auth-btn:hover { transform: translateY(-2px); background: rgba(255,255,255,0.15); }
-.glass-dropdown {
-  position: absolute; top: calc(100% + 10px); right: 0; min-width: 200px;
-  background: rgba(20,20,20,0.95); backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 0.5rem;
-  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5); z-index: 1001; animation: dropdownFade 0.2s ease;
-}
-.glass-dropdown-item {
-  display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem;
-  color: rgba(255,255,255,0.8); text-decoration: none; font-size: 0.95rem;
-  border-radius: 8px; transition: all 0.2s ease; width: 100%; border: none;
-  background: transparent; cursor: pointer; font-family: inherit;
-}
-.glass-dropdown-item svg { width: 18px; height: 18px; color: rgba(255,255,255,0.5); }
-.glass-dropdown-item:hover { background: rgba(255,255,255,0.1); color: white; }
-.glass-dropdown-item:hover svg { color: #667eea; }
-.glass-dropdown-item.logout:hover { background: rgba(239,68,68,0.15); color: #f87171; }
-.glass-dropdown-item.logout:hover svg { color: #f87171; }
-.glass-dropdown-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 0.5rem 0; }
+  .glass-dropdown {
+    position: absolute; top: calc(100% + 10px); right: 0; min-width: 200px;
+    background: #1a1a1f; border: 1px solid #1e1e24; border-radius: 10px; padding: 0;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); z-index: 1001; animation: dropdownFadeIn 0.2s ease;
+    overflow: hidden;
+  }
+  .glass-dropdown-item {
+    display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem;
+    color: #f0f0f3; text-decoration: none; font-size: 0.9rem;
+    transition: all 0.15s ease; width: 100%; border: none;
+    background: transparent; cursor: pointer; font-family: inherit;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .glass-dropdown-item:last-child { border-bottom: none; }
+  .glass-dropdown-item svg { width: 18px; height: 18px; color: #5c5c6e; }
+  .glass-dropdown-item:hover { background: rgba(110,231,183,0.1); color: #6EE7B7; padding-left: 1.25rem; }
+  .glass-dropdown-item:hover svg { color: #6EE7B7; }
+  .glass-dropdown-item.logout:hover { background: rgba(248,113,113,0.12); color: #f87171; }
+  .glass-dropdown-item.logout:hover svg { color: #f87171; }
+  .glass-dropdown-divider { height: 1px; background: rgba(255,255,255,0.08); margin: 0.25rem 0; }
 .glass-mobile-nav { position: fixed; bottom: 16px; left: 16px; right: 16px; z-index: 1000; display: none; }
 .glass-mobile-nav-container {
   position: relative; display: flex; align-items: center; justify-content: space-around;
@@ -1243,30 +1245,28 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 0.75rem 1rem; /* Reduced padding */
-  background: var(--surface2, #17171b);
-  border: 1.5px solid var(--border, #1e1e24);
-  border-radius: 10px; /* Slightly smaller radius */
-  color: var(--text, #f0f0f3);
-  font-size: 0.9rem; /* Slightly smaller font */
+  padding: 0.7rem 1rem;
+  background: #17171b;
+  border: 1px solid #1e1e24;
+  border-radius: 10px;
+  color: #f0f0f3;
+  font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Smaller shadow */
-  min-height: 42px; /* Shorter height */
+  min-height: 42px;
   line-height: 1.3;
 }
 
 .custom-dropdown-trigger:hover {
-  border-color: var(--accent, #6EE7B7);
-  background: var(--surface, #111114);
-  box-shadow: 0 4px 8px rgba(110, 231, 183, 0.15);
+  border-color: #6EE7B7;
+  background: #111114;
 }
 
 .custom-dropdown-trigger.open {
-  border-color: var(--accent, #6EE7B7);
-  box-shadow: 0 0 0 2px rgba(110, 231, 183, 0.2); /* Smaller focus ring */
-  background: var(--surface, #111114);
+  border-color: #6EE7B7;
+  box-shadow: 0 0 0 2px rgba(110, 231, 183, 0.2);
+  background: #111114;
 }
 
 .custom-dropdown-trigger.error {
@@ -1277,8 +1277,8 @@ h1, h2, h3, h4, h5, h6 {
 .custom-dropdown-trigger.disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  background: var(--surface2, #17171b);
-  border-color: var(--border, #1e1e24);
+  background: #17171b;
+  border-color: #1e1e24;
 }
 
 .custom-dropdown-value {
@@ -1290,14 +1290,14 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .custom-dropdown-value.placeholder {
-  color: var(--muted, #5c5c6e);
+  color: #5c5c6e;
   font-weight: 400;
 }
 
 .custom-dropdown-arrow {
   width: 16px; /* Smaller arrow */
   height: 16px;
-  color: var(--accent, #6EE7B7);
+  color: #6EE7B7;
   transition: transform 0.3s ease;
   flex-shrink: 0;
 }
@@ -1312,16 +1312,18 @@ h1, h2, h3, h4, h5, h6 {
   top: calc(100% + 4px); /* Closer to trigger */
   left: 0;
   right: 0;
-  max-height: 280px; /* Slightly shorter */
+  max-height: 280px;
   overflow-y: auto;
-  background: var(--surface, #111114);
-  border: 1.5px solid var(--border, #1e1e24);
-  border-radius: 10px; /* Smaller radius */
-  box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
+  overflow-x: hidden;
+  background: #1a1a1f;
+  border: 1px solid #1e1e24;
+  border-radius: 10px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
   z-index: 1000;
   animation: dropdownFadeIn 0.2s ease;
-  min-width: fit-content; /* Adjusts to content */
-  width: auto; /* Let it size naturally */
+  min-width: 100%;
+  width: 100%;
+  padding: 0;
 }
 
 @keyframes dropdownFadeIn {
@@ -1340,13 +1342,13 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.6rem 1rem; /* Smaller padding */
-  color: var(--text, #f0f0f3);
-  font-size: 0.85rem; /* Smaller font */
+  padding: 0.75rem 1rem;
+  color: #f0f0f3;
+  font-size: 0.9rem;
   cursor: pointer;
   transition: all 0.15s ease;
-  border-bottom: 1px solid var(--border, #1e1e24);
-  gap: 0.5rem; /* Add gap between text and check */
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  gap: 0.5rem;
 }
 
 .custom-dropdown-item:last-child {
@@ -1354,23 +1356,23 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .custom-dropdown-item:hover {
-  background: var(--surface2, #17171b);
-  color: var(--accent, #6EE7B7);
-  padding-left: 1.25rem; /* Smaller hover shift */
+  background: rgba(110, 231, 183, 0.1);
+  color: #6EE7B7;
+  padding-left: 1.25rem;
 }
 
 .custom-dropdown-item.selected {
   background: rgba(110, 231, 183, 0.1);
-  color: var(--accent, #6EE7B7);
+  color: #6EE7B7;
   font-weight: 600;
-  border-left: 2px solid var(--accent, #6EE7B7); /* Thinner border */
-  padding-left: calc(1rem - 2px); /* Adjust for border */
+  border-left: 2px solid #6EE7B7;
+  padding-left: calc(1rem - 2px);
 }
 
 .custom-dropdown-check {
-  width: 14px; /* Smaller check */
-  height: 14px;
-  color: var(--accent, #6EE7B7);
+  width: 16px;
+  height: 16px;
+  color: #6EE7B7;
   flex-shrink: 0;
 }
 
@@ -1378,8 +1380,8 @@ h1, h2, h3, h4, h5, h6 {
 .custom-dropdown-empty {
   padding: 1.5rem 1rem;
   text-align: center;
-  color: var(--muted, #5c5c6e);
-  font-size: 0.85rem;
+  color: #5c5c6e;
+  font-size: 0.9rem;
 }
 
 /* Scrollbar Styling - thinner */
@@ -1388,31 +1390,38 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .custom-dropdown-menu::-webkit-scrollbar-track {
-  background: var(--surface2, #17171b);
+  background: #1e1e24;
   border-radius: 0 10px 10px 0;
 }
 
 .custom-dropdown-menu::-webkit-scrollbar-thumb {
-  background: var(--border2, #26262e);
+  background: #3a3a48;
   border-radius: 2px;
 }
 
 .custom-dropdown-menu::-webkit-scrollbar-thumb:hover {
-  background: var(--accent, #6EE7B7);
+  background: #6EE7B7;
 }
 
 /* Optional: Make the dropdown menu width adjust to content */
-.custom-dropdown-menu {
-  min-width: 100%; /* At least as wide as trigger */
-  max-width: 120%; /* Can be slightly wider if needed */
+.custom-dropdown-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
 }
 
-/* For longer options, ensure they wrap properly */
+.custom-dropdown-sub {
+  font-size: 0.7rem;
+  color: #5c5c6e;
+}
+
 .custom-dropdown-item span {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 300px; /* Prevent extremely wide items */
+  max-width: 300px;
 }
 
 /* Group styling for the form - keep consistent */

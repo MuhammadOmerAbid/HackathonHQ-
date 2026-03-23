@@ -2,6 +2,8 @@
 // Reusable form body — uses tmc-* classes injected by the parent page.
 // Handles the fields only; submit logic lives in the parent.
 
+import CustomSelect from "../ui/CustomSelect";
+
 export default function TeamForm({ formData, onChange, events, user, error }) {
   return (
     <>
@@ -40,36 +42,35 @@ export default function TeamForm({ formData, onChange, events, user, error }) {
           <label className="tmc-label">
             Select Event <span className="tmc-required">*</span>
           </label>
-          <select
-            name="event"
+          <CustomSelect
             value={formData.event}
-            onChange={onChange}
-            className="tmc-select"
-            required
-          >
-            <option value="">Choose an event</option>
-            {(events || []).map((event) => (
-              <option key={event.id} value={event.id}>
-                {event.name} ({new Date(event.start_date).toLocaleDateString()})
-              </option>
-            ))}
-          </select>
+            onChange={(val) =>
+              onChange({ target: { name: "event", value: String(val) } })
+            }
+            options={events || []}
+            placeholder="Choose an event"
+            emptyLabel="No events available"
+            disabled={(events || []).length === 0}
+            getValue={(event) => String(event.id)}
+            getLabel={(event) => event.name}
+            getSubLabel={(event) =>
+              new Date(event.start_date).toLocaleDateString()
+            }
+          />
         </div>
 
         <div className="tmc-group">
           <label className="tmc-label">Team Size</label>
-          <select
-            name="max_members"
+          <CustomSelect
             value={formData.max_members}
-            onChange={onChange}
-            className="tmc-select"
-          >
-            {[2, 3, 4, 5, 6].map((n) => (
-              <option key={n} value={n}>
-                {n} members
-              </option>
-            ))}
-          </select>
+            onChange={(val) =>
+              onChange({ target: { name: "max_members", value: String(val) } })
+            }
+            options={[2, 3, 4, 5, 6]}
+            placeholder="Choose team size"
+            getValue={(n) => String(n)}
+            getLabel={(n) => `${n} members`}
+          />
         </div>
       </div>
 

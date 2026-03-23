@@ -141,7 +141,7 @@ export default function CreateTeamPage() {
         {/* ── Back button ── */}
         <button
           onClick={() => router.push(preselectEventId ? `/teams?event=${preselectEventId}` : "/teams")}
-          className="tmc-back"
+          className="evd-back-btn"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <line x1="19" y1="12" x2="5" y2="12" />

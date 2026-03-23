@@ -539,33 +539,42 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
           position: absolute;
           top: calc(100% + 4px);
           right: 0;
-          min-width: 120px;
+          min-width: 140px;
           background: #1a1a1f;
-          border: 1px solid #26262e;
-          border-radius: 12px;
-          box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+          border: 1px solid #1e1e24;
+          border-radius: 10px;
+          box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
           z-index: 100;
           overflow: hidden;
+          animation: menuFadeIn 0.2s ease;
         }
         .dropdown-item {
           width: 100%;
-          padding: 10px 16px;
+          padding: 12px 16px;
           background: transparent;
           border: none;
           color: #f0f0f3;
-          font-size: 13px;
+          font-size: 14px;
           text-align: left;
           cursor: pointer;
-          transition: background 0.2s ease;
+          transition: all 0.15s ease;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .dropdown-item:last-child {
+          border-bottom: none;
         }
         .dropdown-item:hover {
-          background: #17171b;
+          background: rgba(110,231,183,0.1);
+          color: #6EE7B7;
+          padding-left: 20px;
         }
         .dropdown-item.danger {
           color: #f87171;
         }
         .dropdown-item.danger:hover {
-          background: rgba(248,113,113,0.08);
+          background: rgba(248,113,113,0.12);
+          color: #f87171;
+          padding-left: 20px;
         }
 
         .post-title {
@@ -680,6 +689,10 @@ export default function PostCard({ post, currentUser, onLike, onRepost, onDelete
 
         @keyframes spin {
           to { transform: rotate(360deg); }
+        }
+        @keyframes menuFadeIn {
+          from { opacity: 0; transform: translateY(-5px); }
+          to { opacity: 1; transform: translateY(0); }
         }
 
         @media (max-width: 600px) {

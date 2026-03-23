@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import CustomSelect from "../ui/CustomSelect";
 
 export default function ComposeBox({ user, events = [], onPost, onCancel, replyTo = null, postType = "post" }) {
   const [content, setContent] = useState("");
@@ -195,18 +196,16 @@ export default function ComposeBox({ user, events = [], onPost, onCancel, replyT
                 onChange={(e) => setTags(e.target.value)}
               />
               
-              <select
-                style={styles.advancedSelect}
+              <CustomSelect
                 value={selectedEvent}
-                onChange={(e) => setSelectedEvent(e.target.value)}
-              >
-                <option value="">Link to an event (optional)</option>
-                {events.map((event) => (
-                  <option key={event.id} value={event.id}>
-                    {event.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setSelectedEvent(String(val))}
+                options={events}
+                placeholder="Link to an event (optional)"
+                emptyLabel="No events available"
+                disabled={!events.length}
+                getValue={(event) => String(event.id)}
+                getLabel={(event) => event.name}
+              />
             </div>
           )}
 

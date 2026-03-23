@@ -4,14 +4,15 @@ import { useRouter } from "next/navigation";
 
 export default function ActiveUsers({ users = [], loading = false }) {
   const router = useRouter();
-  
+
 
   return (
     <div className="active-users-card">
       <h3>Active Now</h3>
-      <div className="active-users-row">
-        {loading
-          ? Array.from({ length: 6 }).map((_, idx) => (
+      <div className="active-users-wrapper">
+        <div className="active-users-row">
+          {loading
+            ? Array.from({ length: 6 }).map((_, idx) => (
               <div key={`active-skel-${idx}`} className="active-user skeleton">
                 <div className="active-user-avatar-wrap">
                   <div className="active-user-avatar skeleton-circle" />
@@ -19,9 +20,9 @@ export default function ActiveUsers({ users = [], loading = false }) {
                 <span className="active-user-name skeleton-line" />
               </div>
             ))
-          : users.slice(0, 10).map(user => (
-              <div 
-                key={user.id} 
+            : users.slice(0, 10).map(user => (
+              <div
+                key={user.id}
                 className="active-user"
                 onClick={() => router.push(`/users/${user.id}`)}
               >
@@ -34,6 +35,10 @@ export default function ActiveUsers({ users = [], loading = false }) {
                 <span className="active-user-name">{user.username}</span>
               </div>
             ))}
+          {!loading && users.length === 0 && (
+            <div className="active-users-empty">No active users right now</div>
+          )}
+        </div>
       </div>
 
       <style jsx>{`
@@ -50,13 +55,35 @@ export default function ActiveUsers({ users = [], loading = false }) {
           color: #f0f0f3;
           margin: 0 0 16px 0;
         }
-        .active-users-row {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
-          gap: 12px;
+        .active-users-wrapper {
+          width: 100%;
           overflow: hidden;
-          padding-bottom: 2px;
         }
+.active-users-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding-bottom: 8px;
+  margin-bottom: -8px;
+  min-height: 64px;
+}
+.active-users-row::-webkit-scrollbar {
+  display: none;
+}
+.active-users-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #5c5c6e;
+  font-size: 12px;
+  font-weight: 400;
+  padding: 20px;
+  width: 100%;
+  text-align: center;
+}
         .active-user {
           display: flex;
           flex-direction: column;
@@ -64,14 +91,11 @@ export default function ActiveUsers({ users = [], loading = false }) {
           gap: 6px;
           cursor: pointer;
           transition: transform 0.2s ease;
-          width: 100%;
-        }
-        .active-user:hover {
-          transform: translateY(-2px);
+          flex-shrink: 0;
         }
         .active-user:hover .active-user-name {
-          color: #6EE7B7;
-        }
+  color: #6EE7B7;
+}
         .active-user-avatar-wrap {
           position: relative;
           width: 40px;
@@ -123,7 +147,7 @@ export default function ActiveUsers({ users = [], loading = false }) {
           font-size: 10px;
           color: #888;
           text-align: center;
-          max-width: 100%;
+          max-width: 70px;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;

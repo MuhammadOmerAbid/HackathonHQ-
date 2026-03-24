@@ -193,24 +193,33 @@ export default function UsersPage() {
           </div>
         </div>
 
-      {/* Stats Cards */}
-      <div className="users-stats">
-        {[
-          { label: "Total Users", value: stats.total, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> },
-          { label: "Online Now", value: stats.online, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg> },
-          { label: "Admins", value: stats.admins, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4-6.2-4.5-6.2 4.5 2.4-7.4L2 9.4h7.6z"/></svg> },
-          { label: "Organizers", value: stats.organizers, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> },
-          { label: "Judges", value: stats.judges, accent: true, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> },
-        ].map((s, i) => (
-          <div className="users-stat-card" key={i}>
-            <div className="users-stat-icon">{s.icon}</div>
-            <div className="users-stat-body">
-              <div className={`users-stat-value${s.accent ? " accent" : ""}`}>{s.value}</div>
-              <div className="users-stat-label">{s.label}</div>
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* Stats Bar */}
+<div className="users-stats-bar">
+  <div className="users-stat-item">
+    <span className="users-stat-value">{stats.total.toLocaleString()}</span>
+    <span className="users-stat-label">Members</span>
+  </div>
+  <div className="users-stat-divider"></div>
+  <div className="users-stat-item">
+    <span className="users-stat-value">{stats.online}</span>
+    <span className="users-stat-label">Online</span>
+  </div>
+  <div className="users-stat-divider"></div>
+  <div className="users-stat-item">
+    <span className="users-stat-value">{stats.admins}</span>
+    <span className="users-stat-label">Admins</span>
+  </div>
+  <div className="users-stat-divider"></div>
+  <div className="users-stat-item">
+    <span className="users-stat-value">{stats.organizers}</span>
+    <span className="users-stat-label">Organizers</span>
+  </div>
+  <div className="users-stat-divider"></div>
+  <div className="users-stat-item">
+    <span className="users-stat-value">{stats.judges}</span>
+    <span className="users-stat-label">Judges</span>
+  </div>
+</div>
 
       {/* Search and Filters */}
       <div className="users-search-section">
@@ -460,63 +469,63 @@ export default function UsersPage() {
           box-shadow: 0 8px 20px rgba(110,231,183,0.15);
         }
 
-        /* Stats Cards */
-        .users-stats {
-          display: grid;
-          grid-template-columns: repeat(5, 1fr);
-          gap: 1rem;
-          margin-bottom: 28px;
-        }
-        .users-stat-card {
-          background: #111114;
-          border: 1px solid #1e1e24;
-          border-radius: 14px;
-          padding: 20px 22px;
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          transition: all 0.2s ease;
-        }
-        .users-stat-card:hover {
-          border-color: rgba(110,231,183,0.3);
-          background: #17171b;
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-        }
-        .users-stat-icon {
-          width: 44px;
-          height: 44px;
-          border-radius: 11px;
-          background: rgba(110,231,183,0.08);
-          border: 1px solid rgba(110,231,183,0.15);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          color: #6EE7B7;
-        }
-        .users-stat-icon svg {
-          width: 20px;
-          height: 20px;
-          stroke: #6EE7B7;
-        }
-        .users-stat-value {
-          font-family: 'Syne', sans-serif;
-          font-size: 26px;
-          font-weight: 700;
-          color: #f0f0f3;
-          letter-spacing: -1px;
-          line-height: 1;
-          margin-bottom: 4px;
-        }
-        .users-stat-value.accent { color: #6EE7B7; }
-        .users-stat-label {
-          font-size: 11px;
-          font-weight: 500;
-          color: #5c5c6e;
-          text-transform: uppercase;
-          letter-spacing: 0.7px;
-        }
+        /* Stats Bar */
+.users-stats-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #111114;
+  border: 1px solid #1e1e24;
+  border-radius: 12px;
+  padding: 16px 24px;
+  margin-bottom: 32px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.users-stat-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  justify-content: center;
+}
+
+.users-stat-value {
+  font-family: 'Syne', sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: #f0f0f3;
+}
+
+.users-stat-label {
+  font-size: 13px;
+  color: #5c5c6e;
+  font-weight: 500;
+}
+
+.users-stat-divider {
+  width: 1px;
+  height: 30px;
+  background: #1e1e24;
+}
+
+@media (max-width: 768px) {
+  .users-stats-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  
+  .users-stat-divider {
+    display: none;
+  }
+  
+  .users-stat-item {
+    justify-content: space-between;
+    padding: 8px 0;
+  }
+}
 
         /* Search Section */
         .users-search-section {

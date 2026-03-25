@@ -99,7 +99,6 @@ export default function JudgeDashboardPage() {
   const [criteriaScores, setCriteriaScores] = useState({});
   const [feedbackComment, setFeedbackComment] = useState("");
   const [submittingScore, setSubmittingScore] = useState(false);
-  const [existingFeedbackId, setExistingFeedbackId] = useState(null);
 
   const hasToken = typeof window !== "undefined" && !!localStorage.getItem("access");
   
@@ -164,7 +163,6 @@ export default function JudgeDashboardPage() {
     setDrawerError("");
     setSelectedSubmission(null);
     setSelectedMeta(sub);
-    setExistingFeedbackId(null);
     setFeedbackComment("");
     try {
       const subRes = await axios.get(`/submissions/${sub.id}/`);
@@ -185,7 +183,6 @@ export default function JudgeDashboardPage() {
         if (mine) {
           existingScores = mine.criteria_scores || {};
           existingComment = mine.comment || "";
-          setExistingFeedbackId(mine.id || null);
         }
       } catch {
         // ignore feedback prefill errors
@@ -205,7 +202,6 @@ export default function JudgeDashboardPage() {
     setSelectedSubmission(null);
     setSelectedMeta(null);
     setDrawerError("");
-    setExistingFeedbackId(null);
   };
 
   const rubric = getRubric(selectedSubmission);
@@ -683,12 +679,12 @@ export default function JudgeDashboardPage() {
                   />
 
                   <button
-                    className="drawer-submit"
-                    onClick={handleSubmitScore}
-                    disabled={submittingScore || !selectedSubmission?.is_assigned_judge}
-                  >
-                    {submittingScore ? "Submitting…" : existingFeedbackId ? "Update Score" : "Submit Score"}
-                  </button>
+                  className="drawer-submit"
+                  onClick={handleSubmitScore}
+                  disabled={submittingScore || !selectedSubmission?.is_assigned_judge}
+                >
+                  {submittingScore ? "Submitting…" : "Submit Score"}
+                </button>
                 </div>
               </>
             )}
@@ -1078,7 +1074,7 @@ export default function JudgeDashboardPage() {
   border: 1px solid #1e1e24;
   border-radius: 16px;
   padding: 20px;
-  text-decoration: none;
+  cursor: pointer;
   transition: all 0.2s;
   display: block;
 }
@@ -1087,6 +1083,11 @@ export default function JudgeDashboardPage() {
   border-color: rgba(96, 165, 250, 0.3);
   transform: translateY(-2px);
   background: #151519;
+}
+
+.queue-card:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.6);
+  outline-offset: 2px;
 }
 
 .queue-card-header {
@@ -1412,25 +1413,7 @@ export default function JudgeDashboardPage() {
           -webkit-box-orient: vertical;
         }
 
-        /* Drawer + Queue Cards */
-        .queue-card {
-          background: #111114;
-          border: 1px solid #1e1e24;
-          border-radius: 16px;
-          padding: 16px 20px;
-          cursor: pointer;
-          transition: background 0.2s, border-color 0.2s;
-        }
-        .queue-card:hover {
-          border-color: rgba(96, 165, 250, 0.3);
-          background: rgba(255,255,255,0.02);
-        }
-        .queue-container {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
+        /* Drawer */
         .drawer-overlay {
           position: fixed;
           inset: 0;

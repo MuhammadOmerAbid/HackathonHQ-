@@ -14,7 +14,9 @@ export default function EventsContent() {
   const [searchTerm, setSearchTerm] = useState("");
   const [user, setUser] = useState(null);
   const [isOrganizer, setIsOrganizer] = useState(false);
+  const [isJudge, setIsJudge] = useState(false);
   const [error, setError] = useState("");
+  const assignedOnly = searchParams.get("scope") === "assigned";
 
   useEffect(() => {
     const msg = searchParams.get("error");
@@ -22,26 +24,80 @@ export default function EventsContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    let active = true;
     (async () => {
       try {
-        const evRes = await axios.get("/events/");
-        setEvents(evRes.data.results || []);
         const token = localStorage.getItem("access");
+        let currentUser = null;
         if (token) {
           axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
           try {
             const uRes = await axios.get("/users/me/");
+            currentUser = uRes.data;
+            if (!active) return;
             setUser(uRes.data);
             setIsOrganizer(
               uRes.data.profile?.is_organizer === true ||
               uRes.data.is_staff || uRes.data.is_superuser
             );
+            setIsJudge(!!uRes.data.is_judge || !!uRes.data.profile?.is_judge);
           } catch {}
         }
-      } catch (e) { console.error(e); }
-      finally { setLoading(false); }
+
+        // If judge wants assigned-only events, try server-side filter first.
+        let evRes;
+        if (assignedOnly && currentUser?.is_judge) {
+          evRes = await axios.get("/events/?assigned=1").catch(() => null);
+        }
+        if (!evRes) {
+          evRes = await axios.get("/events/");
+        }
+
+        let list = evRes?.data?.results || evRes?.data || [];
+
+        // Fallback: client-side filter for judge-assigned events.
+        if (assignedOnly && currentUser?.is_judge && currentUser?.id) {
+          const hasInlineJudges = list.some((e) =>
+            Array.isArray(e.judges_details) || Array.isArray(e.judges) || Array.isArray(e.judge_ids)
+          );
+
+          if (hasInlineJudges) {
+            list = list.filter((e) => {
+              const judgeIds = Array.isArray(e.judges_details)
+                ? e.judges_details.map((j) => j.id)
+                : Array.isArray(e.judges)
+                ? e.judges
+                : Array.isArray(e.judge_ids)
+                ? e.judge_ids
+                : [];
+              return judgeIds.some((id) => String(id) === String(currentUser.id));
+            });
+          } else {
+            const checks = await Promise.all(
+              list.map(async (ev) => {
+                try {
+                  const res = await axios.get(`/events/${ev.id}/judges/`);
+                  const judges = res.data?.judges || [];
+                  const assigned = judges.some((j) => String(j.id) === String(currentUser.id));
+                  return assigned ? ev : null;
+                } catch {
+                  return null;
+                }
+              })
+            );
+            list = checks.filter(Boolean);
+          }
+        }
+
+        if (active) setEvents(list);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (active) setLoading(false);
+      }
     })();
-  }, []);
+    return () => { active = false; };
+  }, [assignedOnly]);
 
   const now = new Date();
   const filtered = events.filter(e => {
@@ -91,10 +147,12 @@ export default function EventsContent() {
             <span className="ev-eyebrow-label">Hackathons</span>
           </div>
           <h1 className="ev-title">
-            {isOrganizer ? "Manage Events" : "Discover Events"}
+            {assignedOnly && isJudge ? "My Judging Events" : isOrganizer ? "Manage Events" : "Discover Events"}
           </h1>
           <p className="ev-subtitle">
-            {isOrganizer
+            {assignedOnly && isJudge
+              ? `${events.length} assigned event${events.length !== 1 ? "s" : ""}`
+              : isOrganizer
               ? `${events.length} events · ${liveCount} live · ${upcomingCount} upcoming`
               : "Find and join hackathon events from around the world"}
           </p>

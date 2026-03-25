@@ -397,6 +397,22 @@ export default function SubmissionDetailPage() {
           </div>
         )}
 
+        {/* Demo Video */}
+        {submission.video_url && (
+          <div className="evd-info-card evd-info-link" onClick={() => openLink(submission.video_url)}>
+            <div className="evd-info-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <polygon points="10 8 16 12 10 16 10 8" />
+              </svg>
+            </div>
+            <div className="evd-info-content">
+              <div className="evd-info-label">Demo Video</div>
+              <div className="evd-info-val">Watch â†—</div>
+            </div>
+          </div>
+        )}
+
         {/* Live Demo */}
         {submission.demo_url && (
           <div className="evd-info-card evd-info-link" onClick={() => openLink(submission.demo_url)}>
@@ -454,7 +470,12 @@ export default function SubmissionDetailPage() {
           <>
             <div className="evd-about">
               <h3>About the Project</h3>
-              <p>{submission.description || submission.summary || "No description provided."}</p>
+              {submission.summary && (
+                <p style={{ color: "var(--muted)", marginBottom: "12px" }}>
+                  {submission.summary}
+                </p>
+              )}
+              <p>{submission.description || "No description provided."}</p>
             </div>
 
             {/* Team Members */}
@@ -508,6 +529,34 @@ export default function SubmissionDetailPage() {
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
                   {technologies.map((tech, idx) => (
                     <span key={idx} className="tech-tag">{tech}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {Array.isArray(submission.key_features) && submission.key_features.length > 0 && (
+              <div style={{ padding: "0 28px 28px", borderTop: "1px solid var(--border)" }}>
+                <h3 style={{ fontFamily: "Syne,sans-serif", fontSize: "15px", fontWeight: 700, color: "#f0f0f3", margin: "24px 0 14px" }}>
+                  Key Features
+                </h3>
+                <ul style={{ margin: 0, paddingLeft: "18px", color: "var(--muted)", lineHeight: 1.7 }}>
+                  {submission.key_features.map((f, idx) => (
+                    <li key={idx}>{f}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {Array.isArray(submission.screenshots) && submission.screenshots.length > 0 && (
+              <div style={{ padding: "0 28px 28px", borderTop: "1px solid var(--border)" }}>
+                <h3 style={{ fontFamily: "Syne,sans-serif", fontSize: "15px", fontWeight: 700, color: "#f0f0f3", margin: "24px 0 14px" }}>
+                  Screenshots
+                </h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "12px" }}>
+                  {submission.screenshots.map((src, idx) => (
+                    <div key={idx} style={{ borderRadius: "12px", overflow: "hidden", border: "1px solid var(--border)" }}>
+                      <img src={src} alt={`Screenshot ${idx + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    </div>
                   ))}
                 </div>
               </div>

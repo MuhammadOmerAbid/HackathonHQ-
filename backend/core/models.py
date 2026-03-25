@@ -5,6 +5,14 @@ from django.utils import timezone
 
 User = get_user_model()
 
+def default_judging_criteria():
+    return [
+        {"key": "innovation", "label": "Innovation", "weight": 1},
+        {"key": "execution", "label": "Execution", "weight": 1},
+        {"key": "design", "label": "Design", "weight": 1},
+        {"key": "impact", "label": "Impact", "weight": 1},
+    ]
+
 
 class Tag(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -46,6 +54,7 @@ class Event(models.Model):
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
     is_premium = models.BooleanField(default=False)
+    judging_criteria = models.JSONField(default=default_judging_criteria, blank=True)
     organizer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="organized_events")
     judges = models.ManyToManyField(
         User,
@@ -206,6 +215,13 @@ class Submission(models.Model):
     )
     title = models.CharField(max_length=255)
     description = models.TextField()
+    summary = models.TextField(blank=True, null=True)
+    demo_url = models.URLField(blank=True, null=True)
+    repo_url = models.URLField(blank=True, null=True)
+    video_url = models.URLField(blank=True, null=True)
+    technologies = models.JSONField(default=list, blank=True)
+    key_features = models.JSONField(default=list, blank=True)
+    screenshots = models.JSONField(default=list, blank=True)
     file = models.FileField(upload_to="submissions/", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     score = models.FloatField(default=0)
@@ -366,6 +382,8 @@ class JudgeFeedback(models.Model):
     judge = models.ForeignKey(User, on_delete=models.CASCADE)
     score = models.FloatField()
     comment = models.TextField()
+    criteria_scores = models.JSONField(default=dict, blank=True)
+    criteria_snapshot = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions, status
+import json
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import (
@@ -1091,6 +1092,68 @@ class SubmissionViewSet(viewsets.ModelViewSet):
             data = request.data.copy()
             if 'submission' not in data:
                 data['submission'] = submission.id
+
+            # Criteria-based scoring support
+            rubric = event.judging_criteria if event and event.judging_criteria else [
+                {"key": "innovation", "label": "Innovation", "weight": 1},
+                {"key": "execution", "label": "Execution", "weight": 1},
+                {"key": "design", "label": "Design", "weight": 1},
+                {"key": "impact", "label": "Impact", "weight": 1},
+            ]
+
+            criteria_scores = data.get("criteria_scores", None)
+            if isinstance(criteria_scores, str):
+                try:
+                    criteria_scores = json.loads(criteria_scores)
+                except Exception:
+                    criteria_scores = None
+
+            if criteria_scores is not None:
+                if not isinstance(criteria_scores, dict):
+                    return Response(
+                        {"error": "criteria_scores must be an object of {key: score}."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                missing_keys = []
+                total_weight = 0
+                total_score = 0
+                for c in rubric:
+                    key = c.get("key")
+                    weight = c.get("weight") or 1
+                    if key not in criteria_scores:
+                        missing_keys.append(key)
+                        continue
+                    try:
+                        score_val = float(criteria_scores.get(key))
+                    except Exception:
+                        return Response(
+                            {"error": f"Invalid score for '{key}'."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    if score_val < 1 or score_val > 10:
+                        return Response(
+                            {"error": f"Score for '{key}' must be between 1 and 10."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    total_weight += weight
+                    total_score += score_val * weight
+
+                if missing_keys:
+                    return Response(
+                        {"error": f"Missing scores for: {', '.join(missing_keys)}."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                computed = total_score / total_weight if total_weight else 0
+                data["score"] = round(computed, 2)
+                data["criteria_scores"] = criteria_scores
+                data["criteria_snapshot"] = rubric
+            elif "score" not in data:
+                return Response(
+                    {"error": "Provide criteria_scores or score."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             if existing:
                 serializer = JudgeFeedbackSerializer(existing, data=data, partial=True, context={'request': request})

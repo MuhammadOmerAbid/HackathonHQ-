@@ -427,7 +427,8 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = ['id', 'name', 'description', 'start_date', 'end_date',
-                  'is_premium', 'organizer', 'organizer_username', 'organizer_details',
+                  'is_premium', 'judging_criteria',
+                  'organizer', 'organizer_username', 'organizer_details',
                   'teams_count', 'judges_count', 'participants_count', 'submissions_count',
                   'judges_details']
         read_only_fields = ['organizer']
@@ -500,7 +501,9 @@ class SubmissionSerializer(serializers.ModelSerializer):
             'team', 'team_details', 'team_name',
             'event', 'event_name',
             'submitted_by', 'submitted_by_username', 'submitted_by_details',
-            'title', 'description',
+            'title', 'description', 'summary',
+            'demo_url', 'repo_url', 'video_url',
+            'technologies', 'key_features', 'screenshots',
             'file', 'created_at', 'score',
             'is_reviewed', 'is_winner',
             'winner_place', 'winner_prize',
@@ -519,6 +522,7 @@ class SubmissionSerializer(serializers.ModelSerializer):
             'name': event.name,
             'start_date': event.start_date,
             'end_date': event.end_date,
+            'judging_criteria': event.judging_criteria,
         }
     
     def get_feedback_count(self, obj):
@@ -566,7 +570,8 @@ class JudgeFeedbackSerializer(serializers.ModelSerializer):
     class Meta:
         model = JudgeFeedback
         fields = ['id', 'submission', 'submission_title', 'judge', 'judge_details',
-                  'judge_username', 'score', 'comment', 'created_at', 'updated_at']
+                  'judge_username', 'score', 'comment', 'criteria_scores',
+                  'criteria_snapshot', 'created_at', 'updated_at']
         read_only_fields = ['judge']
 
 # ========== ACTIVITY SERIALIZER ==========

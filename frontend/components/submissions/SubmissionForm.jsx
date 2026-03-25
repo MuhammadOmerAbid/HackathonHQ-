@@ -25,15 +25,24 @@ export default function SubmissionForm({
     title: "", 
     description: "", 
     summary: "",
+    video_url: "",
     demo_url: "", 
     repo_url: "",
     technologies: "",
+    key_features: "",
+    screenshots: "",
     event: "", 
     team: "",
     ...initialData,
     technologies: Array.isArray(initialData.technologies)
       ? initialData.technologies.join(", ")
-      : initialData.technologies || ""
+      : initialData.technologies || "",
+    key_features: Array.isArray(initialData.key_features)
+      ? initialData.key_features.join("\n")
+      : initialData.key_features || "",
+    screenshots: Array.isArray(initialData.screenshots)
+      ? initialData.screenshots.join("\n")
+      : initialData.screenshots || ""
   });
   
   const [events, setEvents] = useState([]);
@@ -157,6 +166,21 @@ export default function SubmissionForm({
     if (formData.repo_url && !isValidUrl(formData.repo_url)) {
       errors.repo_url = "Please enter a valid URL (include https://)";
     }
+    
+    if (formData.video_url && !isValidUrl(formData.video_url)) {
+      errors.video_url = "Please enter a valid URL (include https://)";
+    }
+
+    if (formData.screenshots) {
+      const urls = formData.screenshots
+        .split(/[\n,]/)
+        .map(u => u.trim())
+        .filter(Boolean);
+      const invalid = urls.find(u => !isValidUrl(u));
+      if (invalid) {
+        errors.screenshots = "One or more screenshot URLs are invalid";
+      }
+    }
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
@@ -199,6 +223,7 @@ export default function SubmissionForm({
       title: formData.title,
       description: formData.description,
       summary: formData.summary,
+      video_url: formData.video_url,
       demo_url: formData.demo_url,
       repo_url: formData.repo_url,
       event: parseInt(formData.event),
@@ -206,6 +231,15 @@ export default function SubmissionForm({
       technologies: formData.technologies
         .split(',')
         .map(t => t.trim())
+        .filter(Boolean)
+      ,
+      key_features: formData.key_features
+        .split(/[\n,]/)
+        .map(f => f.trim())
+        .filter(Boolean),
+      screenshots: formData.screenshots
+        .split(/[\n,]/)
+        .map(u => u.trim())
         .filter(Boolean)
     };
     
@@ -528,9 +562,36 @@ export default function SubmissionForm({
           <p className="sf-hint">Separate with commas</p>
         </div>
 
+        <div className="sf-field">
+          <label className="sf-label">Key Features</label>
+          <textarea
+            name="key_features"
+            value={formData.key_features}
+            onChange={handleChange}
+            className="sf-input sf-textarea"
+            placeholder="List key features, one per line"
+            rows="4"
+          />
+          <p className="sf-hint">One feature per line (or comma separated)</p>
+        </div>
+
         <div className="sf-section-label">Links</div>
 
         <div className="sf-row">
+          <div className="sf-field">
+            <label className="sf-label">Demo Video URL</label>
+            <input
+              type="url"
+              name="video_url"
+              value={formData.video_url}
+              onChange={handleChange}
+              className={`sf-input ${validationErrors.video_url ? 'error' : ''}`}
+              placeholder="https://youtube.com/..."
+            />
+            {validationErrors.video_url && (
+              <span className="sf-hint" style={{ color: '#f87171' }}>{validationErrors.video_url}</span>
+            )}
+          </div>
           <div className="sf-field">
             <label className="sf-label">Live Demo URL</label>
             <input 
@@ -546,6 +607,8 @@ export default function SubmissionForm({
               <span className="sf-hint" style={{ color: '#f87171' }}>{validationErrors.demo_url}</span>
             )}
           </div>
+        </div>
+        <div className="sf-row">
           <div className="sf-field">
             <label className="sf-label">Repository URL</label>
             <input 
@@ -559,6 +622,21 @@ export default function SubmissionForm({
             />
             {validationErrors.repo_url && (
               <span className="sf-hint" style={{ color: '#f87171' }}>{validationErrors.repo_url}</span>
+            )}
+          </div>
+          <div className="sf-field">
+            <label className="sf-label">Screenshots (URLs)</label>
+            <textarea
+              name="screenshots"
+              value={formData.screenshots}
+              onChange={handleChange}
+              className={`sf-input sf-textarea ${validationErrors.screenshots ? 'error' : ''}`}
+              placeholder="One image URL per line"
+              rows="3"
+            />
+            <p className="sf-hint">Use direct image URLs, one per line</p>
+            {validationErrors.screenshots && (
+              <span className="sf-hint" style={{ color: '#f87171' }}>{validationErrors.screenshots}</span>
             )}
           </div>
         </div>

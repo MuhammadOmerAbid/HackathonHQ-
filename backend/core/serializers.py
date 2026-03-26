@@ -394,8 +394,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def validate_email(self, value):
-        if value and User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("Email already registered.")
+        # Allow duplicate emails; username remains the unique login identifier.
         return value
 
     def validate_password(self, value):
@@ -410,7 +409,6 @@ class RegisterSerializer(serializers.ModelSerializer):
                 email=validated_data.get("email", ""),
                 password=validated_data["password"]
             )
-            UserProfile.objects.create(user=user)
             return user
         except IntegrityError:
             raise serializers.ValidationError("User with these credentials already exists.")

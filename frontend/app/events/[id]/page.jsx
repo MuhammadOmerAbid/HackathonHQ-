@@ -105,6 +105,12 @@ export default function EventDetailPage() {
   const [judgeSearch, setJudgeSearch] = useState("");
   const [judgeSaving, setJudgeSaving] = useState(false);
   const [judgeError, setJudgeError] = useState("");
+  const [myTeams, setMyTeams] = useState([]);
+  const [myEnrollments, setMyEnrollments] = useState([]);
+  const [enrollTeamId, setEnrollTeamId] = useState("");
+  const [enrollLoading, setEnrollLoading] = useState(false);
+  const [enrollError, setEnrollError] = useState("");
+  const [enrollSuccess, setEnrollSuccess] = useState("");
 
   const loadEventData = useCallback(async (withLoading = true) => {
     if (!id) return;
@@ -121,6 +127,28 @@ export default function EventDetailPage() {
   useEffect(() => {
     loadEventData(true);
   }, [loadEventData]);
+
+  useEffect(() => {
+    if (!event || !user) return;
+    const fetchMyTeams = async () => {
+      try {
+        const res = await axios.get("/teams/?mine=1");
+        setMyTeams(res.data.results || res.data || []);
+      } catch (e) {
+        setMyTeams([]);
+      }
+    };
+    const fetchEnrollments = async () => {
+      try {
+        const res = await axios.get(`/team-events/?event=${id}&mine=1`);
+        setMyEnrollments(res.data.results || res.data || []);
+      } catch (e) {
+        setMyEnrollments([]);
+      }
+    };
+    fetchMyTeams();
+    fetchEnrollments();
+  }, [event, user, id]);
 
   useEffect(() => {
     if (!id) return;
@@ -186,9 +214,45 @@ export default function EventDetailPage() {
     }
   };
 
+  const handleEnrollTeam = async () => {
+    if (!enrollTeamId) return;
+    setEnrollLoading(true);
+    setEnrollError("");
+    setEnrollSuccess("");
+    try {
+      const res = await axios.post(`/events/${id}/enroll-team/`, { team: enrollTeamId });
+      setEnrollSuccess("Team enrolled successfully.");
+      setEnrollTeamId("");
+      try {
+        const refresh = await axios.get(`/team-events/?event=${id}&mine=1`);
+        setMyEnrollments(refresh.data.results || refresh.data || []);
+      } catch (e) {
+        // ignore
+      }
+      return res;
+    } catch (e) {
+      const msg = e.response?.data?.error || "Enrollment failed.";
+      setEnrollError(msg);
+    } finally {
+      setEnrollLoading(false);
+    }
+  };
+
   const now = new Date();
   const getStatus = () => {
     if (!event) return null;
+    if (event.status) {
+      const map = {
+        upcoming: { label: "Upcoming", cls: "upcoming" },
+        registration: { label: "Registration Open", cls: "live" },
+        active: { label: "Build Period", cls: "live" },
+        submission_open: { label: "Submission Open", cls: "live" },
+        submission_closed: { label: "Submission Closed", cls: "upcoming" },
+        judging: { label: "Judging", cls: "live" },
+        finished: { label: "Finished", cls: "ended" },
+      };
+      return map[event.status] || { label: "Live Now", cls: "live" };
+    }
     const s = new Date(event.start_date), e = new Date(event.end_date);
     if (s > now) return { label: "Upcoming", cls: "upcoming" };
     if (e < now) return { label: "Ended", cls: "ended" };
@@ -198,6 +262,18 @@ export default function EventDetailPage() {
   const fmtDate = (d) => new Date(d).toLocaleDateString("en-US", {
     month: "short", day: "numeric", year: "numeric",
   });
+  const fmtDateTime = (d) => {
+    if (!d) return "â€”";
+    const dd = new Date(d);
+    if (Number.isNaN(dd.getTime())) return "â€”";
+    return dd.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
   const daysLeft = (date) => {
     const diff = Math.ceil((new Date(date) - now) / (1000 * 60 * 60 * 24));
@@ -226,6 +302,21 @@ export default function EventDetailPage() {
   const submissionsHref = `/submissions?event=${id}`;
   const createTeamHref = `/teams/create?event=${id}`;
   const submitHref = `/submissions/create?event=${id}`;
+  const submissionOpenAt = event?.submission_open_at || event?.team_deadline || event?.start_date;
+  const submissionDeadline = event?.submission_deadline || event?.end_date;
+  const judgingStart = event?.judging_start || submissionDeadline;
+  const judgingEnd = event?.judging_end
+    ? event.judging_end
+    : new Date(new Date(event?.end_date).getTime() + 48 * 60 * 60 * 1000).toISOString();
+  const enrolledTeamIds = new Set(
+    (myEnrollments || [])
+      .filter((en) => en.status === "enrolled")
+      .map((en) => en.team)
+  );
+  const availableTeamsToEnroll = (myTeams || []).filter((t) => !enrolledTeamIds.has(t.id));
+  const enrollOpen = event?.status
+    ? ["registration", "active"].includes(event.status) && (!submissionOpenAt || new Date() < new Date(submissionOpenAt))
+    : true;
 
   return (
     <div className="event-page">
@@ -347,6 +438,116 @@ export default function EventDetailPage() {
               <h2 className="section-title">About this Hackathon</h2>
               <p className="description">{event.description}</p>
             </div>
+            <div className="description-card timeline-card">
+              <h2 className="section-title">Timeline</h2>
+              <div className="timeline-grid">
+                <div className="timeline-item">
+                  <span className="timeline-label">Submission Opens</span>
+                  <span className="timeline-value">{fmtDateTime(submissionOpenAt)}</span>
+                </div>
+                <div className="timeline-item">
+                  <span className="timeline-label">Submission Deadline</span>
+                  <span className="timeline-value">{fmtDateTime(submissionDeadline)}</span>
+                </div>
+                <div className="timeline-item">
+                  <span className="timeline-label">Judging Start</span>
+                  <span className="timeline-value">{fmtDateTime(judgingStart)}</span>
+                </div>
+                <div className="timeline-item">
+                  <span className="timeline-label">Judging End</span>
+                  <span className="timeline-value">
+                    {fmtDateTime(judgingEnd)}
+                    {!event?.judging_end && <em className="timeline-note"> (default +48h)</em>}
+                  </span>
+                </div>
+              </div>
+            </div>
+            {user && (
+              <div className="description-card enroll-card">
+                <h2 className="section-title">Team Enrollment</h2>
+                {!enrollOpen && (
+                  <div className="enroll-note">
+                    Enrollment is closed for this event.
+                  </div>
+                )}
+                {enrollOpen && (
+                  <>
+                    {myTeams.length === 0 && (
+                      <div className="enroll-note">
+                        You are not in any team yet.{" "}
+                        <Link href={createTeamHref} className="enroll-link">Create a team</Link>{" "}
+                        to enroll.
+                      </div>
+                    )}
+                    {myTeams.length > 0 && (
+                      <div className="enroll-row">
+                        <select
+                          className="enroll-select"
+                          value={enrollTeamId}
+                          onChange={(e) => setEnrollTeamId(e.target.value)}
+                        >
+                          <option value="">Select a team to enroll</option>
+                          {availableTeamsToEnroll.map((t) => (
+                            <option key={t.id} value={t.id}>{t.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="enroll-btn"
+                          onClick={handleEnrollTeam}
+                          disabled={!enrollTeamId || enrollLoading}
+                        >
+                          {enrollLoading ? "Enrolling..." : "Enroll Team"}
+                        </button>
+                      </div>
+                    )}
+                    {enrollError && <div className="enroll-msg error">{enrollError}</div>}
+                    {enrollSuccess && <div className="enroll-msg success">{enrollSuccess}</div>}
+                    {myEnrollments.length > 0 && (
+                      <div className="enroll-status">
+                        {myEnrollments.map((en) => (
+                          <div key={en.id} className="enroll-status-row">
+                            <span className="enroll-team-name">{en.team_name || "Team"}</span>
+                            <span className={`enroll-pill ${en.status}`}>{en.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+            {Array.isArray(event.resources) && event.resources.length > 0 && (
+              <div className="description-card">
+                <h2 className="section-title">Resources</h2>
+                <div className="resource-list">
+                  {event.resources.map((r) => (
+                    <a key={r.id} href={r.url} target="_blank" rel="noreferrer" className="resource-item">
+                      <div className="resource-title">{r.title}</div>
+                      {r.description && <div className="resource-desc">{r.description}</div>}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+            {Array.isArray(event.sponsors) && event.sponsors.length > 0 && (
+              <div className="description-card">
+                <h2 className="section-title">Sponsors</h2>
+                <div className="sponsor-grid">
+                  {event.sponsors.map((s) => (
+                    <a key={s.id} href={s.website || "#"} target="_blank" rel="noreferrer" className="sponsor-card">
+                      {s.logo_url ? (
+                        <img src={s.logo_url} alt={s.name} />
+                      ) : (
+                        <div className="sponsor-fallback">{s.name?.charAt(0)?.toUpperCase()}</div>
+                      )}
+                      <div className="sponsor-name">{s.name}</div>
+                      {s.challenge_desc && <div className="sponsor-desc">{s.challenge_desc}</div>}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -690,12 +891,242 @@ export default function EventDetailPage() {
           padding: 24px;
           margin-bottom: 24px;
         }
+        .timeline-card {
+          background: linear-gradient(135deg, rgba(110,231,183,0.06), rgba(96,165,250,0.04));
+        }
+        .timeline-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 16px;
+          margin-top: 12px;
+        }
+        .timeline-item {
+          background: rgba(17,17,20,0.6);
+          border: 1px solid #1e1e24;
+          border-radius: 12px;
+          padding: 14px 16px;
+        }
+        .timeline-label {
+          display: block;
+          font-size: 12px;
+          color: #8a8aa0;
+          margin-bottom: 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.6px;
+        }
+        .timeline-value {
+          font-size: 14px;
+          font-weight: 600;
+          color: #f0f0f3;
+        }
+        .timeline-note {
+          font-size: 12px;
+          font-style: normal;
+          color: #6EE7B7;
+          margin-left: 6px;
+        }
+
+        .enroll-card {
+          border-color: rgba(110,231,183,0.25);
+        }
+        .enroll-row {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        .enroll-select {
+          flex: 1;
+          min-width: 220px;
+          background: #0f0f12;
+          border: 1px solid #1e1e24;
+          color: #f0f0f3;
+          border-radius: 10px;
+          padding: 8px 12px;
+          font-size: 13px;
+        }
+        .enroll-btn {
+          padding: 8px 14px;
+          background: rgba(110,231,183,0.12);
+          border: 1px solid rgba(110,231,183,0.3);
+          color: #6EE7B7;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .enroll-btn:hover:not(:disabled) {
+          background: rgba(110,231,183,0.2);
+          border-color: rgba(110,231,183,0.5);
+        }
+        .enroll-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .enroll-note {
+          font-size: 13px;
+          color: #8a8aa0;
+        }
+        .enroll-link {
+          color: #6EE7B7;
+          text-decoration: none;
+        }
+        .enroll-link:hover {
+          text-decoration: underline;
+        }
+        .enroll-msg {
+          margin-top: 10px;
+          font-size: 12px;
+        }
+        .enroll-msg.error {
+          color: #f87171;
+        }
+        .enroll-msg.success {
+          color: #6EE7B7;
+        }
+        .enroll-status {
+          margin-top: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .enroll-status-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 12px;
+          border: 1px solid #1e1e24;
+          border-radius: 12px;
+          background: #111114;
+        }
+        .enroll-team-name {
+          font-size: 13px;
+          color: #f0f0f3;
+          font-weight: 600;
+        }
+        .enroll-pill {
+          padding: 4px 10px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: capitalize;
+          border: 1px solid transparent;
+        }
+        .enroll-pill.enrolled {
+          color: #6EE7B7;
+          border-color: rgba(110,231,183,0.3);
+          background: rgba(110,231,183,0.12);
+        }
+        .enroll-pill.withdrawn {
+          color: #fbbf24;
+          border-color: rgba(251,191,36,0.3);
+          background: rgba(251,191,36,0.12);
+        }
+        .enroll-pill.disqualified {
+          color: #f87171;
+          border-color: rgba(248,113,113,0.3);
+          background: rgba(248,113,113,0.12);
+        }
 
         .description {
           font-size: 15px;
           color: #b0b0ba;
           line-height: 1.7;
           margin: 0;
+        }
+
+        .resource-list {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .resource-item {
+          display: block;
+          padding: 12px 14px;
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 12px;
+          text-decoration: none;
+          color: inherit;
+          transition: all 0.2s ease;
+        }
+
+        .resource-item:hover {
+          border-color: rgba(110,231,183,0.3);
+          background: #151519;
+        }
+
+        .resource-title {
+          font-size: 14px;
+          font-weight: 600;
+          color: #f0f0f3;
+          margin-bottom: 4px;
+        }
+
+        .resource-desc {
+          font-size: 12px;
+          color: #888;
+        }
+
+        .sponsor-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 12px;
+        }
+
+        .sponsor-card {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: 14px;
+          background: #111114;
+          border: 1px solid #1e1e24;
+          border-radius: 14px;
+          text-decoration: none;
+          color: inherit;
+          transition: all 0.2s ease;
+        }
+
+        .sponsor-card:hover {
+          border-color: rgba(110,231,183,0.3);
+          background: #151519;
+        }
+
+        .sponsor-card img {
+          width: 100%;
+          height: 60px;
+          object-fit: contain;
+          background: #0f0f12;
+          border-radius: 10px;
+          border: 1px solid #1e1e24;
+        }
+
+        .sponsor-fallback {
+          width: 60px;
+          height: 60px;
+          border-radius: 12px;
+          background: rgba(110,231,183,0.12);
+          border: 1px solid rgba(110,231,183,0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: 'Syne', sans-serif;
+          font-size: 22px;
+          font-weight: 700;
+          color: #6EE7B7;
+        }
+
+        .sponsor-name {
+          font-size: 13px;
+          font-weight: 600;
+          color: #f0f0f3;
+        }
+
+        .sponsor-desc {
+          font-size: 11px;
+          color: #888;
         }
 
         /* Teams Tab */

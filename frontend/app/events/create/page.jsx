@@ -8,7 +8,21 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 
 export default function CreateEventPage() {
   const router = useRouter();
-  const [formData, setFormData] = useState({ name: "", description: "", start_date: "", end_date: "", is_premium: false });
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    start_date: "",
+    end_date: "",
+    registration_deadline: "",
+    team_deadline: "",
+    submission_open_at: "",
+    submission_deadline: "",
+    judging_start: "",
+    judging_end: "",
+    reviewers_per_submission: 3,
+    max_participants: "",
+    is_premium: false
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(true);
@@ -86,9 +100,39 @@ export default function CreateEventPage() {
     try {
       const s = new Date(formData.start_date), en = new Date(formData.end_date);
       if (en <= s) { setError("End date must be after start date"); setLoading(false); return; }
+      const timeOrder = [
+        { label: "Registration deadline", value: formData.registration_deadline },
+        { label: "Submission opens", value: formData.submission_open_at },
+        { label: "Submission deadline", value: formData.submission_deadline },
+        { label: "Judging start", value: formData.judging_start },
+        { label: "Judging end", value: formData.judging_end },
+      ];
+      for (let i = 0; i < timeOrder.length - 1; i += 1) {
+        const a = timeOrder[i];
+        const b = timeOrder[i + 1];
+        if (a.value && b.value) {
+          const aDate = new Date(a.value);
+          const bDate = new Date(b.value);
+          if (bDate < aDate) {
+            setError(`${b.label} must be after ${a.label}.`);
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
       const res = await axios.post("/events/", {
         name: formData.name, description: formData.description,
-        start_date: s.toISOString(), end_date: en.toISOString(), is_premium: formData.is_premium,
+        start_date: s.toISOString(), end_date: en.toISOString(),
+        registration_deadline: formData.registration_deadline ? new Date(formData.registration_deadline).toISOString() : null,
+        team_deadline: formData.team_deadline ? new Date(formData.team_deadline).toISOString() : null,
+        submission_open_at: formData.submission_open_at ? new Date(formData.submission_open_at).toISOString() : null,
+        submission_deadline: formData.submission_deadline ? new Date(formData.submission_deadline).toISOString() : null,
+        judging_start: formData.judging_start ? new Date(formData.judging_start).toISOString() : null,
+        judging_end: formData.judging_end ? new Date(formData.judging_end).toISOString() : null,
+        reviewers_per_submission: Number(formData.reviewers_per_submission) || 3,
+        max_participants: formData.max_participants ? Number(formData.max_participants) : null,
+        is_premium: formData.is_premium,
       });
       if (selectedJudgeIds.length > 0) {
         try {
@@ -233,6 +277,80 @@ export default function CreateEventPage() {
                     value={formData.end_date} onChange={handleChange}
                     min={formData.start_date || getMinDate()} required disabled={loading}
                   />
+                </div>
+              </div>
+              <div className="evc-row">
+                <div className="evc-group">
+                  <label className="evc-label">Registration Deadline</label>
+                  <input
+                    className="evc-input" type="datetime-local" name="registration_deadline"
+                    value={formData.registration_deadline} onChange={handleChange}
+                    min={getMinDate()} disabled={loading}
+                  />
+                </div>
+                <div className="evc-group">
+                  <label className="evc-label">Team Formation Deadline</label>
+                  <input
+                    className="evc-input" type="datetime-local" name="team_deadline"
+                    value={formData.team_deadline} onChange={handleChange}
+                    min={getMinDate()} disabled={loading}
+                  />
+                </div>
+              </div>
+              <div className="evc-row">
+                <div className="evc-group">
+                  <label className="evc-label">Submission Opens</label>
+                  <input
+                    className="evc-input" type="datetime-local" name="submission_open_at"
+                    value={formData.submission_open_at} onChange={handleChange}
+                    min={getMinDate()} disabled={loading}
+                  />
+                </div>
+                <div className="evc-group">
+                  <label className="evc-label">Submission Deadline</label>
+                  <input
+                    className="evc-input" type="datetime-local" name="submission_deadline"
+                    value={formData.submission_deadline} onChange={handleChange}
+                    min={getMinDate()} disabled={loading}
+                  />
+                </div>
+              </div>
+              <div className="evc-row">
+                <div className="evc-group">
+                  <label className="evc-label">Judging Start</label>
+                  <input
+                    className="evc-input" type="datetime-local" name="judging_start"
+                    value={formData.judging_start} onChange={handleChange}
+                    min={getMinDate()} disabled={loading}
+                  />
+                </div>
+                <div className="evc-group">
+                  <label className="evc-label">Judging End</label>
+                  <input
+                    className="evc-input" type="datetime-local" name="judging_end"
+                    value={formData.judging_end} onChange={handleChange}
+                    min={getMinDate()} disabled={loading}
+                  />
+                </div>
+              </div>
+              <div className="evc-row">
+                <div className="evc-group">
+                  <label className="evc-label">Judges per Submission</label>
+                  <input
+                    className="evc-input" type="number" name="reviewers_per_submission"
+                    value={formData.reviewers_per_submission} onChange={handleChange}
+                    min={1} max={10} disabled={loading}
+                  />
+                  <span className="evc-hint">Recommended: 3</span>
+                </div>
+                <div className="evc-group">
+                  <label className="evc-label">Max Participants</label>
+                  <input
+                    className="evc-input" type="number" name="max_participants"
+                    value={formData.max_participants} onChange={handleChange}
+                    min={1} disabled={loading}
+                  />
+                  <span className="evc-hint">Leave blank for no cap</span>
                 </div>
               </div>
 

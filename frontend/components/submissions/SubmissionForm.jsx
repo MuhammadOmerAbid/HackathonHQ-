@@ -32,7 +32,7 @@ export default function SubmissionForm({
     key_features: "",
     screenshots: "",
     event: "", 
-    team: "",
+    team_event: "",
     ...initialData,
     technologies: Array.isArray(initialData.technologies)
       ? initialData.technologies.join(", ")
@@ -46,14 +46,18 @@ export default function SubmissionForm({
   });
   
   const [events, setEvents] = useState([]);
-  const [allTeams, setAllTeams] = useState([]);
-  const [userTeams, setUserTeams] = useState([]);
+  const [teamEvents, setTeamEvents] = useState([]);
+  const [myTeams, setMyTeams] = useState([]);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState("");
   const [validationErrors, setValidationErrors] = useState({});
   const [openDropdown, setOpenDropdown] = useState(null); // 'event', 'team', or null
+  const [enrollTeamId, setEnrollTeamId] = useState("");
+  const [enrollLoading, setEnrollLoading] = useState(false);
+  const [enrollError, setEnrollError] = useState("");
+  const [enrollSuccess, setEnrollSuccess] = useState("");
 
   // Refs for dropdown click outside detection
   const eventDropdownRef = useRef(null);
@@ -91,36 +95,20 @@ export default function SubmissionForm({
         const eventsRes = await axios.get("/events/");
         const allEvents = eventsRes.data.results || eventsRes.data || [];
         
-        // Filter events that haven't ended yet
+        // Filter events that are open for submissions
         const activeEvents = allEvents.filter(event => {
+          if (event.status) {
+            return event.status === "submission_open";
+          }
           const endDate = new Date(event.end_date || event.endDate || event.end);
           return endDate >= new Date();
         });
         setEvents(activeEvents);
 
-        // Fetch all teams with members expanded
-        const teamsRes = await axios.get("/teams/?expand=members,leader");
-        const teams = teamsRes.data.results || teamsRes.data || [];
-        setAllTeams(teams);
-
-        // Filter teams where current user is a member
-        if (currentUser) {
-          const userTeamList = teams.filter(team => {
-            // Check if user is the team leader
-            const isLeader = team.leader?.id === currentUser.id || team.leader === currentUser.id;
-            
-            // Check if user is in members array
-            const isMember = team.members?.some(member => {
-              if (typeof member === 'object') {
-                return member.id === currentUser.id;
-              }
-              return member === currentUser.id;
-            });
-
-            return isLeader || isMember;
-          });
-          setUserTeams(userTeamList);
-        }
+        // Fetch user's teams (global)
+        const teamsRes = await axios.get("/teams/?mine=1").catch(() => null);
+        const mineTeams = teamsRes?.data?.results || teamsRes?.data || [];
+        setMyTeams(mineTeams);
 
       } catch (err) { 
         console.error("Error fetching data:", err);
@@ -131,6 +119,53 @@ export default function SubmissionForm({
     };
     fetchData();
   }, []);
+
+  const fetchTeamEvents = async (eventId) => {
+    if (!eventId) {
+      setTeamEvents([]);
+      return;
+    }
+    try {
+      const res = await axios.get(`/team-events/?event=${eventId}&mine=1&status=enrolled`);
+      setTeamEvents(res.data.results || res.data || []);
+    } catch (err) {
+      console.error("Error fetching team enrollments:", err);
+      setTeamEvents([]);
+    }
+  };
+
+  useEffect(() => {
+    if (formData.event) {
+      setEnrollError("");
+      setEnrollSuccess("");
+      setEnrollTeamId("");
+      fetchTeamEvents(formData.event);
+    } else {
+      setTeamEvents([]);
+    }
+  }, [formData.event]);
+
+  const handleEnrollTeam = async () => {
+    if (!formData.event || !enrollTeamId) return;
+    setEnrollLoading(true);
+    setEnrollError("");
+    setEnrollSuccess("");
+    try {
+      const res = await axios.post(`/events/${formData.event}/enroll-team/`, {
+        team: enrollTeamId
+      });
+      await fetchTeamEvents(formData.event);
+      setEnrollSuccess("Team enrolled successfully.");
+      if (res?.data?.id) {
+        setFormData(prev => ({ ...prev, team_event: res.data.id.toString() }));
+      }
+    } catch (err) {
+      const msg = err.response?.data?.error || "Enrollment failed.";
+      setEnrollError(msg);
+    } finally {
+      setEnrollLoading(false);
+    }
+  };
 
   const validateForm = () => {
     const errors = {};
@@ -147,8 +182,8 @@ export default function SubmissionForm({
       errors.event = "Please select an event";
     }
 
-    if (!formData.team) {
-      errors.team = "Please select a team";
+    if (!formData.team_event) {
+      errors.team_event = "Please select a team";
     }
 
     if (!formData.description.trim()) {
@@ -226,8 +261,7 @@ export default function SubmissionForm({
       video_url: formData.video_url,
       demo_url: formData.demo_url,
       repo_url: formData.repo_url,
-      event: parseInt(formData.event),
-      team: parseInt(formData.team),
+      team_event: parseInt(formData.team_event),
       technologies: formData.technologies
         .split(',')
         .map(t => t.trim())
@@ -252,11 +286,7 @@ export default function SubmissionForm({
       res = await axios.post("/submissions/", payload);
     }
     
-    // 🔥 FIX: Fetch the complete submission with expanded event and team data
-    console.log("Submission created, fetching full data with expand...");
-    const fullSubmissionRes = await axios.get(`/submissions/${res.data.id}/?expand=event,team,team.members,team.leader`);
-    console.log("Full submission data:", fullSubmissionRes.data);
-    
+    const fullSubmissionRes = await axios.get(`/submissions/${res.data.id}/`);
     if (onSuccess) {
       onSuccess(fullSubmissionRes.data);
     } else {
@@ -270,12 +300,13 @@ export default function SubmissionForm({
   }
 };
 
-  const teamsForEvent = formData.event
-    ? userTeams.filter(tm => String(tm.event?.id ?? tm.event) === String(formData.event))
-    : userTeams;
+  const teamsForEvent = formData.event ? teamEvents : teamEvents;
   const hasTeams = teamsForEvent.length > 0;
   const hasEvents = events.length > 0;
   const canSubmit = hasTeams && hasEvents;
+  const availableTeamsToEnroll = myTeams.filter(
+    (t) => !teamEvents.some((te) => te.team === t.id)
+  );
 
   if (initialLoading) {
     return (
@@ -289,7 +320,7 @@ export default function SubmissionForm({
 
   // Get selected event and team names
   const selectedEvent = events.find(ev => ev.id == formData.event);
-  const selectedTeam = teamsForEvent.find(tm => tm.id == formData.team);
+  const selectedTeam = teamsForEvent.find(tm => tm.id == formData.team_event);
 
   return (
     <>
@@ -306,7 +337,7 @@ export default function SubmissionForm({
         </div>
       )}
 
-      {user && !hasTeams && (
+      {user && !hasTeams && myTeams.length === 0 && (
         <div className="sf-error" style={{ background: 'rgba(251, 191, 36, 0.1)', borderColor: '#fbbf24', color: '#fbbf24' }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
@@ -314,6 +345,16 @@ export default function SubmissionForm({
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
           You're not in any team yet. <Link href={formData.event ? `/teams/create?event=${formData.event}` : "/teams/create"} style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Create a team</Link> to submit a project.
+        </div>
+      )}
+      {user && !hasTeams && myTeams.length > 0 && (
+        <div className="sf-error" style={{ background: 'rgba(96, 165, 250, 0.08)', borderColor: 'rgba(96,165,250,0.35)', color: '#93c5fd' }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          No enrolled teams for this event yet. Enroll one below to submit.
         </div>
       )}
 
@@ -437,11 +478,11 @@ export default function SubmissionForm({
             </label>
             <div className="sf-select-wrapper">
               <div 
-                className={`sf-select-trigger ${validationErrors.team ? 'error' : ''} ${!hasTeams ? 'disabled' : ''} ${openDropdown === 'team' ? 'open' : ''}`}
+                className={`sf-select-trigger ${validationErrors.team_event ? 'error' : ''} ${!hasTeams ? 'disabled' : ''} ${openDropdown === 'team' ? 'open' : ''}`}
                 onClick={() => hasTeams && setOpenDropdown(openDropdown === 'team' ? null : 'team')}
               >
                 <span className={`sf-select-value ${!selectedTeam ? 'placeholder' : ''}`}>
-                  {selectedTeam ? selectedTeam.name : (hasTeams ? "Choose your team" : "You're not in any team")}
+                  {selectedTeam ? selectedTeam.team_name : (hasTeams ? "Choose your team" : "You're not in any team")}
                 </span>
                 <svg 
                   className={`sf-select-arrow ${openDropdown === 'team' ? 'open' : ''}`}
@@ -459,29 +500,21 @@ export default function SubmissionForm({
                 <div className="sf-select-menu">
                   {teamsForEvent.length > 0 ? (
                     teamsForEvent.map(tm => {
-                      const isSelected = formData.team == tm.id;
-                      const isLeader = tm.leader?.id === user?.id || tm.leader === user?.id;
-                      const memberCount = tm.members?.length || 0;
+                      const isSelected = formData.team_event == tm.id;
                       
                       return (
                         <div
                           key={tm.id}
                           className={`sf-select-item ${isSelected ? 'selected' : ''}`}
                           onClick={() => {
-                            handleChange({ target: { name: 'team', value: tm.id.toString() } });
+                            handleChange({ target: { name: 'team_event', value: tm.id.toString() } });
                             setOpenDropdown(null);
                           }}
                         >
                           <div className="sf-select-item-content">
                             <div className="sf-select-item-title-row">
-                              <span className="sf-select-item-title">{tm.name}</span>
-                              {isLeader && (
-                                <span className="sf-select-item-badge">Leader</span>
-                              )}
+                              <span className="sf-select-item-title">{tm.team_name || "Team"}</span>
                             </div>
-                            <span className="sf-select-item-sub">
-                              {memberCount} {memberCount === 1 ? 'member' : 'members'}
-                            </span>
                           </div>
                           {isSelected && (
                             <svg className="sf-select-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
@@ -497,13 +530,39 @@ export default function SubmissionForm({
                 </div>
               )}
             </div>
-            {validationErrors.team && (
-              <span className="sf-hint" style={{ color: '#f87171' }}>{validationErrors.team}</span>
+            {validationErrors.team_event && (
+              <span className="sf-hint" style={{ color: '#f87171' }}>{validationErrors.team_event}</span>
             )}
             {user && hasTeams && (
               <span className="sf-hint">
                 Showing {teamsForEvent.length} team{teamsForEvent.length !== 1 ? 's' : ''} you belong to
               </span>
+            )}
+            {user && formData.event && !hasTeams && availableTeamsToEnroll.length > 0 && (
+              <div className="sf-enroll-box">
+                <div className="sf-enroll-row">
+                  <select
+                    className="sf-enroll-select"
+                    value={enrollTeamId}
+                    onChange={(e) => setEnrollTeamId(e.target.value)}
+                  >
+                    <option value="">Select a team to enroll</option>
+                    {availableTeamsToEnroll.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="sf-enroll-btn"
+                    onClick={handleEnrollTeam}
+                    disabled={!enrollTeamId || enrollLoading}
+                  >
+                    {enrollLoading ? "Enrolling..." : "Enroll Team"}
+                  </button>
+                </div>
+                {enrollError && <div className="sf-enroll-msg error">{enrollError}</div>}
+                {enrollSuccess && <div className="sf-enroll-msg success">{enrollSuccess}</div>}
+              </div>
             )}
           </div>
         </div>
@@ -985,6 +1044,59 @@ const sfStyles = `
   
   .sf-select-menu::-webkit-scrollbar-thumb:hover {
     background: #6EE7B7;
+  }
+
+  .sf-enroll-box {
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px dashed rgba(110,231,183,0.25);
+    border-radius: 12px;
+    background: rgba(110,231,183,0.04);
+  }
+  .sf-enroll-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .sf-enroll-select {
+    flex: 1;
+    min-width: 200px;
+    background: #0f0f12;
+    border: 1px solid #1e1e24;
+    color: #f0f0f3;
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+  .sf-enroll-btn {
+    padding: 8px 14px;
+    background: rgba(110,231,183,0.12);
+    border: 1px solid rgba(110,231,183,0.3);
+    color: #6EE7B7;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .sf-enroll-btn:hover:not(:disabled) {
+    background: rgba(110,231,183,0.2);
+    border-color: rgba(110,231,183,0.5);
+  }
+  .sf-enroll-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .sf-enroll-msg {
+    margin-top: 8px;
+    font-size: 12px;
+  }
+  .sf-enroll-msg.error {
+    color: #f87171;
+  }
+  .sf-enroll-msg.success {
+    color: #6EE7B7;
   }
   
   /* Action Buttons */

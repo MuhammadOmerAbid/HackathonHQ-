@@ -4,7 +4,7 @@
 
 import CustomSelect from "../ui/CustomSelect";
 
-export default function TeamForm({ formData, onChange, events, user, error }) {
+export default function TeamForm({ formData, onChange, user, error }) {
   return (
     <>
       {error && (
@@ -36,29 +36,8 @@ export default function TeamForm({ formData, onChange, events, user, error }) {
         />
       </div>
 
-      {/* Event + Size */}
+      {/* Size */}
       <div className="tmc-row">
-        <div className="tmc-group">
-          <label className="tmc-label">
-            Select Event <span className="tmc-required">*</span>
-          </label>
-          <CustomSelect
-            value={formData.event}
-            onChange={(val) =>
-              onChange({ target: { name: "event", value: String(val) } })
-            }
-            options={events || []}
-            placeholder="Choose an event"
-            emptyLabel="No events available"
-            disabled={(events || []).length === 0}
-            getValue={(event) => String(event.id)}
-            getLabel={(event) => event.name}
-            getSubLabel={(event) =>
-              new Date(event.start_date).toLocaleDateString()
-            }
-          />
-        </div>
-
         <div className="tmc-group">
           <label className="tmc-label">Team Size</label>
           <CustomSelect

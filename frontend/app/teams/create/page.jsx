@@ -61,18 +61,10 @@ export default function CreateTeamPage() {
     name: "",
     description: "",
     max_members: 4,
-    event: "",
   });
-  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    if (preselectEventId) {
-      setFormData((prev) => (prev.event ? prev : { ...prev, event: preselectEventId }));
-    }
-  }, [preselectEventId]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -88,11 +80,6 @@ export default function CreateTeamPage() {
           setUser(userRes.data);
         } catch {
           setUser({ username: "User" });
-        }
-        const eventsRes = await axios.get("/events/");
-        setEvents(eventsRes.data.results || []);
-        if ((eventsRes.data.results || []).length === 0) {
-          setError("No events available to create a team. Please check back later.");
         }
       } catch (err) {
         console.error("Error fetching data:", err);
@@ -112,10 +99,19 @@ export default function CreateTeamPage() {
     setLoading(true);
     setError("");
     try {
-      await axios.post("/teams/", {
+      const teamRes = await axios.post("/teams/", {
         ...formData,
-        event: parseInt(formData.event),
       });
+      if (preselectEventId && teamRes?.data?.id) {
+        try {
+          await axios.post(`/events/${preselectEventId}/enroll_team/`, { team: teamRes.data.id });
+        } catch (enrollErr) {
+          const msg = enrollErr.response?.data?.error || "Team created, but enrollment failed.";
+          setError(msg);
+          setLoading(false);
+          return;
+        }
+      }
       const dest = preselectEventId ? `/teams?event=${preselectEventId}&refresh=1` : "/teams?refresh=1";
       router.push(dest);
     } catch (err) {
@@ -173,7 +169,6 @@ export default function CreateTeamPage() {
             <TeamForm
               formData={formData}
               onChange={handleChange}
-              events={events}
               user={user}
               error={error}
             />
@@ -187,7 +182,7 @@ export default function CreateTeamPage() {
             <button
               onClick={handleSubmit}
               className="tmc-btn-submit"
-              disabled={loading || events.length === 0}
+              disabled={loading}
             >
               {loading ? (
                 <>

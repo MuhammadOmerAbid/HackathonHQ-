@@ -29,7 +29,7 @@ export default function TeamCard({ team, user }) {
             </div>
             <div className="team-info">
               <h3 className="team-name">{team.name}</h3>
-              <p className="team-event">{team.event?.name || "Hackathon Team"}</p>
+              <p className="team-event">{team.event_name || "Global Team"}</p>
             </div>
           </div>
 

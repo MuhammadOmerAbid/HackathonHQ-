@@ -825,7 +825,7 @@ export default function TeamsPage() {
               className="tm-table-row"
             >
               <td className="tm-table-title">{team.name}</td>
-              <td>{team.event?.name || team.event_name || "—"}</td>
+              <td>{team.event_name || "Global Team"}</td>
               
   <td>
   <div className="tm-table-members-info">

@@ -76,7 +76,9 @@ class Command(BaseCommand):
                     stats['submissions'] += 1
             
             # Activities for all team members (if different from submitter)
-            for member in submission.team.members.all():
+            if not submission.team_event or not submission.team_event.team:
+                continue
+            for member in submission.team_event.team.members.all():
                 if member != submission.submitted_by:
                     activity, created = Activity.objects.get_or_create(
                         user=member,
@@ -95,7 +97,9 @@ class Command(BaseCommand):
         feedbacks = JudgeFeedback.objects.all()
         for fb in feedbacks:
             # Create activity for each team member who received feedback
-            for member in fb.submission.team.members.all():
+            if not fb.submission.team_event or not fb.submission.team_event.team:
+                continue
+            for member in fb.submission.team_event.team.members.all():
                 activity, created = Activity.objects.get_or_create(
                     user=member,
                     type='feedback',
@@ -117,7 +121,9 @@ class Command(BaseCommand):
         self.stdout.write('\n🏆 Backfilling winners...')
         winners = Submission.objects.filter(is_winner=True)
         for winner in winners:
-            for member in winner.team.members.all():
+            if not winner.team_event or not winner.team_event.team:
+                continue
+            for member in winner.team_event.team.members.all():
                 activity, created = Activity.objects.get_or_create(
                     user=member,
                     type='winner',

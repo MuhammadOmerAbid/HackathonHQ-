@@ -229,7 +229,7 @@ export default function DashboardPage() {
                     <div key={team.id} className="dp-row">
                       <span className="dp-row-rank">#{i+1}</span>
                       <div className="dp-row-avi">{team.name?.[0]?.toUpperCase()||"T"}</div>
-                      <div className="dp-row-body"><div className="dp-row-title">{team.name}</div><div className="dp-row-meta">{team.event__name||"No event"}</div></div>
+                      <div className="dp-row-body"><div className="dp-row-title">{team.name}</div><div className="dp-row-meta">{team.event_name || "Global Team"}</div></div>
                       <div className="dp-row-pills"><span className="dp-pill">{fmt(team.submissions_count)} subs</span><span className="dp-pill dp-pill-purple">{fmt(team.members_count)}</span></div>
                     </div>
                   ))}
@@ -304,7 +304,7 @@ export default function DashboardPage() {
                       {isTop3&&<span className={`dp-lb-ptag dp-lb-p${place}`}>{place===1?"1st Place":place===2?"2nd Place":"3rd Place"}</span>}
                     </div>
                   </div>
-                  <div className="dp-lb-td dp-lb-event">{w.event_name||w.event__name||"—"}</div>
+                  <div className="dp-lb-td dp-lb-event">{w.event_name || w.event__name || "—"}</div>
                   <div className="dp-lb-td dp-lb-tr"><span className={`dp-lb-score${isTop3?" dp-lb-stop":""}`}>{w.score!=null?Number(w.score).toFixed(1):w.avg_score!=null?Number(w.avg_score).toFixed(1):"—"}</span></div>
                   <div className="dp-lb-td dp-lb-tr"><span className="dp-lb-pill">{fmt(w.members_count)}</span></div>
                   <div className="dp-lb-td dp-lb-tr"><span className="dp-lb-time">{ago(w.announced_at||w.updated_at)}</span></div>

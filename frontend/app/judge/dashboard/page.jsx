@@ -128,6 +128,29 @@ export default function JudgeDashboardPage() {
   const queue = data?.assigned_queue || [];
   const distribution = data?.score_distribution || [];
   const recent = data?.recent_feedbacks || [];
+  const judgingOpen = data?.judging_open !== false;
+  const nextJudgingStart = data?.next_judging_start ? new Date(data.next_judging_start) : null;
+
+  const formatDateTime = (d) => {
+    if (!d || Number.isNaN(d.getTime())) return "â€”";
+    return d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const timeUntil = (d) => {
+    if (!d || Number.isNaN(d.getTime())) return "";
+    const diff = d.getTime() - Date.now();
+    if (diff <= 0) return "starting soon";
+    const hours = Math.round(diff / 3600000);
+    if (hours < 24) return `${hours}h`;
+    const days = Math.ceil(hours / 24);
+    return `${days}d`;
+  };
 
   const completionRate = useMemo(() => {
     if (!stats.assigned_total) return 0;
@@ -384,6 +407,28 @@ export default function JudgeDashboardPage() {
         </div>
 
         {/* Assigned Queue - Properly Adjusted */}
+{!judgingOpen ? (
+  <div className="queue-section queue-locked">
+    <div className="section-header">
+      <div>
+        <div className="card-badge">Judging</div>
+        <div className="card-title">Judging hasnâ€™t started yet</div>
+      </div>
+    </div>
+    <div className="locked-banner">
+      Judges can only score after submissions close.
+    </div>
+    <div className="locked-meta">
+      <div className="locked-label">Next judging window</div>
+      <div className="locked-value">
+        {formatDateTime(nextJudgingStart)}
+        {nextJudgingStart && (
+          <span className="locked-countdown">({timeUntil(nextJudgingStart)})</span>
+        )}
+      </div>
+    </div>
+  </div>
+) : (
 <div className="queue-section">
   <div className="section-header">
     <div>
@@ -503,6 +548,7 @@ export default function JudgeDashboardPage() {
     </div>
   )}
 </div>
+)}
 
         {/* Recent Feedbacks */}
         {recent.length > 0 && (
@@ -1014,9 +1060,45 @@ export default function JudgeDashboardPage() {
           transform: translateX(3px);
         }
         
-        /* Queue Section - Properly Adjusted */
+/* Queue Section - Properly Adjusted */
 .queue-section {
   margin-bottom: 32px;
+}
+.queue-locked {
+  background: #111114;
+  border: 1px solid #1e1e24;
+  border-radius: 16px;
+  padding: 20px;
+}
+.locked-banner {
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(96,165,250,0.08);
+  border: 1px solid rgba(96,165,250,0.2);
+  color: #93c5fd;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.locked-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.locked-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #6b6b7a;
+}
+.locked-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f0f0f3;
+}
+.locked-countdown {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #6EE7B7;
 }
 
 .section-header {

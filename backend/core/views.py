@@ -3,14 +3,20 @@ import json
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import (
-    Post, Event, Team, Submission, JudgeFeedback,
+    Post, Event, Team, TeamEvent, Submission, JudgeFeedback,
+    EventResource, EventSponsor, AwardCategory, AwardResult,
+    JudgeAssignment, Notification, Announcement, MediaAsset, AuditLog,
     UserProfile, Activity, Follow, Tag, PostLike, PostRepost,
     ModerationAction, UserWarning, AccountDeletionLog,
     Conversation, ConversationParticipant, Message
 )
 from .serializers import (
-    PostSerializer, EventSerializer, TeamSerializer,
+    PostSerializer, EventSerializer, TeamSerializer, TeamEventSerializer,
     SubmissionSerializer, JudgeFeedbackSerializer,
+    EventResourceSerializer, EventSponsorSerializer,
+    AwardCategorySerializer, AwardResultSerializer,
+    JudgeAssignmentSerializer, NotificationSerializer,
+    AnnouncementSerializer, MediaAssetSerializer,
     UserSerializer, RegisterSerializer, ActivitySerializer,
     UserDirectorySerializer, ConversationSerializer, MessageSerializer
 )
@@ -48,6 +54,30 @@ def is_organizer(user):
 
 def is_regular(user):
     return user and user.is_authenticated and not (is_admin(user) or is_organizer(user) or is_judge(user))
+
+
+def _notify_users(users, n_type, title, body="", link=""):
+    try:
+        for u in users:
+            Notification.objects.create(
+                user=u,
+                type=n_type,
+                title=title,
+                body=body,
+                link=link
+            )
+    except Exception:
+        pass
+
+def _get_event_participants(event):
+    try:
+        team_ids = TeamEvent.objects.filter(
+            event=event,
+            status=TeamEvent.STATUS_ENROLLED
+        ).values_list("team_id", flat=True)
+        return User.objects.filter(teams__id__in=team_ids).distinct()
+    except Exception:
+        return User.objects.none()
 
 # ========== CUSTOM PERMISSIONS ==========
 class IsOwner(BasePermission):
@@ -792,22 +822,337 @@ class EventViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), IsNotBanned()]
         return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
 
+    def get_queryset(self):
+        qs = Event.objects.all().order_by('-start_date')
+        now = timezone.now()
+        for event in qs:
+            try:
+                if not event.status_override:
+                    prev = event.status
+                    computed = event.get_status(now=now)
+                    if prev != computed:
+                        event.status = computed
+                        event.save(update_fields=["status"])
+                        try:
+                            if computed == Event.STATUS_JUDGING:
+                                participants = _get_event_participants(event)
+                                _notify_users(
+                                    participants,
+                                    "judging_started",
+                                    "Judging has started",
+                                    body=f"Judging for {event.name} is now open.",
+                                    link=f"/events/{event.id}"
+                                )
+                            if computed == Event.STATUS_FINISHED:
+                                try:
+                                    Submission.objects.filter(
+                                        team_event__event=event,
+                                        score_locked_by_system=False
+                                    ).update(
+                                        score_locked_by_system=True,
+                                        score_locked_at=now
+                                    )
+                                except Exception:
+                                    pass
+                                try:
+                                    if not AwardResult.objects.filter(event=event).exists():
+                                        _compute_event_winners(event, top_n=3)
+                                except Exception:
+                                    pass
+                                participants = _get_event_participants(event)
+                                _notify_users(
+                                    participants,
+                                    "results_announced",
+                                    "Results announced",
+                                    body=f"Results for {event.name} are now available.",
+                                    link=f"/events/{event.id}"
+                                )
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+        return qs
+
     def perform_create(self, serializer):
         serializer.save(organizer=self.request.user)
 
     @action(detail=True, methods=["get"])
     def teams(self, request, pk=None):
         event = self.get_object()
-        serializer = TeamSerializer(event.teams.all(), many=True, context={'request': request})
+        team_ids = TeamEvent.objects.filter(
+            event=event,
+            status=TeamEvent.STATUS_ENROLLED
+        ).values_list("team_id", flat=True)
+        serializer = TeamSerializer(
+            Team.objects.filter(id__in=team_ids),
+            many=True,
+            context={'request': request}
+        )
         return Response(serializer.data)
 
     @action(detail=True, methods=["get"])
     def submissions(self, request, pk=None):
         event = self.get_object()
-        teams = event.teams.all()
-        submissions = Submission.objects.filter(team__in=teams)
+        submissions = Submission.objects.filter(team_event__event=event)
         serializer = SubmissionSerializer(submissions, many=True, context={'request': request})
         return Response(serializer.data)
+
+    @action(detail=True, methods=["get"])
+    def status(self, request, pk=None):
+        event = self.get_object()
+        return Response({
+            "status": event.get_status(),
+            "status_override": event.status_override,
+            "registration_deadline": event.registration_deadline,
+            "team_deadline": event.team_deadline,
+            "submission_open_at": event.submission_open_at,
+            "submission_deadline": event.submission_deadline,
+            "judging_start": event.judging_start,
+            "judging_end": event.judging_end,
+        })
+
+    @action(detail=True, methods=["patch"], permission_classes=[IsAuthenticated, IsOrganizerOrAdmin])
+    def status_override(self, request, pk=None):
+        event = self.get_object()
+        override = request.data.get("status_override")
+        if override is not None and override != "":
+            if override not in dict(Event.STATUS_CHOICES):
+                return Response({"error": "Invalid status_override"}, status=status.HTTP_400_BAD_REQUEST)
+            event.status_override = override
+        else:
+            event.status_override = None
+        event.refresh_status(save=True)
+        return Response({"status": event.status, "status_override": event.status_override})
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated, IsOrganizerOrAdmin])
+    def assign_judges(self, request, pk=None):
+        event = self.get_object()
+        if not (request.user.is_staff or request.user.is_superuser or event.organizer == request.user):
+            return Response({"error": "Only the organizer can assign judges."},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        judges = list(event.judges.all())
+        if not judges:
+            return Response({"error": "No judges assigned to this event."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        target = event.reviewers_per_submission or 0
+        submissions = Submission.objects.filter(team_event__event=event)
+        if target <= 0:
+            return Response({"error": "reviewers_per_submission must be > 0."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        loads = {j.id: JudgeAssignment.objects.filter(event=event, judge=j, is_active=True).count() for j in judges}
+        created = 0
+        for sub in submissions:
+            existing = set(sub.judge_assignments.filter(is_active=True).values_list("judge_id", flat=True))
+            needed = max(0, target - len(existing))
+            if needed == 0:
+                continue
+            eligible = [j for j in judges if j.id not in existing]
+            eligible.sort(key=lambda j: loads.get(j.id, 0))
+            for j in eligible[:needed]:
+                assignment, was_created = JudgeAssignment.objects.get_or_create(
+                    event=event,
+                    submission=sub,
+                    judge=j,
+                    defaults={"is_active": True}
+                )
+                if not was_created and not assignment.is_active:
+                    assignment.is_active = True
+                    assignment.override_reason = "auto_reactivated"
+                    assignment.save(update_fields=["is_active", "override_reason"])
+                created += 1
+                loads[j.id] = loads.get(j.id, 0) + 1
+        return Response({"assigned": created})
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated, IsOrganizerOrAdmin])
+    def assignments_override(self, request, pk=None):
+        event = self.get_object()
+        submission_id = request.data.get("submission")
+        judge_id = request.data.get("judge")
+        is_active = request.data.get("is_active", True)
+        override_reason = request.data.get("override_reason", "organizer_override")
+        if not submission_id or not judge_id:
+            return Response({"error": "submission and judge are required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            submission = Submission.objects.get(id=submission_id, team_event__event=event)
+        except Submission.DoesNotExist:
+            return Response({"error": "Submission not found"}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            judge = User.objects.get(id=judge_id)
+        except User.DoesNotExist:
+            return Response({"error": "Judge not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        assignment, _ = JudgeAssignment.objects.get_or_create(
+            event=event, submission=submission, judge=judge,
+            defaults={"is_active": bool(is_active), "override_reason": override_reason}
+        )
+        assignment.is_active = bool(is_active)
+        assignment.override_reason = override_reason
+        assignment.save()
+        return Response(JudgeAssignmentSerializer(assignment, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+    def enroll_team(self, request, pk=None):
+        event = self.get_object()
+        team_id = request.data.get("team")
+        if not team_id:
+            return Response({"error": "team is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            team = Team.objects.get(id=team_id)
+        except Team.DoesNotExist:
+            return Response({"error": "Team not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        allowed, reason = TeamEvent.can_enroll(team, event, request.user)
+        if not allowed:
+            if team.leader:
+                n_type = "team_enroll_capped" if reason == "Event is at capacity." else "team_enroll_failed"
+                _notify_users(
+                    [team.leader],
+                    n_type,
+                    "Enrollment failed",
+                    body=reason,
+                    link=f"/events/{event.id}"
+                )
+            return Response({"error": reason}, status=status.HTTP_403_FORBIDDEN)
+
+        enrollment, created = TeamEvent.objects.get_or_create(team=team, event=event)
+        enrollment.status = TeamEvent.STATUS_ENROLLED
+        enrollment.enrolled_at = timezone.now()
+        enrollment.withdrawn_at = None
+        enrollment.disqualified_at = None
+        enrollment.status_changed_by = request.user
+        enrollment.status_reason = request.data.get("reason")
+        enrollment.save()
+
+        if team.leader:
+            _notify_users(
+                [team.leader],
+                "team_enrolled_success",
+                "Team enrolled",
+                body=f'Your team "{team.name}" is enrolled in {event.name}.',
+                link=f"/events/{event.id}"
+            )
+
+        try:
+            AuditLog.objects.create(
+                actor=request.user,
+                entity_type="TeamEvent",
+                entity_id=str(enrollment.id),
+                action="team_enrolled",
+                before={},
+                after={"team_id": team.id, "event_id": event.id, "status": enrollment.status}
+            )
+        except Exception:
+            pass
+
+        return Response(TeamEventSerializer(enrollment, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+    def withdraw_team(self, request, pk=None):
+        event = self.get_object()
+        team_id = request.data.get("team")
+        if not team_id:
+            return Response({"error": "team is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            team = Team.objects.get(id=team_id)
+        except Team.DoesNotExist:
+            return Response({"error": "Team not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        is_org = is_organizer(request.user) or request.user.is_staff or request.user.is_superuser
+        if not (team.leader == request.user or is_org):
+            return Response({"error": "Only team leader or organizers can withdraw."}, status=status.HTTP_403_FORBIDDEN)
+
+        enrollment = TeamEvent.objects.filter(team=team, event=event).first()
+        if not enrollment:
+            return Response({"error": "Team is not enrolled in this event."}, status=status.HTTP_400_BAD_REQUEST)
+
+        enrollment.status = TeamEvent.STATUS_WITHDRAWN
+        enrollment.withdrawn_at = timezone.now()
+        enrollment.status_changed_by = request.user
+        enrollment.status_reason = request.data.get("reason")
+        enrollment.save()
+
+        if team.leader:
+            _notify_users(
+                [team.leader],
+                "team_withdrawn",
+                "Team withdrawn",
+                body=f'Your team "{team.name}" withdrew from {event.name}.',
+                link=f"/events/{event.id}"
+            )
+
+        try:
+            AuditLog.objects.create(
+                actor=request.user,
+                entity_type="TeamEvent",
+                entity_id=str(enrollment.id),
+                action="team_withdrawn",
+                before={},
+                after={"team_id": team.id, "event_id": event.id, "status": enrollment.status}
+            )
+        except Exception:
+            pass
+
+        return Response(TeamEventSerializer(enrollment, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated, IsOrganizerOrAdmin])
+    def disqualify_team(self, request, pk=None):
+        event = self.get_object()
+        team_id = request.data.get("team")
+        if not team_id:
+            return Response({"error": "team is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            team = Team.objects.get(id=team_id)
+        except Team.DoesNotExist:
+            return Response({"error": "Team not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        enrollment = TeamEvent.objects.filter(team=team, event=event).first()
+        if not enrollment:
+            enrollment = TeamEvent.objects.create(team=team, event=event)
+
+        enrollment.status = TeamEvent.STATUS_DISQUALIFIED
+        enrollment.disqualified_at = timezone.now()
+        enrollment.status_changed_by = request.user
+        enrollment.status_reason = request.data.get("reason")
+        enrollment.save()
+
+        if team.leader:
+            _notify_users(
+                [team.leader],
+                "team_disqualified",
+                "Team disqualified",
+                body=f'Your team "{team.name}" was disqualified from {event.name}.',
+                link=f"/events/{event.id}"
+            )
+
+        try:
+            AuditLog.objects.create(
+                actor=request.user,
+                entity_type="TeamEvent",
+                entity_id=str(enrollment.id),
+                action="team_disqualified",
+                before={},
+                after={"team_id": team.id, "event_id": event.id, "status": enrollment.status}
+            )
+        except Exception:
+            pass
+
+        return Response(TeamEventSerializer(enrollment, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated, IsOrganizerOrAdmin])
+    def compute_winners(self, request, pk=None):
+        event = self.get_object()
+        top_n = int(request.data.get("top_n") or 3)
+        data = _compute_event_winners(event, top_n=top_n)
+        return Response(data)
+
+    @action(detail=True, methods=["get"])
+    def winners(self, request, pk=None):
+        event = self.get_object()
+        results = AwardResult.objects.filter(event=event).order_by("category_id", "place")
+        return Response(AwardResultSerializer(results, many=True).data)
 
     @action(detail=True, methods=["get", "put"], permission_classes=[IsAuthenticated, IsOrganizerOrAdmin])
     def judges(self, request, pk=None):
@@ -849,17 +1194,20 @@ class TeamViewSet(viewsets.ModelViewSet):
     pagination_class = StandardPagination
 
     def get_queryset(self):
-        qs = Team.objects.all().order_by('-created_at').select_related('event').prefetch_related('members')
+        qs = Team.objects.all().order_by('-created_at').prefetch_related('members')
         q = (self.request.query_params.get('q') or '').strip()
         if q:
             qs = qs.filter(
                 Q(name__icontains=q) |
                 Q(description__icontains=q) |
-                Q(event__name__icontains=q)
+                Q(enrollments__event__name__icontains=q)
             )
+        mine = (self.request.query_params.get('mine') or '').strip().lower()
+        if mine in ['1', 'true', 'yes']:
+            qs = qs.filter(Q(leader=self.request.user) | Q(members=self.request.user)).distinct()
         event_id = (self.request.query_params.get('event') or '').strip()
         if event_id:
-            qs = qs.filter(event_id=event_id)
+            qs = qs.filter(enrollments__event_id=event_id, enrollments__status=TeamEvent.STATUS_ENROLLED)
         filt = (self.request.query_params.get('filter') or '').strip().lower()
         if filt in ['open', 'full']:
             qs = qs.annotate(member_count=Count('members'))
@@ -874,7 +1222,7 @@ class TeamViewSet(viewsets.ModelViewSet):
         qs = Team.objects.annotate(member_count=Count('members'))
         event_id = (request.query_params.get('event') or '').strip()
         if event_id:
-            qs = qs.filter(event_id=event_id)
+            qs = qs.filter(enrollments__event_id=event_id, enrollments__status=TeamEvent.STATUS_ENROLLED)
         total = qs.count()
         open_count = qs.filter(member_count__lt=F('max_members')).count()
         full_count = qs.filter(member_count__gte=F('max_members')).count()
@@ -884,7 +1232,7 @@ class TeamViewSet(viewsets.ModelViewSet):
                 Q(leader=request.user) | Q(members=request.user)
             )
             if event_id:
-                my_qs = my_qs.filter(event_id=event_id)
+                my_qs = my_qs.filter(enrollments__event_id=event_id, enrollments__status=TeamEvent.STATUS_ENROLLED)
             my_count = my_qs.distinct().count()
         return Response({
             "total": total,
@@ -937,59 +1285,33 @@ class TeamViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(team)
         return Response(serializer.data)
 
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def leave(self, request, pk=None):
-        team = self.get_object()
 
-        if not team.members.filter(id=request.user.id).exists():
-            return Response({"message": "You are not a member of this team."}, status=status.HTTP_400_BAD_REQUEST)
+# ========== TEAM EVENT VIEWS ==========
+class TeamEventViewSet(viewsets.ModelViewSet):
+    queryset = TeamEvent.objects.all().order_by('-enrolled_at')
+    serializer_class = TeamEventSerializer
+    permission_classes = [IsAuthenticated, IsNotBanned]
 
-        if hasattr(team, 'leader') and team.leader == request.user:
-            return Response({"message": "You are the team leader. Delete the team or transfer leadership instead."}, status=status.HTTP_400_BAD_REQUEST)
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated(), IsNotBanned()]
+        return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
 
-        team.members.remove(request.user)
-
-        # Remove user from the team conversation participants if it exists
-        try:
-            convo = Conversation.objects.filter(is_team=True, team=team).first()
-            if convo:
-                ConversationParticipant.objects.filter(conversation=convo, user=request.user).delete()
-        except Exception:
-            pass
-        
-        from .utils.activity_helpers import create_team_activity
-        create_team_activity(request.user, team, 'team_leave')
-        
-        serializer = self.get_serializer(team)
-        return Response(serializer.data)
-
-    @action(detail=True, methods=["post"])
-    def add_member(self, request, pk=None):
-        team = self.get_object()
-        user_id = request.data.get("user_id")
-        try:
-            user = User.objects.get(id=user_id)
-            team.members.add(user)
-            return Response({"status": "member added", "user": user.username})
-        except User.DoesNotExist:
-            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    @action(detail=True, methods=["post"])
-    def remove_member(self, request, pk=None):
-        team = self.get_object()
-        user_id = request.data.get("user_id")
-        try:
-            user = User.objects.get(id=user_id)
-            team.members.remove(user)
-            return Response({"status": "member removed", "user": user.username})
-        except User.DoesNotExist:
-            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    @action(detail=True, methods=["get"])
-    def members(self, request, pk=None):
-        team = self.get_object()
-        serializer = UserSerializer(team.members.all(), many=True, context={'request': request})
-        return Response(serializer.data)
+    def get_queryset(self):
+        qs = TeamEvent.objects.all().order_by('-enrolled_at').select_related('team', 'event')
+        event_id = (self.request.query_params.get('event') or '').strip()
+        if event_id:
+            qs = qs.filter(event_id=event_id)
+        team_id = (self.request.query_params.get('team') or '').strip()
+        if team_id:
+            qs = qs.filter(team_id=team_id)
+        status_filter = (self.request.query_params.get('status') or '').strip().lower()
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        mine = (self.request.query_params.get('mine') or '').strip().lower()
+        if mine in ['1', 'true', 'yes']:
+            qs = qs.filter(Q(team__leader=self.request.user) | Q(team__members=self.request.user)).distinct()
+        return qs
 
 # ========== SUBMISSION VIEWS ==========
 class SubmissionViewSet(viewsets.ModelViewSet):
@@ -999,18 +1321,18 @@ class SubmissionViewSet(viewsets.ModelViewSet):
     pagination_class = StandardPagination
 
     def get_queryset(self):
-        qs = Submission.objects.all().order_by('-created_at').select_related('team', 'team__event')
+        qs = Submission.objects.all().order_by('-created_at').select_related('team_event', 'team_event__event', 'team_event__team')
         q = (self.request.query_params.get('q') or '').strip()
         if q:
             qs = qs.filter(
                 Q(title__icontains=q) |
                 Q(description__icontains=q) |
-                Q(team__name__icontains=q) |
-                Q(team__event__name__icontains=q)
+                Q(team_event__team__name__icontains=q) |
+                Q(team_event__event__name__icontains=q)
             )
         event_id = (self.request.query_params.get('event') or '').strip()
         if event_id:
-            qs = qs.filter(team__event_id=event_id)
+            qs = qs.filter(team_event__event_id=event_id)
         filt = (self.request.query_params.get('filter') or '').strip().lower()
         if filt == 'pending':
             qs = qs.filter(is_reviewed=False)
@@ -1018,6 +1340,9 @@ class SubmissionViewSet(viewsets.ModelViewSet):
             qs = qs.filter(is_reviewed=True, is_winner=False)
         elif filt == 'winning':
             qs = qs.filter(is_winner=True)
+        ordering = (self.request.query_params.get('ordering') or '').strip()
+        if ordering in ['score', '-score', 'created_at', '-created_at']:
+            qs = qs.order_by(ordering)
         return qs
 
     @action(detail=False, methods=["get"])
@@ -1025,7 +1350,7 @@ class SubmissionViewSet(viewsets.ModelViewSet):
         qs = Submission.objects.all()
         event_id = (request.query_params.get('event') or '').strip()
         if event_id:
-            qs = qs.filter(team__event_id=event_id)
+            qs = qs.filter(team_event__event_id=event_id)
         total = qs.count()
         pending = qs.filter(is_reviewed=False).count()
         reviewed = qs.filter(is_reviewed=True, is_winner=False).count()
@@ -1041,10 +1366,56 @@ class SubmissionViewSet(viewsets.ModelViewSet):
         if is_judge(user):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Judges cannot submit projects.")
+        team_event = serializer.validated_data.get('team_event')
+        event = team_event.event if team_event else None
+        if team_event and team_event.status != TeamEvent.STATUS_ENROLLED:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Team is not enrolled in this event.")
+        if event and not event.can_submit():
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Submission window is closed for this event.")
         submission = serializer.save(submitted_by=user)
+        if event and event.submission_deadline and timezone.now() > event.submission_deadline:
+            submission.is_locked_after_deadline = True
+            submission.locked_at = timezone.now()
+            submission.save(update_fields=["is_locked_after_deadline", "locked_at"])
         
         from .utils.activity_helpers import create_submission_activity
         create_submission_activity(user, submission)
+        try:
+            if submission.team_event and submission.team_event.team:
+                _notify_users(
+                    submission.team_event.team.members.all(),
+                    "submission_confirmed",
+                    "Submission confirmed",
+                    body=f'"{submission.title}" has been submitted.',
+                    link=f"/submissions/{submission.id}"
+                )
+        except Exception:
+            pass
+        try:
+            if event:
+                _auto_assign_for_submission(event, submission)
+        except Exception:
+            pass
+
+    def update(self, request, *args, **kwargs):
+        submission = self.get_object()
+        event = submission.team_event.event if submission.team_event else None
+        if submission.is_locked_after_deadline:
+            return Response({"error": "Submission is locked after deadline."}, status=status.HTTP_403_FORBIDDEN)
+        if event and not event.can_submit():
+            return Response({"error": "Submission window is closed for this event."}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        submission = self.get_object()
+        event = submission.team_event.event if submission.team_event else None
+        if submission.is_locked_after_deadline:
+            return Response({"error": "Submission is locked after deadline."}, status=status.HTTP_403_FORBIDDEN)
+        if event and not event.can_submit():
+            return Response({"error": "Submission window is closed for this event."}, status=status.HTTP_403_FORBIDDEN)
+        return super().partial_update(request, *args, **kwargs)
 
     @action(detail=True, methods=["get", "post", "put", "delete"])
     def feedback(self, request, pk=None):
@@ -1062,15 +1433,28 @@ class SubmissionViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
 
         elif request.method in ["POST", "PUT"]:
-            event = submission.team.event if submission.team else None
+            event = submission.team_event.event if submission.team_event else None
             if not event or event.judges.count() == 0:
                 return Response(
                     {"error": "No judges assigned to this event yet."},
                     status=status.HTTP_403_FORBIDDEN
                 )
+            if event and not event.can_judge():
+                return Response(
+                    {"error": "Judging is not open for this event."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            if submission.score_locked_by_system:
+                return Response(
+                    {"error": "Scoring is locked for this submission."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
             is_assigned_judge = False
             if event and request.user.is_authenticated:
-                is_assigned_judge = event.judges.filter(id=request.user.id).exists()
+                if submission.judge_assignments.filter(judge_id=request.user.id, is_active=True).exists():
+                    is_assigned_judge = True
+                else:
+                    is_assigned_judge = event.judges.filter(id=request.user.id).exists()
 
             if not (
                 request.user.is_staff or request.user.is_superuser or
@@ -1165,8 +1549,20 @@ class SubmissionViewSet(viewsets.ModelViewSet):
                 submission.update_score()
                 
                 from .utils.activity_helpers import create_feedback_activity
-                for member in submission.team.members.all():
-                    create_feedback_activity(member, feedback)
+                if submission.team_event and submission.team_event.team:
+                    for member in submission.team_event.team.members.all():
+                        create_feedback_activity(member, feedback)
+                try:
+                    if submission.team_event and submission.team_event.team:
+                        _notify_users(
+                            submission.team_event.team.members.all(),
+                            "feedback_received",
+                            "New judge feedback",
+                            body=f'New feedback on "{submission.title}".',
+                            link=f"/submissions/{submission.id}"
+                        )
+                except Exception:
+                    pass
                 
                 return Response(serializer.data, status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -1225,16 +1621,25 @@ class JudgeFeedbackViewSet(viewsets.ModelViewSet):
         if is_judge(user) or is_organizer(user):
             return JudgeFeedback.objects.all().order_by('-created_at')
         return JudgeFeedback.objects.filter(
-            submission__team__members=user
+            submission__team_event__team__members=user
         ).order_by('-created_at')
 
     def perform_create(self, serializer):
         submission = serializer.validated_data.get('submission')
-        event = submission.team.event if submission and submission.team else None
+        event = submission.team_event.event if submission and submission.team_event else None
         if not event or event.judges.count() == 0:
             raise PermissionDenied("No judges assigned to this event yet.")
+        if event and not event.can_judge():
+            raise PermissionDenied("Judging is not open for this event.")
+        if submission and submission.score_locked_by_system:
+            raise PermissionDenied("Scoring is locked for this submission.")
         if not (self.request.user.is_staff or self.request.user.is_superuser):
-            if not event or not event.judges.filter(id=self.request.user.id).exists():
+            is_assigned = False
+            if submission and submission.judge_assignments.filter(judge_id=self.request.user.id, is_active=True).exists():
+                is_assigned = True
+            elif event and event.judges.filter(id=self.request.user.id).exists():
+                is_assigned = True
+            if not is_assigned:
                 raise PermissionDenied("Only assigned judges can submit feedback.")
         serializer.save(judge=self.request.user)
 
@@ -1249,6 +1654,99 @@ class JudgeFeedbackViewSet(viewsets.ModelViewSet):
         if feedback.judge != request.user and not request.user.is_staff:
             return Response({"error": "You can only delete your own feedback."}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)
+
+
+# ========== EVENT RESOURCES / SPONSORS / AWARDS ==========
+class EventResourceViewSet(viewsets.ModelViewSet):
+    queryset = EventResource.objects.all().order_by('-created_at')
+    serializer_class = EventResourceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated(), IsNotBanned()]
+        return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
+
+class EventSponsorViewSet(viewsets.ModelViewSet):
+    queryset = EventSponsor.objects.all().order_by('-created_at')
+    serializer_class = EventSponsorSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated(), IsNotBanned()]
+        return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
+
+class AwardCategoryViewSet(viewsets.ModelViewSet):
+    queryset = AwardCategory.objects.all().order_by('-created_at')
+    serializer_class = AwardCategorySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated(), IsNotBanned()]
+        return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
+
+class AwardResultViewSet(viewsets.ModelViewSet):
+    queryset = AwardResult.objects.all().order_by('-created_at')
+    serializer_class = AwardResultSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated(), IsNotBanned()]
+        return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
+
+class JudgeAssignmentViewSet(viewsets.ModelViewSet):
+    queryset = JudgeAssignment.objects.all().order_by('-assigned_at')
+    serializer_class = JudgeAssignmentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated(), IsNotBanned()]
+        return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
+
+
+# ========== NOTIFICATIONS ==========
+class NotificationViewSet(viewsets.ModelViewSet):
+    queryset = Notification.objects.all().order_by('-created_at')
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated, IsNotBanned]
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user).order_by('-created_at')
+
+    @action(detail=False, methods=["post"])
+    def read(self, request):
+        ids = request.data.get("ids")
+        if ids is None:
+            Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        else:
+            Notification.objects.filter(user=request.user, id__in=ids).update(is_read=True)
+        return Response({"status": "ok"})
+
+class AnnouncementViewSet(viewsets.ModelViewSet):
+    queryset = Announcement.objects.all().order_by('-created_at')
+    serializer_class = AnnouncementSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated(), IsNotBanned()]
+        return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
+
+
+# ========== MEDIA ASSETS ==========
+class MediaAssetViewSet(viewsets.ModelViewSet):
+    queryset = MediaAsset.objects.all().order_by('-created_at')
+    serializer_class = MediaAssetSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated(), IsNotBanned()]
+        return [IsAuthenticated(), IsNotBanned()]
 
 
 def _get_direct_conversation(user, recipient):
@@ -1431,7 +1929,18 @@ class NotificationsUnreadCount(APIView):
     permission_classes = [IsAuthenticated, IsNotBanned]
 
     def get(self, request):
-        return Response({"count": 0})
+        count = Notification.objects.filter(user=request.user, is_read=False).count()
+        return Response({"count": count})
+
+
+class UploadSign(APIView):
+    permission_classes = [IsAuthenticated, IsNotBanned]
+
+    def post(self, request):
+        return Response(
+            {"error": "Upload signing not configured."},
+            status=status.HTTP_501_NOT_IMPLEMENTED
+        )
 
 
 def _build_daily_series(qs, date_field, days=30):
@@ -1491,10 +2000,10 @@ def _build_overview_analytics(user=None):
         'recent_events': EventSerializer(events_qs.order_by('-start_date')[:5], many=True).data,
         'top_teams': list(
             Team.objects.annotate(
-                submissions_count=Count('submissions', distinct=True),
+                submissions_count=Count('enrollments__submissions', distinct=True),
                 members_count=Count('members', distinct=True)
             ).order_by('-submissions_count', '-members_count')[:6].values(
-                'id', 'name', 'event__name', 'submissions_count', 'members_count'
+                'id', 'name', 'submissions_count', 'members_count'
             )
         ),
         'updated_at': now.isoformat()
@@ -1503,14 +2012,41 @@ def _build_overview_analytics(user=None):
 
 def _build_judge_analytics(user):
     now = timezone.now()
-    submissions_qs = Submission.objects.filter(team__event__judges=user).select_related('team', 'team__event')
+    base_qs = Submission.objects.filter(
+        judge_assignments__judge=user,
+        judge_assignments__is_active=True
+    ).select_related('team_event', 'team_event__event', 'team_event__team').distinct()
     feedback_qs = JudgeFeedback.objects.filter(judge=user)
+
+    all_subs = list(base_qs)
+    judging_subs = []
+    assigned_events = {}
+    judging_open = False
+    next_judging_start = None
+
+    for sub in all_subs:
+        event = sub.team_event.event if sub.team_event else None
+        if not event:
+            continue
+        assigned_events[event.id] = event
+        status = event.get_status(now=now)
+        if status == Event.STATUS_JUDGING:
+            judging_subs.append(sub)
+            judging_open = True
+        else:
+            start = event._effective_judging_start()
+            if start and start > now:
+                if next_judging_start is None or start < next_judging_start:
+                    next_judging_start = start
+
+    judging_ids = [s.id for s in judging_subs]
+    submissions_qs = Submission.objects.filter(id__in=judging_ids).select_related('team_event', 'team_event__event', 'team_event__team')
 
     assigned_total = submissions_qs.count()
     my_feedback_count = feedback_qs.count()
     pending_for_judge = submissions_qs.exclude(feedback__judge=user).count()
     completed_for_judge = submissions_qs.filter(feedback__judge=user).count()
-    events_assigned = Event.objects.filter(judges=user).count()
+    events_assigned = len(assigned_events)
 
     # Score distribution buckets
     buckets = [
@@ -1526,18 +2062,19 @@ def _build_judge_analytics(user):
         dist.append({'label': b['label'], 'count': count})
 
     assigned_queue = []
-    for sub in submissions_qs.order_by('-created_at')[:12]:
+    for sub in sorted(judging_subs, key=lambda s: s.created_at, reverse=True)[:12]:
         my_fb = sub.feedback.filter(judge=user).first()
+        assigned_judges = sub.judge_assignments.filter(is_active=True).values_list("judge_id", flat=True)
         assigned_queue.append({
             'id': sub.id,
             'title': sub.title,
-            'team_name': sub.team.name if sub.team else None,
-            'event_name': sub.team.event.name if sub.team and sub.team.event else None,
+            'team_name': sub.team_event.team.name if sub.team_event and sub.team_event.team else None,
+            'event_name': sub.team_event.event.name if sub.team_event and sub.team_event.event else None,
             'created_at': sub.created_at.isoformat(),
             'is_reviewed': sub.is_reviewed,
             'my_score': my_fb.score if my_fb else None,
-            'required_judges_count': sub.team.event.judges.count() if sub.team and sub.team.event else 0,
-            'completed_judges_count': sub.feedback.filter(judge__in=sub.team.event.judges.all()).count() if sub.team and sub.team.event else 0,
+            'required_judges_count': sub.team_event.event.reviewers_per_submission if sub.team_event and sub.team_event.event else 0,
+            'completed_judges_count': sub.feedback.filter(judge_id__in=assigned_judges).count() if assigned_judges else 0,
         })
 
     return {
@@ -1554,8 +2091,103 @@ def _build_judge_analytics(user):
         },
         'score_distribution': dist,
         'assigned_queue': assigned_queue,
+        'judging_open': judging_open,
+        'next_judging_start': next_judging_start.isoformat() if next_judging_start else None,
         'updated_at': now.isoformat()
     }
+
+def _compute_event_winners(event, top_n=3):
+    if not event:
+        return {"status": "no_event"}
+    now = timezone.now()
+    if now < event._effective_judging_end():
+        return {"status": "judging_not_finished"}
+
+    submissions_qs = Submission.objects.filter(team_event__event=event)
+    if not submissions_qs.exists():
+        return {"status": "no_submissions"}
+
+    if submissions_qs.filter(is_reviewed=False).exists():
+        return {"status": "pending_reviews"}
+
+    AwardResult.objects.filter(event=event).delete()
+    submissions_qs.update(is_winner=False, winner_place=None, winner_prize=None)
+
+    ranked = list(submissions_qs.order_by('-score', 'created_at'))
+    winners = []
+    places = ['1st', '2nd', '3rd', 'honorable_mention']
+    top_n = max(1, int(top_n or 3))
+    for idx, sub in enumerate(ranked[:top_n]):
+        place = places[idx] if idx < len(places) else None
+        sub.is_winner = True
+        sub.winner_place = place
+        if sub.winner_prize is None:
+            sub.winner_prize = ''
+        sub.save(update_fields=['is_winner', 'winner_place', 'winner_prize'])
+        AwardResult.objects.create(
+            event=event,
+            submission=sub,
+            category=None,
+            place=idx + 1,
+            score=sub.score
+        )
+        winners.append(sub.id)
+
+    # Category winners (top score per category)
+    categories = AwardCategory.objects.filter(event=event)
+    for cat in categories:
+        top = ranked[0] if ranked else None
+        if not top:
+            continue
+        AwardResult.objects.create(
+            event=event,
+            submission=top,
+            category=cat,
+            place=1,
+            score=top.score
+        )
+
+    try:
+        participants = _get_event_participants(event)
+        _notify_users(
+            participants,
+            "results_announced",
+            "Results announced",
+            body=f"Results for {event.name} are now available.",
+            link=f"/events/{event.id}"
+        )
+    except Exception:
+        pass
+
+    return {"status": "ok", "overall_winners": winners, "categories": categories.count()}
+
+def _auto_assign_for_submission(event, submission):
+    try:
+        judges = list(event.judges.all())
+        if not judges:
+            return 0
+        target = event.reviewers_per_submission or 0
+        if target <= 0:
+            return 0
+        existing = set(submission.judge_assignments.filter(is_active=True).values_list("judge_id", flat=True))
+        needed = max(0, target - len(existing))
+        if needed == 0:
+            return 0
+        loads = {j.id: JudgeAssignment.objects.filter(event=event, judge=j, is_active=True).count() for j in judges}
+        eligible = [j for j in judges if j.id not in existing]
+        eligible.sort(key=lambda j: loads.get(j.id, 0))
+        created = 0
+        for j in eligible[:needed]:
+            JudgeAssignment.objects.get_or_create(
+                event=event,
+                submission=submission,
+                judge=j,
+                defaults={"is_active": True}
+            )
+            created += 1
+        return created
+    except Exception:
+        return 0
 
 
 class AnalyticsOverview(APIView):

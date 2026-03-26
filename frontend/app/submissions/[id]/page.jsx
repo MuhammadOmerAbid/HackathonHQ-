@@ -18,13 +18,10 @@ const safeGet = (obj, path, defaultValue = null) => {
 export default function SubmissionDetailPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { user: authUser, isJudge, isOrganizer } = useAuth();
+  const { user: authUser } = useAuth();
   const [submission, setSubmission] = useState(null);
   const [feedback, setFeedback] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [feedbackText, setFeedbackText] = useState("");
-  const [feedbackScore, setFeedbackScore] = useState(5);
-  const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
 
@@ -36,7 +33,7 @@ export default function SubmissionDetailPage() {
   }, [submission]);
 
   const getTeamName = useCallback(() => {
-    return safeGet(submission, 'team.name', 
+    return safeGet(submission, 'team_details.name',
       safeGet(submission, 'team_name', 
         safeGet(submission, 'team_title', '—')));
   }, [submission]);
@@ -45,7 +42,7 @@ export default function SubmissionDetailPage() {
     return safeGet(
       submission,
       'team_details.members_details',
-      safeGet(submission, 'team.members', [])
+      []
     );
   }, [submission]);
 
@@ -86,7 +83,7 @@ export default function SubmissionDetailPage() {
   const status = getStatus();
   const judgesRequired = submission?.required_judges_count || 0;
   const judgesCompleted = submission?.completed_judges_count || 0;
-  const isAssignedJudge = submission?.is_assigned_judge === true;
+  const allJudgesDone = judgesRequired > 0 && judgesCompleted >= judgesRequired;
 
   // Calculate average score
   const avgScore = feedback.length > 0
@@ -140,91 +137,6 @@ export default function SubmissionDetailPage() {
     
     fetchData();
   }, [id]);
-
-  const handleSubmitFeedback = async (e) => {
-    e.preventDefault();
-    if (!feedbackText.trim()) {
-      setError("Please enter a comment");
-      return;
-    }
-    
-    setSubmittingFeedback(true);
-    setError("");
-    
-    try {
-      // The backend expects the submission ID in the payload
-      const payload = {
-        submission: parseInt(id), // Add the submission ID
-        comment: feedbackText.trim(),
-        score: Number(feedbackScore)
-      };
-      
-      console.log("Sending feedback payload:", payload);
-      
-      const res = await axios.post(`/submissions/${id}/feedback/`, payload);
-      
-      console.log("Feedback response:", res.data);
-      
-      // Add the new feedback to the list
-      setFeedback(prev => Array.isArray(prev) ? [...prev, res.data] : [res.data]);
-      
-      // Reset form
-      setFeedbackText("");
-      setFeedbackScore(5);
-      
-    } catch (err) {
-      console.error("Feedback submission error:", err);
-      
-      // Better error parsing
-      if (err.response?.data) {
-        const errorData = err.response.data;
-        if (typeof errorData === 'string') {
-          setError(errorData);
-        } else if (errorData.detail) {
-          setError(errorData.detail);
-        } else if (errorData.message) {
-          setError(errorData.message);
-        } else {
-          // Handle field errors
-          const fieldErrors = Object.entries(errorData)
-            .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-            .join('; ');
-          setError(fieldErrors || "Failed to submit feedback");
-        }
-      } else {
-        setError("Network error. Please try again.");
-      }
-    } finally {
-      setSubmittingFeedback(false);
-    }
-  };
-
-  const handleDeleteFeedback = async (feedbackId) => {
-    if (!confirm("Are you sure you want to delete this feedback?")) return;
-    
-    setSubmittingFeedback(true);
-    setError("");
-    
-    try {
-      await axios.delete(`/submissions/${id}/feedback/`, {
-        data: { feedback_id: feedbackId }
-      });
-      
-      // Remove the deleted feedback from state
-      setFeedback(prev => prev.filter(f => f.id !== feedbackId));
-      
-    } catch (err) {
-      console.error("Error deleting feedback:", err);
-      
-      if (err.response?.data?.error) {
-        setError(err.response.data.error);
-      } else {
-        setError("Failed to delete feedback");
-      }
-    } finally {
-      setSubmittingFeedback(false);
-    }
-  };
 
   const handleBack = () => {
     router.push("/submissions?refresh=1");
@@ -381,7 +293,7 @@ export default function SubmissionDetailPage() {
         </div>
 
         {/* Average Score */}
-        {avgScore && (
+        {allJudgesDone && avgScore && (
           <div className="evd-info-card">
             <div className="evd-info-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -507,7 +419,7 @@ export default function SubmissionDetailPage() {
                         <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)" }}>
                           {member.username}
                         </div>
-                        {(safeGet(submission, 'team.leader_details.id') || submission?.team?.leader) === member.id && (
+                        {(safeGet(submission, 'team_details.leader_details.id') || safeGet(submission, 'team_details.leader')) === member.id && (
                           <div style={{ fontSize: "11px", color: "var(--accent)" }}>Leader</div>
                         )}
                         {submittedBy === member.username && (
@@ -595,18 +507,25 @@ export default function SubmissionDetailPage() {
                 No judges assigned to this event yet.
               </div>
             )}
+            {judgesRequired > 0 && !allJudgesDone && (
+              <div style={{ padding: "0 28px 16px", fontSize: 12, color: "var(--muted)" }}>
+                Scores will appear once all assigned judges finish.
+              </div>
+            )}
 
             {feedback.length > 0 ? (
               <div className="evd-feedback-list">
                 {feedback.map((item) => {
                   const judgeDetails = item.judge_details || (typeof item.judge === "object" ? item.judge : null);
                   const judgeName = judgeDetails?.username || item.judge_username || "Judge";
-                  // Check if current user can delete this feedback
-                  const canDelete = 
-                    judgeDetails?.id === authUser?.id || // The judge who wrote it
-                    isOrganizer || // Organizer
-                    authUser?.is_staff || // Staff
-                    authUser?.is_superuser; // Admin
+                  const criteriaScores = item?.criteria_scores && typeof item.criteria_scores === "object"
+                    ? item.criteria_scores
+                    : null;
+                  const criteriaSnapshot = Array.isArray(item?.criteria_snapshot) ? item.criteria_snapshot : [];
+                  const criteriaLabel = (key) => {
+                    const found = criteriaSnapshot.find((c) => c.key === key);
+                    return found?.label || key;
+                  };
                   
                   return (
                     <div key={item.id} className="evd-feedback-item">
@@ -629,61 +548,51 @@ export default function SubmissionDetailPage() {
                           </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                          <div className="evd-feedback-score-badge">
-                            <span className="evd-feedback-score-value">{item.score}</span>
-                            <span className="evd-feedback-score-max">/10</span>
-                          </div>
-                          
-                          {/* Delete button - only shown to authorized users */}
-                          {canDelete && (
-                            <button
-                              onClick={() => handleDeleteFeedback(item.id)}
-                              className="evd-feedback-delete-btn"
-                              title="Delete feedback"
-                              style={{
-                                background: "transparent",
-                                border: "1px solid rgba(248,113,113,0.3)",
-                                borderRadius: "6px",
-                                color: "#f87171",
-                                width: "32px",
-                                height: "32px",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                cursor: "pointer",
-                                fontSize: "1rem",
-                                transition: "all 0.2s ease"
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = "rgba(248,113,113,0.1)";
-                                e.currentTarget.style.borderColor = "#f87171";
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = "transparent";
-                                e.currentTarget.style.borderColor = "rgba(248,113,113,0.3)";
-                              }}
-                            >
-                              🗑️
-                            </button>
+                          {allJudgesDone && (
+                            <div className="evd-feedback-score-badge">
+                              <span className="evd-feedback-score-value">{item.score}</span>
+                              <span className="evd-feedback-score-max">/10</span>
+                            </div>
                           )}
                         </div>
                       </div>
-                      <div className="evd-feedback-progress-container">
-                        <div className="evd-feedback-progress-bar">
-                          <div className="evd-feedback-progress-fill" style={{
-                            width: `${((item.score || 0) / 10) * 100}%`,
-                            background: item.score >= 8 ? "linear-gradient(90deg, var(--accent), #4ade80)" :
-                              item.score >= 5 ? "linear-gradient(90deg, #fbbf24, var(--accent))" :
-                                "linear-gradient(90deg, #f87171, #fbbf24)"
-                          }} />
+                      {allJudgesDone && (
+                        <div className="evd-feedback-progress-container">
+                          <div className="evd-feedback-progress-bar">
+                            <div className="evd-feedback-progress-fill" style={{
+                              width: `${((item.score || 0) / 10) * 100}%`,
+                              background: item.score >= 8 ? "linear-gradient(90deg, var(--accent), #4ade80)" :
+                                item.score >= 5 ? "linear-gradient(90deg, #fbbf24, var(--accent))" :
+                                  "linear-gradient(90deg, #f87171, #fbbf24)"
+                            }} />
+                          </div>
+                          <div className="evd-feedback-progress-labels">
+                            <span>Needs Work</span><span>Good</span><span>Excellent</span>
+                          </div>
                         </div>
-                        <div className="evd-feedback-progress-labels">
-                          <span>Needs Work</span><span>Good</span><span>Excellent</span>
-                        </div>
-                      </div>
+                      )}
                       <div className="evd-feedback-comment">
                         <p>{item.comment || "No comment provided."}</p>
                       </div>
+                      {allJudgesDone && criteriaScores && (
+                        <div style={{ marginTop: "10px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                          {Object.entries(criteriaScores).map(([key, val]) => (
+                            <span
+                              key={key}
+                              style={{
+                                padding: "4px 8px",
+                                borderRadius: "999px",
+                                background: "var(--surface2)",
+                                border: "1px solid var(--border)",
+                                fontSize: "11px",
+                                color: "var(--muted)"
+                              }}
+                            >
+                              {criteriaLabel(key)}: <strong style={{ color: "var(--text)" }}>{val}</strong>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -698,73 +607,6 @@ export default function SubmissionDetailPage() {
               </div>
             )}
 
-            {/* Judge Feedback Form */}
-            {isJudge && isAssignedJudge && (
-              <div style={{ padding: "28px", borderTop: "1px solid var(--border)" }}>
-                <h3 style={{ fontFamily: "Syne,sans-serif", fontSize: "15px", fontWeight: 700, color: "#f0f0f3", margin: "0 0 20px" }}>
-                  Add Your Feedback
-                </h3>
-                <form onSubmit={handleSubmitFeedback} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 500, color: "rgba(240,240,243,0.8)", marginBottom: "0.5rem" }}>
-                      Score (1–10)
-                    </label>
-                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                      {[1,2,3,4,5,6,7,8,9,10].map(num => (
-                        <button 
-                          key={num} 
-                          type="button" 
-                          onClick={() => setFeedbackScore(num)} 
-                          style={{
-                            width: "40px", height: "40px", borderRadius: "10px",
-                            background: feedbackScore === num ? "var(--accent)" : "var(--surface2)",
-                            border: feedbackScore === num ? "1px solid var(--accent)" : "1px solid var(--border)",
-                            color: feedbackScore === num ? "#0c0c0f" : "var(--muted)",
-                            fontWeight: "600", fontSize: "0.95rem", cursor: "pointer",
-                            display: "inline-flex", alignItems: "center", justifyContent: "center",
-                            transition: "all 0.2s ease"
-                          }}
-                        >
-                          {num}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 500, color: "rgba(240,240,243,0.8)", marginBottom: "0.5rem" }}>
-                      Comment
-                    </label>
-                    <textarea 
-                      value={feedbackText} 
-                      onChange={(e) => setFeedbackText(e.target.value)} 
-                      style={{
-                        width: "100%", padding: "0.75rem 1rem",
-                        background: "var(--surface2)", border: "1px solid var(--border)",
-                        borderRadius: "10px", color: "var(--text)", fontFamily: "DM Sans, sans-serif",
-                        fontSize: "0.9rem", resize: "vertical", minHeight: "100px",
-                        lineHeight: "1.6", outline: "none", boxSizing: "border-box"
-                      }} 
-                      placeholder="Share your detailed feedback on this project..." 
-                      required 
-                    />
-                  </div>
-                  {error && <p style={{ color: "#f87171", fontSize: "0.85rem" }}>{error}</p>}
-                  <button 
-                    type="submit" 
-                    disabled={submittingFeedback} 
-                    className="evd-btn-primary" 
-                    style={{ alignSelf: "flex-start" }}
-                  >
-                    {submittingFeedback ? "Submitting..." : "Submit Feedback"}
-                  </button>
-                </form>
-              </div>
-            )}
-            {isJudge && !isAssignedJudge && (
-              <div style={{ padding: "28px", borderTop: "1px solid var(--border)", color: "var(--muted)" }}>
-                You are not assigned to judge this submission.
-              </div>
-            )}
           </div>
         )}
       </div>

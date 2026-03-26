@@ -3,7 +3,9 @@ from django.db import IntegrityError
 from django.db.models import Count
 from django.contrib.auth import get_user_model
 from .models import (
-    Post, Event, Team, Submission, JudgeFeedback,
+    Post, Event, Team, TeamEvent, Submission, JudgeFeedback,
+    EventResource, EventSponsor, AwardCategory, AwardResult,
+    JudgeAssignment, Notification, Announcement, MediaAsset,
     UserProfile, Activity, Follow, Tag, PostLike, PostRepost,
     Conversation, ConversationParticipant, Message
 )
@@ -318,9 +320,9 @@ class PostSerializer(serializers.ModelSerializer):
             if not event:
                 return []
             winners = Submission.objects.filter(
-                team__event=event,
+                team_event__event=event,
                 is_winner=True
-            ).select_related('team')
+            ).select_related('team_event', 'team_event__team')
 
             order_map = {
                 '1st': 1,
@@ -334,7 +336,7 @@ class PostSerializer(serializers.ModelSerializer):
                 winner_list.append({
                     'id': sub.id,
                     'title': sub.title,
-                    'team_name': sub.team.name if sub.team else None,
+                    'team_name': sub.team_event.team.name if sub.team_event and sub.team_event.team else None,
                     'winner_place': sub.winner_place,
                     'winner_prize': sub.winner_prize,
                     'score': sub.score
@@ -392,8 +394,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def validate_email(self, value):
-        if value and User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("Email already registered.")
+        # Allow duplicate emails; username remains the unique login identifier.
         return value
 
     def validate_password(self, value):
@@ -408,7 +409,6 @@ class RegisterSerializer(serializers.ModelSerializer):
                 email=validated_data.get("email", ""),
                 password=validated_data["password"]
             )
-            UserProfile.objects.create(user=user)
             return user
         except IntegrityError:
             raise serializers.ValidationError("User with these credentials already exists.")
@@ -423,18 +423,31 @@ class EventSerializer(serializers.ModelSerializer):
     participants_count = serializers.SerializerMethodField()
     submissions_count = serializers.SerializerMethodField()
     judges_details = UserSerializer(source='judges', many=True, read_only=True)
+    status = serializers.SerializerMethodField()
+    resources = serializers.SerializerMethodField()
+    sponsors = serializers.SerializerMethodField()
+    award_categories = serializers.SerializerMethodField()
     
     class Meta:
         model = Event
         fields = ['id', 'name', 'description', 'start_date', 'end_date',
                   'is_premium', 'judging_criteria',
+                  'status', 'status_override',
+                  'registration_deadline', 'team_deadline', 'submission_open_at',
+                  'submission_deadline', 'judging_start', 'judging_end',
+                  'reviewers_per_submission',
+                  'max_participants',
                   'organizer', 'organizer_username', 'organizer_details',
                   'teams_count', 'judges_count', 'participants_count', 'submissions_count',
-                  'judges_details']
+                  'judges_details',
+                  'resources', 'sponsors', 'award_categories']
         read_only_fields = ['organizer']
     
     def get_teams_count(self, obj):
-        return obj.teams.count()
+        try:
+            return TeamEvent.objects.filter(event=obj, status=TeamEvent.STATUS_ENROLLED).count()
+        except Exception:
+            return 0
 
     def get_judges_count(self, obj):
         try:
@@ -444,42 +457,151 @@ class EventSerializer(serializers.ModelSerializer):
 
     def get_participants_count(self, obj):
         try:
-            data = Team.objects.filter(event=obj).aggregate(cnt=Count('members', distinct=True))
+            team_ids = TeamEvent.objects.filter(
+                event=obj,
+                status=TeamEvent.STATUS_ENROLLED
+            ).values_list("team_id", flat=True)
+            data = Team.objects.filter(id__in=team_ids).aggregate(cnt=Count('members', distinct=True))
             return data.get('cnt') or 0
         except Exception:
             return 0
 
     def get_submissions_count(self, obj):
         try:
-            return Submission.objects.filter(team__event=obj).count()
+            return Submission.objects.filter(team_event__event=obj).count()
         except Exception:
             return 0
 
+    def get_status(self, obj):
+        try:
+            return obj.get_status()
+        except Exception:
+            return obj.status
+
+    def get_resources(self, obj):
+        from .models import EventResource
+        qs = EventResource.objects.filter(event=obj).order_by('created_at')
+        return EventResourceSerializer(qs, many=True).data
+
+    def get_sponsors(self, obj):
+        from .models import EventSponsor
+        qs = EventSponsor.objects.filter(event=obj).order_by('created_at')
+        return EventSponsorSerializer(qs, many=True).data
+
+    def get_award_categories(self, obj):
+        from .models import AwardCategory
+        qs = AwardCategory.objects.filter(event=obj).order_by('created_at')
+        return AwardCategorySerializer(qs, many=True).data
+
+class EventResourceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventResource
+        fields = ['id', 'event', 'title', 'description', 'url', 'created_at']
+
+class EventSponsorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventSponsor
+        fields = ['id', 'event', 'name', 'logo_url', 'website', 'challenge_desc', 'created_at']
+
+class AwardCategorySerializer(serializers.ModelSerializer):
+    sponsor_details = EventSponsorSerializer(source='sponsor', read_only=True)
+
+    class Meta:
+        model = AwardCategory
+        fields = ['id', 'event', 'title', 'description', 'sponsor', 'sponsor_details', 'created_at']
+
+class AwardResultSerializer(serializers.ModelSerializer):
+    submission_title = serializers.ReadOnlyField(source='submission.title')
+    category_title = serializers.ReadOnlyField(source='category.title')
+
+    class Meta:
+        model = AwardResult
+        fields = ['id', 'event', 'submission', 'submission_title', 'category', 'category_title', 'place', 'score', 'created_at']
+
+class JudgeAssignmentSerializer(serializers.ModelSerializer):
+    judge_details = UserSerializer(source='judge', read_only=True)
+    submission_title = serializers.ReadOnlyField(source='submission.title')
+
+    class Meta:
+        model = JudgeAssignment
+        fields = ['id', 'event', 'submission', 'submission_title', 'judge', 'judge_details', 'assigned_at', 'is_active', 'override_reason']
+
+class MediaAssetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MediaAsset
+        fields = ['id', 'submission', 'type', 'url', 'metadata', 'created_at']
+
+class AnnouncementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Announcement
+        fields = ['id', 'event', 'title', 'body', 'pinned', 'created_at']
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ['id', 'user', 'type', 'title', 'body', 'link', 'is_read', 'created_at']
+
+class TeamEventSerializer(serializers.ModelSerializer):
+    event_name = serializers.ReadOnlyField(source='event.name')
+    team_name = serializers.ReadOnlyField(source='team.name')
+
+    class Meta:
+        model = TeamEvent
+        fields = [
+            'id', 'team', 'team_name', 'event', 'event_name',
+            'status', 'enrolled_at', 'withdrawn_at', 'disqualified_at',
+            'status_changed_by', 'status_reason'
+        ]
+
 class TeamSerializer(serializers.ModelSerializer):
     members_details = UserSerializer(source='members', many=True, read_only=True)
-    event_name = serializers.ReadOnlyField(source='event.name')
     leader_details = UserSerializer(source='leader', read_only=True)
     submissions_count = serializers.SerializerMethodField()
+    enrollments = serializers.SerializerMethodField()
+    event_name = serializers.SerializerMethodField()
     
     class Meta:
         model = Team
         fields = [
-            'id', 'name', 'description', 'max_members', 'event', 'event_name',
+            'id', 'name', 'description', 'max_members', 'event_name',
             'leader', 'leader_details', 'members', 'members_details',
-            'created_at', 'submissions_count'
+            'created_at', 'submissions_count', 'enrollments'
         ]
         read_only_fields = ['members', 'leader']
     
     def get_submissions_count(self, obj):
-        return obj.submissions.count()
+        try:
+            return Submission.objects.filter(team_event__team=obj).count()
+        except Exception:
+            return 0
+
+    def get_enrollments(self, obj):
+        try:
+            qs = TeamEvent.objects.filter(team=obj).order_by('-enrolled_at')
+            return TeamEventSerializer(qs, many=True).data
+        except Exception:
+            return []
+
+    def get_event_name(self, obj):
+        try:
+            enrollment = TeamEvent.objects.filter(team=obj, status=TeamEvent.STATUS_ENROLLED)\
+                .select_related('event')\
+                .order_by('-enrolled_at')\
+                .first()
+            if enrollment:
+                return enrollment.event.name
+        except Exception:
+            return None
+        return None
 
 class SubmissionSerializer(serializers.ModelSerializer):
     # Team details
-    team_details = TeamSerializer(source='team', read_only=True)
-    team_name = serializers.ReadOnlyField(source='team.name')
+    team_event_details = TeamEventSerializer(source='team_event', read_only=True)
+    team_details = TeamSerializer(source='team_event.team', read_only=True)
+    team_name = serializers.ReadOnlyField(source='team_event.team.name')
     
     # Event via team
-    event_name = serializers.ReadOnlyField(source='team.event.name')
+    event_name = serializers.ReadOnlyField(source='team_event.event.name')
     event = serializers.SerializerMethodField()
     
     # Submitted by
@@ -493,12 +615,14 @@ class SubmissionSerializer(serializers.ModelSerializer):
     completed_judges_count = serializers.SerializerMethodField()
     all_judges_scored = serializers.SerializerMethodField()
     is_assigned_judge = serializers.SerializerMethodField()
+    media_assets = MediaAssetSerializer(many=True, read_only=True)
+    award_results = AwardResultSerializer(many=True, read_only=True)
     
     class Meta:
         model = Submission
         fields = [
             'id',
-            'team', 'team_details', 'team_name',
+            'team_event', 'team_event_details', 'team_details', 'team_name',
             'event', 'event_name',
             'submitted_by', 'submitted_by_username', 'submitted_by_details',
             'title', 'description', 'summary',
@@ -507,14 +631,18 @@ class SubmissionSerializer(serializers.ModelSerializer):
             'file', 'created_at', 'score',
             'is_reviewed', 'is_winner',
             'winner_place', 'winner_prize',
+            'is_locked_after_deadline', 'locked_at',
+            'score_locked_at', 'score_locked_by_system',
             'feedback_count', 'average_score',
             'required_judges_count', 'completed_judges_count', 'all_judges_scored',
             'is_assigned_judge',
+            'media_assets',
+            'award_results',
         ]
         read_only_fields = ['score', 'submitted_by', 'is_reviewed']
 
     def get_event(self, obj):
-        event = obj.team.event if obj.team else None
+        event = obj.team_event.event if obj.team_event else None
         if not event:
             return None
         return {
@@ -523,6 +651,15 @@ class SubmissionSerializer(serializers.ModelSerializer):
             'start_date': event.start_date,
             'end_date': event.end_date,
             'judging_criteria': event.judging_criteria,
+            'status': event.get_status(),
+            'registration_deadline': event.registration_deadline,
+            'team_deadline': event.team_deadline,
+            'submission_open_at': event.submission_open_at,
+            'submission_deadline': event.submission_deadline,
+            'judging_start': event.judging_start,
+            'judging_end': event.judging_end,
+            'reviewers_per_submission': event.reviewers_per_submission,
+            'max_participants': event.max_participants,
         }
     
     def get_feedback_count(self, obj):
@@ -535,13 +672,16 @@ class SubmissionSerializer(serializers.ModelSerializer):
 
     def get_required_judges_count(self, obj):
         try:
-            return obj.team.event.judges.count()
+            return obj.team_event.event.reviewers_per_submission
         except Exception:
             return 0
 
     def get_completed_judges_count(self, obj):
         try:
-            event = obj.team.event
+            assigned = obj.judge_assignments.filter(is_active=True).values_list("judge_id", flat=True)
+            if assigned:
+                return obj.feedback.filter(judge_id__in=assigned).count()
+            event = obj.team_event.event
             return obj.feedback.filter(judge__in=event.judges.all()).count()
         except Exception:
             return 0
@@ -558,7 +698,9 @@ class SubmissionSerializer(serializers.ModelSerializer):
         if not request or not request.user or not request.user.is_authenticated:
             return False
         try:
-            return obj.team.event.judges.filter(id=request.user.id).exists()
+            if obj.judge_assignments.filter(judge_id=request.user.id, is_active=True).exists():
+                return True
+            return obj.team_event.event.judges.filter(id=request.user.id).exists()
         except Exception:
             return False
 

@@ -12,9 +12,9 @@ export default function SubmissionCard({ submission }) {
   
   const status = getStatus();
 
-  const teamName = submission.team_name || submission.team?.name || "—";
-  const teamMemberCount = submission.team_details?.members?.length ?? submission.team?.members?.length ?? null;
-  const eventName = submission.event_name || submission.event?.name || "—";
+  const teamName = submission.team_name || submission.team_details?.name || submission.team_event_details?.team_name || "—";
+  const teamMemberCount = submission.team_details?.members?.length ?? submission.team_details?.members_details?.length ?? null;
+  const eventName = submission.event_name || submission.team_event_details?.event_name || "—";
   const submittedBy = submission.submitted_by_username || submission.submitted_by?.username || null;
 
   const formatDate = (dateString) => {

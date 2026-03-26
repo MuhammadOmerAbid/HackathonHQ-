@@ -13,11 +13,11 @@ class EventAdmin(admin.ModelAdmin):
 
 @admin.register(Team)
 class TeamAdmin(admin.ModelAdmin):
-    list_display = ("name", "event", "created_at")
+    list_display = ("name", "leader", "created_at")
 
 @admin.register(Submission)
 class SubmissionAdmin(admin.ModelAdmin):
-    list_display = ("title", "team", "score", "created_at")
+    list_display = ("title", "team_event", "score", "created_at")
 
 @admin.register(JudgeFeedback)
 class JudgeFeedbackAdmin(admin.ModelAdmin):

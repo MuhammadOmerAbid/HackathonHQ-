@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
 from django.utils import timezone
+from datetime import timedelta
 
 User = get_user_model()
 
@@ -49,12 +50,49 @@ class Post(models.Model):
         return self.title or f"Post {self.id}"
 
 class Event(models.Model):
+    STATUS_UPCOMING = "upcoming"
+    STATUS_REGISTRATION = "registration"
+    STATUS_ACTIVE = "active"
+    STATUS_SUBMISSION_OPEN = "submission_open"
+    STATUS_SUBMISSION_CLOSED = "submission_closed"
+    STATUS_JUDGING = "judging"
+    STATUS_FINISHED = "finished"
+
+    STATUS_CHOICES = [
+        (STATUS_UPCOMING, "Upcoming"),
+        (STATUS_REGISTRATION, "Registration"),
+        (STATUS_ACTIVE, "Active"),
+        (STATUS_SUBMISSION_OPEN, "Submission Open"),
+        (STATUS_SUBMISSION_CLOSED, "Submission Closed"),
+        (STATUS_JUDGING, "Judging"),
+        (STATUS_FINISHED, "Finished"),
+    ]
+
     name = models.CharField(max_length=255)
     description = models.TextField()
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
     is_premium = models.BooleanField(default=False)
     judging_criteria = models.JSONField(default=default_judging_criteria, blank=True)
+    status = models.CharField(
+        max_length=32,
+        choices=STATUS_CHOICES,
+        default=STATUS_UPCOMING
+    )
+    status_override = models.CharField(
+        max_length=32,
+        choices=STATUS_CHOICES,
+        blank=True,
+        null=True
+    )
+    registration_deadline = models.DateTimeField(blank=True, null=True)
+    team_deadline = models.DateTimeField(blank=True, null=True)
+    submission_open_at = models.DateTimeField(blank=True, null=True)
+    submission_deadline = models.DateTimeField(blank=True, null=True)
+    judging_start = models.DateTimeField(blank=True, null=True)
+    judging_end = models.DateTimeField(blank=True, null=True)
+    reviewers_per_submission = models.PositiveIntegerField(default=3)
+    max_participants = models.PositiveIntegerField(blank=True, null=True)
     organizer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="organized_events")
     judges = models.ManyToManyField(
         User,
@@ -66,6 +104,127 @@ class Event(models.Model):
     def __str__(self):
         return self.name
 
+    def _effective_submission_open_at(self):
+        return self.submission_open_at or self.team_deadline or self.start_date
+
+    def _effective_submission_deadline(self):
+        return self.submission_deadline or self.end_date
+
+    def _effective_judging_start(self):
+        return self.judging_start or self._effective_submission_deadline()
+
+    def _effective_judging_end(self):
+        if self.judging_end:
+            return self.judging_end
+        # Default grace period after event end
+        return (self.end_date or timezone.now()) + timedelta(hours=48)
+
+    def get_status(self, now=None):
+        if self.status_override:
+            return self.status_override
+        now = now or timezone.now()
+        reg_deadline = self.registration_deadline or self.start_date
+        submission_open_at = self._effective_submission_open_at()
+        submission_deadline = self._effective_submission_deadline()
+        judging_start = self._effective_judging_start()
+        judging_end = self._effective_judging_end()
+
+        if self.start_date and now < self.start_date:
+            return self.STATUS_UPCOMING
+        if reg_deadline and now < reg_deadline:
+            return self.STATUS_REGISTRATION
+        if submission_open_at and now < submission_open_at:
+            return self.STATUS_ACTIVE
+        if submission_deadline and now < submission_deadline:
+            return self.STATUS_SUBMISSION_OPEN
+        if judging_start and now < judging_start:
+            return self.STATUS_SUBMISSION_CLOSED
+        if judging_end and now < judging_end:
+            return self.STATUS_JUDGING
+        return self.STATUS_FINISHED
+
+    def refresh_status(self, now=None, save=True):
+        computed = self.get_status(now=now)
+        if self.status != computed:
+            self.status = computed
+            if save:
+                self.save(update_fields=["status"])
+        return self.status
+
+    def can_create_team(self, now=None):
+        now = now or timezone.now()
+        status = self.get_status(now=now)
+        if status not in {self.STATUS_REGISTRATION, self.STATUS_ACTIVE}:
+            return False
+        if self.team_deadline and now > self.team_deadline:
+            return False
+        return True
+
+    def can_submit(self, now=None):
+        now = now or timezone.now()
+        status = self.get_status(now=now)
+        if status != self.STATUS_SUBMISSION_OPEN:
+            return False
+        submission_open_at = self._effective_submission_open_at()
+        submission_deadline = self._effective_submission_deadline()
+        if submission_open_at and now < submission_open_at:
+            return False
+        if submission_deadline and now > submission_deadline:
+            return False
+        return True
+
+    def can_enroll(self, team=None, actor=None, now=None):
+        now = now or timezone.now()
+        status = self.get_status(now=now)
+        if status not in {self.STATUS_REGISTRATION, self.STATUS_ACTIVE}:
+            return (False, "Enrollment is closed for this event.")
+
+        submission_open_at = self._effective_submission_open_at()
+        if submission_open_at and now >= submission_open_at:
+            return (False, "Enrollment is closed for this event.")
+
+        if actor is not None and team is not None:
+            is_org = False
+            try:
+                is_org = bool(getattr(actor, "profile", None) and actor.profile.is_organizer)
+            except Exception:
+                is_org = False
+            if not (actor == team.leader or actor.is_staff or actor.is_superuser or is_org):
+                return (False, "Only team leader or organizers can enroll.")
+
+        if self.max_participants and team is not None:
+            try:
+                from .models import TeamEvent
+                enrolled_team_ids = TeamEvent.objects.filter(
+                    event=self,
+                    status=TeamEvent.STATUS_ENROLLED
+                ).values_list("team_id", flat=True)
+                enrolled_members = Team.objects.filter(id__in=enrolled_team_ids)\
+                    .values_list("members", flat=True)\
+                    .exclude(members=None)\
+                    .distinct()\
+                    .count()
+                team_members = team.members.count()
+                if enrolled_members + team_members > self.max_participants:
+                    return (False, "Event is at capacity.")
+            except Exception:
+                pass
+
+        return (True, "")
+
+    def can_judge(self, now=None):
+        now = now or timezone.now()
+        status = self.get_status(now=now)
+        if status != self.STATUS_JUDGING:
+            return False
+        judging_start = self._effective_judging_start()
+        judging_end = self._effective_judging_end()
+        if judging_start and now < judging_start:
+            return False
+        if judging_end and now > judging_end:
+            return False
+        return True
+
 class EventJudge(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='event_judges')
     judge = models.ForeignKey(User, on_delete=models.CASCADE, related_name='event_judges')
@@ -76,6 +235,109 @@ class EventJudge(models.Model):
 
     def __str__(self):
         return f"{self.judge.username} -> {self.event.name}"
+
+class EventResource(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="resources")
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    url = models.URLField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.event.name} - {self.title}"
+
+class EventSponsor(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="sponsors")
+    name = models.CharField(max_length=255)
+    logo_url = models.URLField(blank=True, null=True)
+    website = models.URLField(blank=True, null=True)
+    challenge_desc = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.event.name} - {self.name}"
+
+class AwardCategory(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="award_categories")
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    sponsor = models.ForeignKey(
+        EventSponsor,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="sponsored_categories"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.event.name} - {self.title}"
+
+class AwardResult(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="award_results")
+    submission = models.ForeignKey('Submission', on_delete=models.CASCADE, related_name="award_results")
+    category = models.ForeignKey(
+        AwardCategory,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="results"
+    )
+    place = models.PositiveIntegerField(default=0)
+    score = models.FloatField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        cat = self.category.title if self.category else "Overall"
+        return f"{self.event.name} - {cat} - #{self.place}"
+
+class JudgeAssignment(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="judge_assignments")
+    submission = models.ForeignKey('Submission', on_delete=models.CASCADE, related_name="judge_assignments")
+    judge = models.ForeignKey(User, on_delete=models.CASCADE, related_name="judge_assignments")
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+    override_reason = models.TextField(blank=True, null=True)
+
+    class Meta:
+        unique_together = ("submission", "judge")
+
+    def __str__(self):
+        return f"{self.judge.username} assigned to {self.submission_id}"
+
+class Announcement(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.SET_NULL, null=True, blank=True, related_name="announcements")
+    title = models.CharField(max_length=255)
+    body = models.TextField()
+    pinned = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+
+class Notification(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    type = models.CharField(max_length=50)
+    title = models.CharField(max_length=255)
+    body = models.TextField(blank=True, null=True)
+    link = models.URLField(blank=True, null=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.title}"
+
+class AuditLog(models.Model):
+    actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="audit_logs")
+    entity_type = models.CharField(max_length=100)
+    entity_id = models.CharField(max_length=100)
+    action = models.CharField(max_length=100)
+    before = models.JSONField(default=dict, blank=True)
+    after = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.entity_type}:{self.entity_id} {self.action}"
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
@@ -188,7 +450,6 @@ class Follow(models.Model):
 class Team(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="teams")
     leader = models.ForeignKey(
         User, on_delete=models.SET_NULL,
         null=True, blank=True, related_name="led_teams"
@@ -200,6 +461,43 @@ class Team(models.Model):
     def __str__(self):
         return self.name
 
+
+class TeamEvent(models.Model):
+    STATUS_ENROLLED = "enrolled"
+    STATUS_WITHDRAWN = "withdrawn"
+    STATUS_DISQUALIFIED = "disqualified"
+
+    STATUS_CHOICES = [
+        (STATUS_ENROLLED, "Enrolled"),
+        (STATUS_WITHDRAWN, "Withdrawn"),
+        (STATUS_DISQUALIFIED, "Disqualified"),
+    ]
+
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="enrollments")
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="team_enrollments")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ENROLLED)
+    enrolled_at = models.DateTimeField(auto_now_add=True)
+    withdrawn_at = models.DateTimeField(blank=True, null=True)
+    disqualified_at = models.DateTimeField(blank=True, null=True)
+    status_changed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="team_event_status_changes"
+    )
+    status_reason = models.TextField(blank=True, null=True)
+
+    class Meta:
+        unique_together = ("team", "event")
+
+    def __str__(self):
+        return f"{self.team.name} @ {self.event.name}"
+
+    @staticmethod
+    def can_enroll(team, event, actor):
+        if not team or not event:
+            return (False, "Invalid team or event.")
+        if TeamEvent.objects.filter(team=team, event=event, status=TeamEvent.STATUS_DISQUALIFIED).exists():
+            return (False, "Team is disqualified for this event.")
+        return event.can_enroll(team=team, actor=actor)
+
 class Submission(models.Model):
     WINNER_PLACE_CHOICES = [
         ('1st', '1st Place'),
@@ -208,7 +506,7 @@ class Submission(models.Model):
         ('honorable_mention', 'Honorable Mention'),
     ]
 
-    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="submissions")
+    team_event = models.ForeignKey(TeamEvent, on_delete=models.CASCADE, related_name="submissions")
     submitted_by = models.ForeignKey(
         User, on_delete=models.SET_NULL,
         null=True, blank=True, related_name="submissions_made"
@@ -227,6 +525,10 @@ class Submission(models.Model):
     score = models.FloatField(default=0)
     is_reviewed = models.BooleanField(default=False)
     is_winner = models.BooleanField(default=False)
+    is_locked_after_deadline = models.BooleanField(default=False)
+    locked_at = models.DateTimeField(null=True, blank=True)
+    score_locked_at = models.DateTimeField(null=True, blank=True)
+    score_locked_by_system = models.BooleanField(default=False)
     judging_complete_at = models.DateTimeField(null=True, blank=True)
     winner_place = models.CharField(
         max_length=20, blank=True, null=True, choices=WINNER_PLACE_CHOICES
@@ -245,11 +547,15 @@ class Submission(models.Model):
         else:
             self.score = 0
 
-        event = self.team.event if self.team else None
-        required_judges = event.judges.count() if event else 0
+        event = self.team_event.event if self.team_event else None
+        required_judges = event.reviewers_per_submission if event else 0
         completed_judges = 0
         if event:
-            completed_judges = feedbacks.filter(judge__in=event.judges.all()).count()
+            assigned = self.judge_assignments.filter(is_active=True).values_list("judge_id", flat=True)
+            if assigned:
+                completed_judges = feedbacks.filter(judge_id__in=assigned).count()
+            else:
+                completed_judges = feedbacks.filter(judge__in=event.judges.all()).count()
 
         was_complete = self.judging_complete_at is not None
         is_complete = required_judges > 0 and completed_judges >= required_judges
@@ -257,6 +563,9 @@ class Submission(models.Model):
 
         if is_complete and not was_complete:
             self.judging_complete_at = timezone.now()
+            if event and timezone.now() >= event._effective_judging_end():
+                self.score_locked_by_system = True
+                self.score_locked_at = timezone.now()
             try:
                 exists = Activity.objects.filter(
                     user=event.organizer,
@@ -295,7 +604,10 @@ def _auto_assign_event_winners(event):
     """Auto-announce winners once all submissions are fully reviewed."""
     if not event:
         return
-    submissions_qs = Submission.objects.filter(team__event=event)
+    now = timezone.now()
+    if event and now < event._effective_judging_end():
+        return
+    submissions_qs = Submission.objects.filter(team_event__event=event)
     if not submissions_qs.exists():
         return
     # Only announce when all submissions are reviewed
@@ -308,6 +620,10 @@ def _auto_assign_event_winners(event):
 
     # Reset winners first
     submissions_qs.update(is_winner=False, winner_place=None, winner_prize=None)
+    try:
+        AwardResult.objects.filter(event=event).delete()
+    except Exception:
+        pass
 
     places = ['1st', '2nd', '3rd', 'honorable_mention']
     winners = []
@@ -317,13 +633,40 @@ def _auto_assign_event_winners(event):
         if sub.winner_prize is None:
             sub.winner_prize = ''
         sub.save(update_fields=['is_winner', 'winner_place', 'winner_prize'])
+        try:
+            AwardResult.objects.create(
+                event=event,
+                submission=sub,
+                category=None,
+                place=idx + 1,
+                score=sub.score
+            )
+        except Exception:
+            pass
         winners.append(sub)
+
+    # Category winners (top score per category)
+    try:
+        categories = AwardCategory.objects.filter(event=event)
+        for cat in categories:
+            top = ranked[0] if ranked else None
+            if not top:
+                continue
+            AwardResult.objects.create(
+                event=event,
+                submission=top,
+                category=cat,
+                place=1,
+                score=top.score
+            )
+    except Exception:
+        pass
 
     # Winner activities (avoid duplicates)
     try:
         from .utils.activity_helpers import create_winner_activity
         for sub in winners:
-            for member in sub.team.members.all():
+            for member in sub.team_event.team.members.all():
                 exists = Activity.objects.filter(
                     user=member,
                     submission=sub,
@@ -336,7 +679,7 @@ def _auto_assign_event_winners(event):
 
     # Upsert results post
     try:
-        winners_qs = Submission.objects.filter(team__event=event, is_winner=True).select_related('team')
+        winners_qs = Submission.objects.filter(team_event__event=event, is_winner=True).select_related('team_event', 'team_event__team')
         winners_count = winners_qs.count()
 
         order_map = {
@@ -354,7 +697,7 @@ def _auto_assign_event_winners(event):
             lines = [f"Results for {event.name}. Winners announced: {winners_count}."]
             for w in winners_list[:5]:
                 place = w.winner_place or "winner"
-                team_name = w.team.name if w.team else "Team"
+                team_name = w.team_event.team.name if w.team_event and w.team_event.team else "Team"
                 title = w.title or "Submission"
                 prize = f" - {w.winner_prize}" if w.winner_prize else ""
                 lines.append(f"- {place}: {team_name} ({title}){prize}")
@@ -376,6 +719,25 @@ def _auto_assign_event_winners(event):
             )
     except Exception:
         pass
+
+class MediaAsset(models.Model):
+    TYPE_IMAGE = "image"
+    TYPE_VIDEO = "video"
+    TYPE_DECK = "deck"
+    TYPE_CHOICES = [
+        (TYPE_IMAGE, "Image"),
+        (TYPE_VIDEO, "Video"),
+        (TYPE_DECK, "Deck"),
+    ]
+
+    submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name="media_assets")
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    url = models.URLField()
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.submission_id} - {self.type}"
 
 class JudgeFeedback(models.Model):
     submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name="feedback")

@@ -43,7 +43,6 @@ export default function SubmissionsPage() {
       if (searchTerm) params.set("q", searchTerm);
       if (filter && filter !== "all") params.set("filter", filter);
       if (eventId) params.set("event", eventId);
-      params.set("expand", "event,team,team.members");
       const [submissionsRes, userRes] = await Promise.all([
         axios.get(`/submissions/?${params.toString()}`),
         axios.get("/users/me/").catch(() => null)

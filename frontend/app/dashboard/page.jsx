@@ -83,6 +83,13 @@ export default function DashboardPage() {
   const recentEvents   = data?.recent_events   || [];
   const topTeams       = data?.top_teams       || [];
   const eventWinners   = data?.event_winners   || [];
+  const deadlineTimeline = data?.deadline_timeline || [];
+  const nextDeadlineAt = data?.next_deadline ? new Date(data.next_deadline) : null;
+  const deadlineType = data?.deadline_type || null;
+  const deadlineEvent = data?.deadline_event || null;
+  const stageStats = data?.stage_stats || {};
+  const judgeLoad = data?.judge_load || [];
+  const moderationQueue = data?.moderation_queue || [];
   const reviewRate     = useMemo(() => Math.round((stats.review_rate || 0) * 100), [stats.review_rate]);
 
   if (authLoading || loading) return <LoadingSpinner message="Loading dashboard…" />;
@@ -97,11 +104,39 @@ export default function DashboardPage() {
   ];
 
   /* ── Winners data ── */
-  const winners = eventWinners.length
-    ? eventWinners
-    : topTeams.filter(t => t.is_winner || t.rank != null);
+  const winners = eventWinners;
   const medals = ["🥇","🥈","🥉"];
   const aviCls = ["dp-lb-gold","dp-lb-silver","dp-lb-bronze"];
+
+  const deadlineLabel = (t) => {
+    const map = {
+      registration_deadline: "Registration Deadline",
+      team_deadline: "Team Registration Deadline",
+      submission_open_at: "Submission Opens",
+      submission_deadline: "Submission Deadline",
+      judging_start: "Judging Starts",
+      judging_end: "Judging Ends",
+    };
+    return map[t] || t || "Deadline";
+  };
+  const deadlineCountdown = (d) => {
+    if (!d) return "—";
+    const diff = d.getTime() - Date.now();
+    if (diff <= 0) return "Passed";
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m left`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 48) return `${hrs}h left`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d left`;
+  };
+  const stageRows = [
+    { key:"registration", label:"Registration" },
+    { key:"active", label:"Build" },
+    { key:"submission_open", label:"Submission Open" },
+    { key:"judging", label:"Judging" },
+    { key:"finished", label:"Finished" },
+  ];
 
   return (
     <div className="dp">
@@ -164,6 +199,65 @@ export default function DashboardPage() {
               <div className="dp-hstat-bar" style={{background:s.accent}}/>
             </Link>
           ))}
+        </section>
+
+        {/* —— DEADLINES + STAGES —— */}
+        <section className="dp-deadlines">
+          <div className="dp-deadline-card">
+            <div className="dp-section-head">
+              <div><div className="dp-sh-label">Deadlines</div><div className="dp-sh-title">Next Deadline</div></div>
+              <Link href="/events" className="dp-sh-link">All events →</Link>
+            </div>
+            {nextDeadlineAt ? (
+              <div className="dp-deadline-next">
+                <div className="dp-deadline-title">{deadlineLabel(deadlineType)}</div>
+                <div className="dp-deadline-meta">
+                  <span>{deadlineEvent?.name || "Event"}</span>
+                  <span>·</span>
+                  <span>{fmtD(nextDeadlineAt)}</span>
+                </div>
+                <div className="dp-deadline-count">{deadlineCountdown(nextDeadlineAt)}</div>
+              </div>
+            ) : (
+              <div className="dp-empty">No upcoming deadlines.</div>
+            )}
+            {deadlineTimeline.length > 0 && (
+              <div className="dp-deadline-list">
+                {deadlineTimeline.slice(0, 5).map((d, i) => (
+                  <div key={`${d.event_id}-${d.deadline_type}-${i}`} className="dp-deadline-row">
+                    <div>
+                      <div className="dp-deadline-row-title">{deadlineLabel(d.deadline_type)}</div>
+                      <div className="dp-deadline-row-sub">{d.event_name}</div>
+                    </div>
+                    <div className="dp-deadline-row-time">{fmtD(d.at)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="dp-deadline-card">
+            <div className="dp-section-head">
+              <div><div className="dp-sh-label">Stages</div><div className="dp-sh-title">Pipeline Counts</div></div>
+            </div>
+            <div className="dp-stage-grid">
+              {stageRows.map(s => {
+                const row = stageStats[s.key] || {};
+                return (
+                  <div key={s.key} className="dp-stage-row">
+                    <div className="dp-stage-name">{s.label}</div>
+                    <div className="dp-stage-metrics">
+                      <span>{fmt(row.events)} events</span>
+                      <span>·</span>
+                      <span>{fmt(row.teams)} teams</span>
+                      <span>·</span>
+                      <span>{fmt(row.submissions)} submissions</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </section>
 
         {/* ── TRENDS + ACTIVITY + PROFILE (aligned) ── */}
@@ -313,6 +407,58 @@ export default function DashboardPage() {
             })}
           </div>
         </section>
+
+        {/* —— OPERATIONS —— */}
+        {isOrganizer && (
+          <section className="dp-ops-section">
+            <div className="dp-section-head">
+              <div><div className="dp-sh-label">Operations</div><div className="dp-sh-title">Organizer Controls</div></div>
+            </div>
+            <div className="dp-ops-grid">
+              <div className="dp-ops-card">
+                <div className="dp-ops-title">Judge Load</div>
+                {judgeLoad.length === 0 ? (
+                  <div className="dp-empty">No judge assignments yet.</div>
+                ) : (
+                  judgeLoad.map(j => (
+                    <div key={j.id} className="dp-ops-row">
+                      <div className="dp-ops-name">{j.username}</div>
+                      <div className="dp-ops-bar">
+                        <div className="dp-ops-fill" style={{width:`${Math.min(100, Math.round((j.completed / (j.assigned || 1)) * 100))}%`}}/>
+                      </div>
+                      <div className="dp-ops-count">{j.completed}/{j.assigned}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="dp-ops-card">
+                <div className="dp-ops-title">Moderation Queue</div>
+                {moderationQueue.length === 0 ? (
+                  <div className="dp-empty">No moderation actions yet.</div>
+                ) : (
+                  moderationQueue.map(item => (
+                    <div key={item.id} className="dp-ops-row">
+                      <div className="dp-ops-name">{item.action_type}</div>
+                      <div className="dp-ops-count">{fmtD(item.created_at)}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="dp-ops-card">
+                <div className="dp-ops-title">Resources & Sponsors</div>
+                <div className="dp-ops-row">
+                  <div className="dp-ops-name">Resources</div>
+                  <div className="dp-ops-count">{fmt(stats.resource_total)}</div>
+                </div>
+                <div className="dp-ops-row">
+                  <div className="dp-ops-name">Sponsors</div>
+                  <div className="dp-ops-count">{fmt(stats.sponsor_total)}</div>
+                </div>
+                <Link href="/events" className="dp-ops-link">Manage →</Link>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* ── PLATFORM HEALTH (below leaderboard) ── */}
         <section className="dp-health-section">
@@ -539,8 +685,38 @@ export default function DashboardPage() {
         .dp-health-fill{height:100%;border-radius:2px;transition:width .6s cubic-bezier(.16,1,.3,1)}
         .dp-health-desc{font-size:11px;color:#5c5c6e}
 
+        /* Deadlines */
+        .dp-deadlines{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;margin:18px 0}
+        .dp-deadline-card{background:#111114;border:1px solid #1e1e24;border-radius:18px;padding:18px}
+        .dp-deadline-next{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+        .dp-deadline-title{font-size:14px;font-weight:700;color:#f0f0f3}
+        .dp-deadline-meta{font-size:12px;color:#8a8aa0;display:flex;gap:8px;align-items:center}
+        .dp-deadline-count{font-size:12px;color:#6EE7B7;font-weight:600}
+        .dp-deadline-list{display:flex;flex-direction:column;gap:8px}
+        .dp-deadline-row{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid #1e1e24;border-radius:12px;background:#0f0f12}
+        .dp-deadline-row-title{font-size:12px;font-weight:600;color:#f0f0f3}
+        .dp-deadline-row-sub{font-size:11px;color:#7b7b8f}
+        .dp-deadline-row-time{font-size:11px;color:#6EE7B7}
+        .dp-stage-grid{display:flex;flex-direction:column;gap:10px}
+        .dp-stage-row{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid #1e1e24;border-radius:12px;background:#0f0f12}
+        .dp-stage-name{font-size:12px;font-weight:700;color:#f0f0f3}
+        .dp-stage-metrics{font-size:11px;color:#8a8aa0;display:flex;gap:6px;flex-wrap:wrap}
+
+        /* Operations */
+        .dp-ops-section{margin:18px 0}
+        .dp-ops-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+        .dp-ops-card{background:#111114;border:1px solid #1e1e24;border-radius:16px;padding:16px}
+        .dp-ops-title{font-size:13px;font-weight:700;color:#f0f0f3;margin-bottom:10px}
+        .dp-ops-row{display:flex;align-items:center;gap:10px;justify-content:space-between;margin:6px 0}
+        .dp-ops-name{font-size:12px;color:#cbd5f5}
+        .dp-ops-count{font-size:11px;color:#8a8aa0}
+        .dp-ops-bar{flex:1;height:6px;background:#1e1e24;border-radius:999px;overflow:hidden}
+        .dp-ops-fill{height:100%;background:linear-gradient(90deg,#6EE7B7,#4ade80)}
+        .dp-ops-link{display:inline-block;margin-top:8px;font-size:12px;color:#6EE7B7;text-decoration:none}
+        .dp-ops-link:hover{text-decoration:underline}
+
         /* Responsive */
-        @media(max-width:1100px){.dp-hero-stats{grid-template-columns:repeat(2,1fr)}.dp-body{grid-template-columns:1fr}.dp-health-grid{grid-template-columns:repeat(2,1fr)}.dp-lb-thead,.dp-lb-row{grid-template-columns:50px 1fr 1fr 80px 80px}}
+        @media(max-width:1100px){.dp-hero-stats{grid-template-columns:repeat(2,1fr)}.dp-body{grid-template-columns:1fr}.dp-health-grid{grid-template-columns:repeat(2,1fr)}.dp-lb-thead,.dp-lb-row{grid-template-columns:50px 1fr 1fr 80px 80px}.dp-deadlines{grid-template-columns:1fr}}
         @media(max-width:768px){.dp-wrap{padding:24px 20px 60px}.dp-header{flex-direction:column}.dp-header-right{align-items:flex-start}.dp-header-btns{width:100%}.dp-btn-ghost,.dp-btn-primary{flex:1;text-align:center;justify-content:center}.dp-hero-stats{grid-template-columns:repeat(2,1fr)}.dp-health-grid{grid-template-columns:repeat(2,1fr)}.dp-lb-thead,.dp-lb-row{grid-template-columns:44px 1fr 70px 80px}.dp-lb-th:nth-child(3),.dp-lb-td:nth-child(3){display:none}}
         @media(max-width:520px){.dp-hero-stats{grid-template-columns:1fr}.dp-hstat-val{font-size:28px}.dp-health-grid{grid-template-columns:repeat(2,1fr)}}
       `}</style>

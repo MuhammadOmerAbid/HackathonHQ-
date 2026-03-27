@@ -308,6 +308,18 @@ export default function EventDetailPage() {
   const judgingEnd = event?.judging_end
     ? event.judging_end
     : new Date(new Date(event?.end_date).getTime() + 48 * 60 * 60 * 1000).toISOString();
+  const timelineItems = [
+    { key: "registration_deadline", label: "Registration Deadline", value: event?.registration_deadline || event?.start_date },
+    { key: "team_deadline", label: "Team Registration Deadline", value: event?.team_deadline },
+    { key: "submission_open_at", label: "Submission Opens", value: submissionOpenAt },
+    { key: "submission_deadline", label: "Submission Deadline", value: submissionDeadline },
+    { key: "judging_start", label: "Judging Start", value: judgingStart },
+    { key: "judging_end", label: "Judging End", value: judgingEnd },
+  ].filter(i => i.value);
+  const nextDeadline = timelineItems
+    .map(i => ({ ...i, date: new Date(i.value) }))
+    .filter(i => !Number.isNaN(i.date.getTime()) && i.date > now)
+    .sort((a, b) => a.date - b.date)[0];
   const enrolledTeamIds = new Set(
     (myEnrollments || [])
       .filter((en) => en.status === "enrolled")
@@ -440,26 +452,27 @@ export default function EventDetailPage() {
             </div>
             <div className="description-card timeline-card">
               <h2 className="section-title">Timeline</h2>
-              <div className="timeline-grid">
-                <div className="timeline-item">
-                  <span className="timeline-label">Submission Opens</span>
-                  <span className="timeline-value">{fmtDateTime(submissionOpenAt)}</span>
-                </div>
-                <div className="timeline-item">
-                  <span className="timeline-label">Submission Deadline</span>
-                  <span className="timeline-value">{fmtDateTime(submissionDeadline)}</span>
-                </div>
-                <div className="timeline-item">
-                  <span className="timeline-label">Judging Start</span>
-                  <span className="timeline-value">{fmtDateTime(judgingStart)}</span>
-                </div>
-                <div className="timeline-item">
-                  <span className="timeline-label">Judging End</span>
-                  <span className="timeline-value">
-                    {fmtDateTime(judgingEnd)}
-                    {!event?.judging_end && <em className="timeline-note"> (default +48h)</em>}
+              {nextDeadline && (
+                <div className="timeline-next">
+                  <span className="timeline-next-label">Next deadline</span>
+                  <span className="timeline-next-value">{nextDeadline.label}</span>
+                  <span className="timeline-next-meta">
+                    {fmtDateTime(nextDeadline.value)}
                   </span>
                 </div>
+              )}
+              <div className="timeline-grid">
+                {timelineItems.map(item => (
+                  <div key={item.key} className={`timeline-item ${nextDeadline?.key === item.key ? "next" : ""}`}>
+                    <span className="timeline-label">{item.label}</span>
+                    <span className="timeline-value">
+                      {fmtDateTime(item.value)}
+                      {item.key === "judging_end" && !event?.judging_end && (
+                        <em className="timeline-note"> (default +48h)</em>
+                      )}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
             {user && (
@@ -900,11 +913,41 @@ export default function EventDetailPage() {
           gap: 16px;
           margin-top: 12px;
         }
+        .timeline-next {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          padding: 10px 12px;
+          border-radius: 12px;
+          border: 1px solid rgba(110,231,183,0.25);
+          background: rgba(110,231,183,0.08);
+          margin-bottom: 12px;
+        }
+        .timeline-next-label {
+          font-size: 11px;
+          letter-spacing: 0.6px;
+          text-transform: uppercase;
+          color: #6EE7B7;
+          font-weight: 700;
+        }
+        .timeline-next-value {
+          font-size: 14px;
+          font-weight: 700;
+          color: #f0f0f3;
+        }
+        .timeline-next-meta {
+          font-size: 12px;
+          color: #8a8aa0;
+        }
         .timeline-item {
           background: rgba(17,17,20,0.6);
           border: 1px solid #1e1e24;
           border-radius: 12px;
           padding: 14px 16px;
+        }
+        .timeline-item.next {
+          border-color: rgba(110,231,183,0.4);
+          box-shadow: 0 0 0 1px rgba(110,231,183,0.15);
         }
         .timeline-label {
           display: block;

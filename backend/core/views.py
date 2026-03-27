@@ -818,7 +818,9 @@ class EventViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOrganizerOrAdmin]
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve', 'live', 'teams', 'submissions']:
+        if self.action in ['list', 'retrieve', 'live', 'status', 'winners']:
+            return [AllowAny()]
+        if self.action in ['teams', 'submissions']:
             return [IsAuthenticated(), IsNotBanned()]
         return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
 
@@ -860,6 +862,13 @@ class EventViewSet(viewsets.ModelViewSet):
                                 except Exception:
                                     pass
                                 participants = _get_event_participants(event)
+                                _notify_users(
+                                    participants,
+                                    "judging_ended",
+                                    "Judging has ended",
+                                    body=f"Judging for {event.name} has closed.",
+                                    link=f"/events/{event.id}"
+                                )
                                 _notify_users(
                                     participants,
                                     "results_announced",
@@ -1151,6 +1160,9 @@ class EventViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def winners(self, request, pk=None):
         event = self.get_object()
+        if event.get_status() != Event.STATUS_FINISHED:
+            if not (request.user and request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser or event.organizer == request.user)):
+                return Response({"error": "Results are not public yet."}, status=status.HTTP_403_FORBIDDEN)
         results = AwardResult.objects.filter(event=event).order_by("category_id", "place")
         return Response(AwardResultSerializer(results, many=True).data)
 
@@ -1320,6 +1332,11 @@ class SubmissionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     pagination_class = StandardPagination
 
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve', 'stats']:
+            return [AllowAny()]
+        return [IsAuthenticated(), IsNotBanned()]
+
     def get_queryset(self):
         qs = Submission.objects.all().order_by('-created_at').select_related('team_event', 'team_event__event', 'team_event__team')
         q = (self.request.query_params.get('q') or '').strip()
@@ -1343,6 +1360,13 @@ class SubmissionViewSet(viewsets.ModelViewSet):
         ordering = (self.request.query_params.get('ordering') or '').strip()
         if ordering in ['score', '-score', 'created_at', '-created_at']:
             qs = qs.order_by(ordering)
+        # Public results only after event finishes
+        if not (self.request.user and self.request.user.is_authenticated):
+            now = timezone.now()
+            qs = qs.filter(
+                Q(team_event__event__judging_end__lte=now) |
+                (Q(team_event__event__judging_end__isnull=True) & Q(team_event__event__end_date__lte=now - timedelta(hours=48)))
+            )
         return qs
 
     @action(detail=False, methods=["get"])
@@ -1351,6 +1375,12 @@ class SubmissionViewSet(viewsets.ModelViewSet):
         event_id = (request.query_params.get('event') or '').strip()
         if event_id:
             qs = qs.filter(team_event__event_id=event_id)
+        if not (request.user and request.user.is_authenticated):
+            now = timezone.now()
+            qs = qs.filter(
+                Q(team_event__event__judging_end__lte=now) |
+                (Q(team_event__event__judging_end__isnull=True) & Q(team_event__event__end_date__lte=now - timedelta(hours=48)))
+            )
         total = qs.count()
         pending = qs.filter(is_reviewed=False).count()
         reviewed = qs.filter(is_reviewed=True, is_winner=False).count()
@@ -1694,8 +1724,18 @@ class AwardResultViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
-            return [IsAuthenticated(), IsNotBanned()]
+            return [AllowAny()]
         return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
+
+    def get_queryset(self):
+        qs = AwardResult.objects.all().order_by('-created_at')
+        if not (self.request.user and self.request.user.is_authenticated):
+            now = timezone.now()
+            qs = qs.filter(
+                Q(event__judging_end__lte=now) |
+                (Q(event__judging_end__isnull=True) & Q(event__end_date__lte=now - timedelta(hours=48)))
+            )
+        return qs
 
 class JudgeAssignmentViewSet(viewsets.ModelViewSet):
     queryset = JudgeAssignment.objects.all().order_by('-assigned_at')
@@ -1979,6 +2019,96 @@ def _build_overview_analytics(user=None):
     if user and user.is_authenticated:
         activity_qs = Activity.objects.filter(user=user)
 
+    # Deadline timeline + next deadline (across all events)
+    deadline_timeline = []
+    stage_stats = {k: {"events": 0, "teams": 0, "submissions": 0} for k, _ in Event.STATUS_CHOICES}
+
+    for ev in events_qs:
+        status = ev.get_status(now=now)
+        if status in stage_stats:
+            stage_stats[status]["events"] += 1
+            stage_stats[status]["teams"] += TeamEvent.objects.filter(
+                event=ev, status=TeamEvent.STATUS_ENROLLED
+            ).count()
+            stage_stats[status]["submissions"] += Submission.objects.filter(
+                team_event__event=ev
+            ).count()
+
+        # Build deadline timeline items
+        deadline_items = [
+            ("registration_deadline", "Registration Deadline", ev.registration_deadline or ev.start_date, ev.registration_deadline is None),
+            ("team_deadline", "Team Registration Deadline", ev.team_deadline, False),
+            ("submission_open_at", "Submission Opens", ev._effective_submission_open_at(), ev.submission_open_at is None),
+            ("submission_deadline", "Submission Deadline", ev._effective_submission_deadline(), ev.submission_deadline is None),
+            ("judging_start", "Judging Starts", ev._effective_judging_start(), ev.judging_start is None),
+            ("judging_end", "Judging Ends", ev._effective_judging_end(), ev.judging_end is None),
+        ]
+        for key, label, at, is_default in deadline_items:
+            if not at:
+                continue
+            if at > now:
+                deadline_timeline.append({
+                    "event_id": ev.id,
+                    "event_name": ev.name,
+                    "deadline_type": key,
+                    "label": label,
+                    "at": at.isoformat() if hasattr(at, "isoformat") else at,
+                    "is_default": bool(is_default),
+                })
+
+    deadline_timeline.sort(key=lambda d: d["at"])
+    next_deadline = deadline_timeline[0] if deadline_timeline else None
+
+    # Judge load distribution
+    judge_load = []
+    for j in judges_qs:
+        assigned = JudgeAssignment.objects.filter(judge=j, is_active=True).count()
+        completed = JudgeFeedback.objects.filter(judge=j).count()
+        if assigned or completed:
+            judge_load.append({
+                "id": j.id,
+                "username": j.username,
+                "assigned": assigned,
+                "completed": completed,
+            })
+    judge_load.sort(key=lambda x: (-x["assigned"], -x["completed"]))
+    judge_load = judge_load[:8]
+
+    # Moderation queue (recent moderation actions)
+    moderation_queue = list(
+        ModerationAction.objects.order_by("-created_at")[:8].values(
+            "id", "action_type", "reason", "created_at",
+            "moderator_id", "target_user_id"
+        )
+    )
+
+    # Resource + sponsor totals
+    resource_count = EventResource.objects.count()
+    sponsor_count = EventSponsor.objects.count()
+
+    # Event winners (overall) for finished events
+    event_winners = []
+    results = AwardResult.objects.filter(category__isnull=True).select_related(
+        "event", "submission__team_event__team"
+    )
+    for r in results:
+        ev = r.event
+        if not ev or ev.get_status(now=now) != Event.STATUS_FINISHED:
+            continue
+        team = None
+        if r.submission and r.submission.team_event:
+            team = r.submission.team_event.team
+        event_winners.append({
+            "id": r.id,
+            "event_id": ev.id,
+            "event_name": ev.name,
+            "team_name": team.name if team else None,
+            "score": r.score,
+            "rank": r.place,
+            "members_count": team.members.count() if team else 0,
+            "announced_at": r.created_at.isoformat() if r.created_at else None,
+        })
+
     return {
         'stats': {
             'events_total': events_qs.count(),
@@ -1990,6 +2120,8 @@ def _build_overview_analytics(user=None):
             'judges_total': judges_qs.count(),
             'reviewed_total': reviewed_count,
             'review_rate': (reviewed_count / submissions_qs.count()) if submissions_qs.exists() else 0,
+            'resource_total': resource_count,
+            'sponsor_total': sponsor_count,
         },
         'series': {
             'submissions': _build_daily_series(submissions_qs, 'created_at'),
@@ -2006,6 +2138,17 @@ def _build_overview_analytics(user=None):
                 'id', 'name', 'submissions_count', 'members_count'
             )
         ),
+        'event_winners': event_winners,
+        'deadline_timeline': deadline_timeline[:10],
+        'next_deadline': next_deadline["at"] if next_deadline else None,
+        'deadline_type': next_deadline["deadline_type"] if next_deadline else None,
+        'deadline_event': {
+            "id": next_deadline["event_id"],
+            "name": next_deadline["event_name"],
+        } if next_deadline else None,
+        'stage_stats': stage_stats,
+        'judge_load': judge_load,
+        'moderation_queue': moderation_queue,
         'updated_at': now.isoformat()
     }
 

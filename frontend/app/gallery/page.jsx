@@ -7,6 +7,7 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 
 export default function GalleryPage() {
   const [events, setEvents] = useState([]);
+  const [finishedEvents, setFinishedEvents] = useState([]);
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [eventFilter, setEventFilter] = useState("");
@@ -17,7 +18,9 @@ export default function GalleryPage() {
     const fetchEvents = async () => {
       try {
         const res = await axios.get("/events/");
-        setEvents(res.data.results || res.data || []);
+        const all = res.data.results || res.data || [];
+        setEvents(all);
+        setFinishedEvents(all.filter(e => e.status === "finished"));
       } catch (e) {
         console.error("Failed to load events", e);
       }
@@ -34,7 +37,9 @@ export default function GalleryPage() {
         if (sort) params.set("ordering", sort);
         if (filter === "winners") params.set("filter", "winning");
         const res = await axios.get(`/submissions/?${params.toString()}`);
-        setSubmissions(res.data.results || res.data || []);
+        const items = res.data.results || res.data || [];
+        const finishedOnly = items.filter(s => (s.event?.status || s.event_status) === "finished");
+        setSubmissions(finishedOnly);
       } catch (e) {
         console.error("Failed to load submissions", e);
       } finally {
@@ -56,7 +61,7 @@ export default function GalleryPage() {
         <div className="gallery-filters">
           <select value={eventFilter} onChange={(e) => setEventFilter(e.target.value)}>
             <option value="">All Events</option>
-            {events.map((e) => (
+            {finishedEvents.map((e) => (
               <option key={e.id} value={e.id}>{e.name}</option>
             ))}
           </select>
@@ -86,6 +91,11 @@ export default function GalleryPage() {
                 <span>·</span>
                 <span>{s.event_name || "Event"}</span>
               </div>
+              {s.is_winner && s.award_results?.length > 0 && (
+                <div className="card-meta">
+                  <span>{s.award_results[0].category_title || "Overall Winner"}</span>
+                </div>
+              )}
               <div className="card-score">
                 Score: <strong>{s.score?.toFixed ? s.score.toFixed(1) : s.score || 0}</strong>
               </div>

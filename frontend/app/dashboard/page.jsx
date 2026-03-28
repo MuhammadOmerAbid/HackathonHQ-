@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import api from "@/utils/axios";
 import { useAuth } from "@/context/AuthContext";
 import useSSE from "@/utils/useSSE";
@@ -57,10 +57,17 @@ export default function DashboardPage() {
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState("");
   const [activeTab, setActiveTab] = useState("activity");
+  const [tabInitialized, setTabInitialized] = useState(false);
+  const [notifItems, setNotifItems] = useState([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifMarking, setNotifMarking] = useState(false);
+  const [galleryPreview, setGalleryPreview] = useState([]);
+  const [galleryLoading, setGalleryLoading] = useState(false);
 
   const isOrganizer = user?.is_organizer || user?.is_staff;
   const isJudge     = user?.is_judge;
   const isHacker    = !isOrganizer && !isJudge;
+  const searchParams = useSearchParams();
 
   const hasToken = typeof window !== "undefined" && !!localStorage.getItem("access");
   useSSE("/analytics/stream/?channel=overview", {
@@ -77,6 +84,53 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, [authLoading, user, router]);
 
+  useEffect(() => {
+    if (tabInitialized) return;
+    const tab = searchParams?.get("tab");
+    if (tab === "notifications") setActiveTab("notifications");
+    setTabInitialized(true);
+  }, [searchParams, tabInitialized]);
+
+  useEffect(() => {
+    if (authLoading || !user) return;
+    const loadNotifications = async () => {
+      setNotifLoading(true);
+      try {
+        const res = await api.get("/notifications/?page_size=6");
+        const list = res.data?.results || res.data || [];
+        setNotifItems(Array.isArray(list) ? list : []);
+      } catch {
+        setNotifItems([]);
+      } finally {
+        setNotifLoading(false);
+      }
+    };
+    loadNotifications();
+  }, [authLoading, user?.id]);
+
+  useEffect(() => {
+    if (authLoading || !user) return;
+    const loadGalleryPreview = async () => {
+      setGalleryLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.set("ordering", "-score");
+        params.set("page_size", "6");
+        const res = await api.get(`/submissions/?${params.toString()}`);
+        const items = res.data?.results || res.data || [];
+        const finishedOnly = (Array.isArray(items) ? items : [])
+          .filter(s => (s.event?.status || s.event_status) === "finished")
+          .slice(0, 6);
+        setGalleryPreview(finishedOnly);
+      } catch {
+        setGalleryPreview([]);
+      } finally {
+        setGalleryLoading(false);
+      }
+    };
+    loadGalleryPreview();
+  }, [authLoading, user?.id]);
+
   const stats          = data?.stats          || {};
   const series         = data?.series         || {};
   const recentActivity = data?.recent_activity || [];
@@ -91,6 +145,23 @@ export default function DashboardPage() {
   const judgeLoad = data?.judge_load || [];
   const moderationQueue = data?.moderation_queue || [];
   const reviewRate     = useMemo(() => Math.round((stats.review_rate || 0) * 100), [stats.review_rate]);
+  const unreadNotifCount = useMemo(
+    () => notifItems.filter(n => !n.is_read).length,
+    [notifItems]
+  );
+
+  const markAllRead = async () => {
+    if (notifMarking) return;
+    setNotifMarking(true);
+    try {
+      await api.post("/notifications/read");
+      setNotifItems(prev => prev.map(n => ({ ...n, is_read: true })));
+    } catch {
+      // Silent failure to keep UI responsive
+    } finally {
+      setNotifMarking(false);
+    }
+  };
 
   if (authLoading || loading) return <LoadingSpinner message="Loading dashboard…" />;
   if (!user) return null;
@@ -285,7 +356,7 @@ export default function DashboardPage() {
             {/* Activity Panel */}
             <div className="dp-panel">
               <div className="dp-tabs">
-                {[{key:"activity",label:"Activity",count:recentActivity.length},{key:"events",label:"Events",count:recentEvents.length},{key:"teams",label:"Top Teams",count:topTeams.length}].map(t=>(
+                {[{key:"activity",label:"Activity",count:recentActivity.length},{key:"events",label:"Events",count:recentEvents.length},{key:"teams",label:"Top Teams",count:topTeams.length},{key:"notifications",label:"Notifications",count:unreadNotifCount}].map(t=>(
                   <button key={t.key} className={`dp-tab${activeTab===t.key?" dp-tab-on":""}`} onClick={()=>setActiveTab(t.key)}>
                     {t.label}<span className="dp-tab-ct">{t.count}</span>
                   </button>
@@ -316,9 +387,9 @@ export default function DashboardPage() {
                   ))}
                 </div>
               )}
-              {activeTab==="teams"&&(
-                <div className="dp-list">
-                  {!topTeams.length?<div className="dp-empty">No teams yet.</div>
+                {activeTab==="teams"&&(
+                  <div className="dp-list">
+                    {!topTeams.length?<div className="dp-empty">No teams yet.</div>
                   :topTeams.map((team,i)=>(
                     <div key={team.id} className="dp-row">
                       <span className="dp-row-rank">#{i+1}</span>
@@ -326,10 +397,42 @@ export default function DashboardPage() {
                       <div className="dp-row-body"><div className="dp-row-title">{team.name}</div><div className="dp-row-meta">{team.event_name || "Global Team"}</div></div>
                       <div className="dp-row-pills"><span className="dp-pill">{fmt(team.submissions_count)} subs</span><span className="dp-pill dp-pill-purple">{fmt(team.members_count)}</span></div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    ))}
+                  </div>
+                )}
+                {activeTab==="notifications"&&(
+                  <div className="dp-list">
+                    <div className="dp-notif-actions">
+                      <div className="dp-notif-count">{unreadNotifCount} unread</div>
+                      <button className="dp-notif-btn" onClick={markAllRead} disabled={notifMarking || !notifItems.length}>
+                        {notifMarking ? "Marking..." : "Mark all read"}
+                      </button>
+                    </div>
+                    {notifLoading ? (
+                      <div className="dp-empty">Loading notifications...</div>
+                    ) : !notifItems.length ? (
+                      <div className="dp-empty">No notifications yet.</div>
+                    ) : (
+                      notifItems.map(n => (
+                        <div key={n.id} className={`dp-notif-row${n.is_read ? " dp-notif-read" : ""}`}>
+                          <div className="dp-notif-main">
+                            <div className="dp-notif-title">{n.title || "Notification"}</div>
+                            {n.body && <div className="dp-notif-body">{n.body}</div>}
+                          </div>
+                          <div className="dp-notif-meta">
+                            <span className="dp-notif-time">{ago(n.created_at)}</span>
+                            {n.link && (
+                              <button className="dp-notif-link" onClick={() => router.push(n.link)}>
+                                Open
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
 
             {/* Profile Card - Clickable, redirects to profile */}
             <div className="dp-profile-card" onClick={() => router.push("/profile")}>
@@ -365,8 +468,8 @@ export default function DashboardPage() {
         {/* ── LEADERBOARD (full-width) ── */}
         <section className="dp-lb-section">
           <div className="dp-section-head">
-            <div><div className="dp-sh-label">Hall of Fame</div><div className="dp-sh-title">Event Winners</div></div>
-            <Link href="/submissions" className="dp-sh-link">All results →</Link>
+            <div><div className="dp-sh-label">Hall of Fame Preview</div><div className="dp-sh-title">Event Winners</div></div>
+            <Link href="/leaderboard" className="dp-sh-link">Full leaderboard →</Link>
           </div>
           <div className="dp-lb-table">
             <div className="dp-lb-thead">
@@ -409,11 +512,11 @@ export default function DashboardPage() {
         </section>
 
         {/* —— OPERATIONS —— */}
-        {isOrganizer && (
-          <section className="dp-ops-section">
-            <div className="dp-section-head">
-              <div><div className="dp-sh-label">Operations</div><div className="dp-sh-title">Organizer Controls</div></div>
-            </div>
+          {isOrganizer && (
+            <section className="dp-ops-section">
+              <div className="dp-section-head">
+                <div><div className="dp-sh-label">Operations</div><div className="dp-sh-title">Organizer Controls</div></div>
+              </div>
             <div className="dp-ops-grid">
               <div className="dp-ops-card">
                 <div className="dp-ops-title">Judge Load</div>
@@ -455,10 +558,47 @@ export default function DashboardPage() {
                   <div className="dp-ops-count">{fmt(stats.sponsor_total)}</div>
                 </div>
                 <Link href="/events" className="dp-ops-link">Manage →</Link>
+                </div>
               </div>
+            </section>
+          )}
+
+          {/* —— GALLERY PREVIEW —— */}
+          <section className="dp-gallery-section">
+            <div className="dp-section-head">
+              <div><div className="dp-sh-label">Gallery Preview</div><div className="dp-sh-title">Top Submissions</div></div>
+              <Link href="/gallery" className="dp-sh-link">View full gallery →</Link>
             </div>
+            {galleryLoading ? (
+              <div className="dp-empty">Loading gallery...</div>
+            ) : galleryPreview.length === 0 ? (
+              <div className="dp-empty">No submissions yet.</div>
+            ) : (
+              <div className="dp-gallery-grid">
+                {galleryPreview.map((s) => (
+                  <Link key={s.id} href={`/submissions/${s.id}`} className="dp-gcard">
+                    <div className="dp-gcard-top">
+                      <div className="dp-gcard-title">{s.title || "Submission"}</div>
+                      {s.is_winner && <span className="dp-gcard-badge">Winner</span>}
+                    </div>
+                    <div className="dp-gcard-meta">
+                      <span>{s.team_name || "Team"}</span>
+                      <span>·</span>
+                      <span>{s.event_name || s.event?.name || "Event"}</span>
+                    </div>
+                    {s.is_winner && s.award_results?.length > 0 && (
+                      <div className="dp-gcard-meta">
+                        <span>{s.award_results[0].category_title || "Overall Winner"}</span>
+                      </div>
+                    )}
+                    <div className="dp-gcard-score">
+                      Score: <strong>{s.score?.toFixed ? s.score.toFixed(1) : s.score || 0}</strong>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </section>
-        )}
 
         {/* ── PLATFORM HEALTH (below leaderboard) ── */}
         <section className="dp-health-section">
@@ -622,6 +762,19 @@ export default function DashboardPage() {
         .dp-pill-purple{background:rgba(167,139,250,.07);border-color:rgba(167,139,250,.2);color:#a78bfa}
         .dp-empty{font-size:13px;color:#3a3a48;padding:22px 18px}
 
+        .dp-notif-actions{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid #1e1e24;background:#0c0c0f;position:sticky;top:0;z-index:1}
+        .dp-notif-count{font-size:11px;font-weight:700;color:#6EE7B7;text-transform:uppercase;letter-spacing:.8px}
+        .dp-notif-btn{padding:6px 12px;border-radius:999px;border:1px solid #26262e;background:transparent;color:#6EE7B7;font-size:11px;font-weight:700;cursor:pointer}
+        .dp-notif-btn:disabled{opacity:.5;cursor:not-allowed}
+        .dp-notif-row{display:flex;flex-direction:column;gap:8px;padding:12px 18px;border-top:1px solid #1e1e24}
+        .dp-notif-read{opacity:.7}
+        .dp-notif-main{display:flex;flex-direction:column;gap:4px}
+        .dp-notif-title{font-size:13px;font-weight:600;color:#f0f0f3}
+        .dp-notif-body{font-size:12px;color:#5c5c6e;line-height:1.5}
+        .dp-notif-meta{display:flex;align-items:center;justify-content:space-between}
+        .dp-notif-time{font-size:10.5px;color:#6EE7B7;font-weight:600}
+        .dp-notif-link{border:1px solid #26262e;background:transparent;color:#6EE7B7;padding:4px 10px;border-radius:999px;font-size:10.5px;cursor:pointer}
+
         /* Profile Card - Clickable, matches activity panel width */
         .dp-profile-card{background:#111114;border:1px solid #1e1e24;border-radius:16px;padding:20px 24px;display:flex;align-items:center;gap:18px;cursor:pointer;transition:all 0.2s ease}
         .dp-profile-card:hover{border-color:rgba(110,231,183,.3);transform:translateY(-2px);background:#151519}
@@ -672,6 +825,17 @@ export default function DashboardPage() {
         .dp-lb-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:52px 20px;color:#3a3a48;text-align:center}
         .dp-lb-empty-h{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:#5c5c6e;margin:12px 0 6px}
         .dp-lb-empty-s{font-size:12.5px;color:#3a3a48;max-width:300px;line-height:1.6}
+
+        /* Gallery Preview */
+        .dp-gallery-section{margin-bottom:20px}
+        .dp-gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+        .dp-gcard{background:#111114;border:1px solid #1e1e24;border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;text-decoration:none;color:inherit;transition:border-color .15s,transform .15s}
+        .dp-gcard:hover{border-color:#26262e;transform:translateY(-2px)}
+        .dp-gcard-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+        .dp-gcard-title{font-size:13.5px;font-weight:600;color:#f0f0f3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .dp-gcard-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px;background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.25);flex-shrink:0}
+        .dp-gcard-meta{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5c5c6e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .dp-gcard-score{font-size:12px;color:#6EE7B7;font-weight:600}
 
         /* Health Section */
         .dp-health-section{margin-bottom:0}

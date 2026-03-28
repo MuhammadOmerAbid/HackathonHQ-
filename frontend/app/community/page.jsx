@@ -326,10 +326,14 @@ export default function CommunityPage() {
                 <span className="stat-value">{posts.reduce((acc, p) => acc + (p.liked_by?.includes(user.id) ? 1 : 0), 0)}</span>
                 <span className="stat-label">Likes</span>
               </div>
-              <div className="user-stat">
-                <span className="stat-value">{unreadNotifications}</span>
-                <span className="stat-label">Notifications</span>
-              </div>
+                <button
+                  type="button"
+                  className="user-stat user-stat-btn"
+                  onClick={() => router.push("/dashboard?tab=notifications")}
+                >
+                  <span className="stat-value">{unreadNotifications}</span>
+                  <span className="stat-label">Notifications</span>
+                </button>
             </div>
             <button className="create-post-btn" onClick={() => setShowCompose(true)}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
@@ -544,6 +548,8 @@ export default function CommunityPage() {
         .user-role { font-size: 12px; color: #6EE7B7; text-transform: uppercase; letter-spacing: 0.5px; }
         .user-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px; padding: 12px 0; border-top: 1px solid #1e1e24; border-bottom: 1px solid #1e1e24; }
         .user-stat { text-align: center; }
+        .user-stat-btn { background: transparent; border: none; padding: 0; cursor: pointer; color: inherit; }
+        .user-stat-btn:hover .stat-value { color: #6EE7B7; }
         .stat-value { display: block; font-size: 18px; font-weight: 700; color: #f0f0f3; }
         .stat-label { font-size: 10px; color: #5c5c6e; text-transform: uppercase; }
         .create-post-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px; background: #6EE7B7; border: none; border-radius: 100px; color: #0c0c0f; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import axios from "@/utils/axios";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import CustomSelect from "@/components/ui/CustomSelect";
 
 export default function GalleryPage() {
   const [events, setEvents] = useState([]);
@@ -59,20 +60,36 @@ export default function GalleryPage() {
           <p>Explore projects, winners, and top‑scored builds.</p>
         </div>
         <div className="gallery-filters">
-          <select value={eventFilter} onChange={(e) => setEventFilter(e.target.value)}>
-            <option value="">All Events</option>
-            {finishedEvents.map((e) => (
-              <option key={e.id} value={e.id}>{e.name}</option>
-            ))}
-          </select>
-          <select value={filter} onChange={(e) => setFilter(e.target.value)}>
-            <option value="all">All</option>
-            <option value="winners">Winners</option>
-          </select>
-          <select value={sort} onChange={(e) => setSort(e.target.value)}>
-            <option value="-score">Top Score</option>
-            <option value="-created_at">Newest</option>
-          </select>
+          <CustomSelect
+            className="gallery-select"
+            value={eventFilter}
+            onChange={(val) => setEventFilter(String(val))}
+            options={[
+              { value: "", label: "All Events" },
+              ...finishedEvents.map((e) => ({ value: String(e.id), label: e.name })),
+            ]}
+            placeholder="All Events"
+          />
+          <CustomSelect
+            className="gallery-select"
+            value={filter}
+            onChange={(val) => setFilter(String(val))}
+            options={[
+              { value: "all", label: "All" },
+              { value: "winners", label: "Winners" },
+            ]}
+            placeholder="All"
+          />
+          <CustomSelect
+            className="gallery-select"
+            value={sort}
+            onChange={(val) => setSort(String(val))}
+            options={[
+              { value: "-score", label: "Top Score" },
+              { value: "-created_at", label: "Newest" },
+            ]}
+            placeholder="Top Score"
+          />
         </div>
       </div>
 
@@ -127,14 +144,114 @@ export default function GalleryPage() {
           display: flex;
           gap: 8px;
         }
-        select {
-          background: #111114;
+        .gallery-select { min-width: 160px; }
+
+        /* Custom select — match SubmissionForm dropdown style */
+        .custom-dropdown { position: relative; }
+        .custom-dropdown-trigger {
+          background: #17171b;
           border: 1px solid #1e1e24;
-          color: #f0f0f3;
           border-radius: 10px;
-          padding: 8px 12px;
+          color: #f0f0f3;
+          font-family: 'DM Sans', sans-serif;
           font-size: 13px;
+          padding: 8px 12px;
+          width: 100%;
+          box-sizing: border-box;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          transition: all 0.2s ease;
+          min-height: 38px;
         }
+        .custom-dropdown-trigger:hover:not(.disabled) {
+          border-color: #6EE7B7;
+          background: #111114;
+        }
+        .custom-dropdown-trigger.open {
+          border-color: #6EE7B7;
+          box-shadow: 0 0 0 2px rgba(110, 231, 183, 0.2);
+          background: #111114;
+        }
+        .custom-dropdown-trigger.disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .custom-dropdown-value {
+          flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .custom-dropdown-value.placeholder { color: #5c5c6e; }
+        .custom-dropdown-arrow {
+          width: 16px;
+          height: 16px;
+          color: #6EE7B7;
+          transition: transform 0.2s ease;
+          flex-shrink: 0;
+          margin-left: 8px;
+        }
+        .custom-dropdown-arrow.open { transform: rotate(180deg); }
+        .custom-dropdown-menu {
+          position: absolute;
+          top: calc(100% + 4px);
+          left: 0;
+          right: 0;
+          max-height: 280px;
+          overflow-y: auto;
+          background: #1a1a1f;
+          border: 1px solid #1e1e24;
+          border-radius: 10px;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+          z-index: 50;
+          animation: menuFadeIn 0.2s ease;
+        }
+        @keyframes menuFadeIn {
+          from { opacity: 0; transform: translateY(-5px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .custom-dropdown-item {
+          padding: 12px 16px;
+          cursor: pointer;
+          color: #f0f0f3;
+          font-size: 13px;
+          transition: all 0.15s ease;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .custom-dropdown-item:last-child { border-bottom: none; }
+        .custom-dropdown-item:hover {
+          background: rgba(110, 231, 183, 0.1);
+          color: #6EE7B7;
+          padding-left: 20px;
+        }
+        .custom-dropdown-item.selected {
+          background: rgba(110, 231, 183, 0.15);
+          color: #6EE7B7;
+          font-weight: 500;
+          border-left: 2px solid #6EE7B7;
+          padding-left: calc(16px - 2px);
+        }
+        .custom-dropdown-item-content {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          flex: 1;
+        }
+        .custom-dropdown-sub {
+          font-size: 11px;
+          color: #5c5c6e;
+        }
+        .custom-dropdown-check { color: #6EE7B7; width: 14px; height: 14px; }
+        .custom-dropdown-empty { padding: 12px 16px; font-size: 12px; color: #5c5c6e; }
+        .custom-dropdown-menu::-webkit-scrollbar { width: 4px; }
+        .custom-dropdown-menu::-webkit-scrollbar-track { background: #1e1e24; }
+        .custom-dropdown-menu::-webkit-scrollbar-thumb { background: #3a3a48; border-radius: 4px; }
+        .custom-dropdown-menu::-webkit-scrollbar-thumb:hover { background: #6EE7B7; }
         .gallery-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));

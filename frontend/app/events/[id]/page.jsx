@@ -987,6 +987,16 @@ export default function EventDetailPage() {
           border-radius: 10px;
           padding: 8px 12px;
           font-size: 13px;
+          font-family: 'DM Sans', sans-serif;
+          outline: none;
+          cursor: pointer;
+        }
+        .enroll-select:focus {
+          border-color: rgba(110,231,183,0.35);
+        }
+        .enroll-select option {
+          background: #111114;
+          color: #f0f0f3;
         }
         .enroll-btn {
           padding: 8px 14px;

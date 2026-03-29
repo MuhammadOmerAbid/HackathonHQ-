@@ -1700,12 +1700,39 @@ class EventResourceViewSet(viewsets.ModelViewSet):
 class EventSponsorViewSet(viewsets.ModelViewSet):
     queryset = EventSponsor.objects.all().order_by('-created_at')
     serializer_class = EventSponsorSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsNotBanned]
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
-            return [IsAuthenticated(), IsNotBanned()]
-        return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
+        return [IsAuthenticated(), IsNotBanned()]
+
+    def get_queryset(self):
+        qs = EventSponsor.objects.all().order_by('-created_at')
+        event_id = self.request.query_params.get("event")
+        if event_id:
+            qs = qs.filter(event_id=event_id)
+        return qs
+
+    def _ensure_event_owner(self, event):
+        user = self.request.user
+        if user.is_staff or user.is_superuser:
+            return
+        if not event or event.organizer_id != user.id:
+            raise PermissionDenied("Only the event organizer can manage sponsors.")
+
+    def perform_create(self, serializer):
+        event = serializer.validated_data.get("event")
+        self._ensure_event_owner(event)
+        serializer.save()
+
+    def perform_update(self, serializer):
+        event = serializer.instance.event
+        self._ensure_event_owner(event)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        event = instance.event
+        self._ensure_event_owner(event)
+        instance.delete()
 
 class AwardCategoryViewSet(viewsets.ModelViewSet):
     queryset = AwardCategory.objects.all().order_by('-created_at')

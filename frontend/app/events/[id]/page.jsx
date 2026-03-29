@@ -111,6 +111,16 @@ export default function EventDetailPage() {
   const [enrollLoading, setEnrollLoading] = useState(false);
   const [enrollError, setEnrollError] = useState("");
   const [enrollSuccess, setEnrollSuccess] = useState("");
+  const [sponsorForm, setSponsorForm] = useState({
+    name: "",
+    tier: "",
+    logo_url: "",
+    website: "",
+    challenge_desc: "",
+  });
+  const [sponsorSaving, setSponsorSaving] = useState(false);
+  const [sponsorMessage, setSponsorMessage] = useState({ type: "", text: "" });
+  const [editingSponsorId, setEditingSponsorId] = useState(null);
 
   const loadEventData = useCallback(async (withLoading = true) => {
     if (!id) return;
@@ -166,6 +176,21 @@ export default function EventDetailPage() {
     if (!isOrganizer) return false;
     return user.is_staff || user.is_superuser || event.organizer === user.id;
   }, [event, user, isOrganizer]);
+
+  const canManageSponsors = canManageJudges;
+
+  useEffect(() => {
+    if (!event) return;
+    setSponsorForm({
+      name: "",
+      tier: "",
+      logo_url: "",
+      website: "",
+      challenge_desc: "",
+    });
+    setEditingSponsorId(null);
+    setSponsorMessage({ type: "", text: "" });
+  }, [event?.id]);
 
   useEffect(() => {
     if (!event || !canManageJudges) return;
@@ -235,6 +260,100 @@ export default function EventDetailPage() {
       setEnrollError(msg);
     } finally {
       setEnrollLoading(false);
+    }
+  };
+
+  const handleSponsorChange = (e) => {
+    const { name, value } = e.target;
+    setSponsorForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const startEditSponsor = (s) => {
+    setEditingSponsorId(s.id);
+    setSponsorForm({
+      name: s.name || "",
+      tier: s.tier || "",
+      logo_url: s.logo_url || "",
+      website: s.website || "",
+      challenge_desc: s.challenge_desc || "",
+    });
+    setSponsorMessage({ type: "", text: "" });
+  };
+
+  const cancelEditSponsor = () => {
+    setEditingSponsorId(null);
+    setSponsorForm({
+      name: "",
+      tier: "",
+      logo_url: "",
+      website: "",
+      challenge_desc: "",
+    });
+  };
+
+  const extractSponsorError = (err) => {
+    const data = err?.response?.data;
+    if (!data) return "Failed to save sponsor.";
+    if (typeof data === "string") return data;
+    if (data.error) return data.error;
+    if (data.detail) return data.detail;
+    const keys = Object.keys(data);
+    if (keys.length > 0) {
+      const key = keys[0];
+      const val = data[key];
+      if (Array.isArray(val) && val.length > 0) return `${key}: ${val[0]}`;
+      if (typeof val === "string") return `${key}: ${val}`;
+    }
+    return "Failed to save sponsor.";
+  };
+
+  const saveSponsor = async (e) => {
+    e.preventDefault();
+    if (!sponsorForm.name?.trim()) {
+      setSponsorMessage({ type: "error", text: "Sponsor name is required." });
+      return;
+    }
+    setSponsorSaving(true);
+    setSponsorMessage({ type: "", text: "" });
+    const payload = {
+      event: id,
+      name: sponsorForm.name.trim(),
+      tier: sponsorForm.tier?.trim() || null,
+      logo_url: sponsorForm.logo_url?.trim() || null,
+      website: sponsorForm.website?.trim() || null,
+      challenge_desc: sponsorForm.challenge_desc?.trim() || null,
+    };
+    try {
+      if (editingSponsorId) {
+        await axios.put(`/sponsors/${editingSponsorId}/`, payload);
+        setSponsorMessage({ type: "success", text: "Sponsor updated." });
+      } else {
+        await axios.post("/sponsors/", payload);
+        setSponsorMessage({ type: "success", text: "Sponsor added." });
+      }
+      cancelEditSponsor();
+      await loadEventData(false);
+    } catch (err) {
+      const msg = extractSponsorError(err);
+      setSponsorMessage({ type: "error", text: msg });
+    } finally {
+      setSponsorSaving(false);
+    }
+  };
+
+  const deleteSponsor = async (s) => {
+    if (!confirm(`Remove sponsor "${s.name}"?`)) return;
+    setSponsorSaving(true);
+    setSponsorMessage({ type: "", text: "" });
+    try {
+      await axios.delete(`/sponsors/${s.id}/`);
+      setSponsorMessage({ type: "success", text: "Sponsor removed." });
+      await loadEventData(false);
+    } catch (err) {
+      const msg = extractSponsorError(err).replace("save", "remove");
+      setSponsorMessage({ type: "error", text: msg });
+    } finally {
+      setSponsorSaving(false);
     }
   };
 
@@ -545,7 +664,12 @@ export default function EventDetailPage() {
             )}
             {Array.isArray(event.sponsors) && event.sponsors.length > 0 && (
               <div className="description-card">
-                <h2 className="section-title">Sponsors</h2>
+                <div className="sponsor-head">
+                  <h2 className="section-title">Sponsors</h2>
+                  <Link href={`/events/${id}/sponsors`} className="sponsor-cta">
+                    View all sponsors â†’
+                  </Link>
+                </div>
                 <div className="sponsor-grid">
                   {event.sponsors.map((s) => (
                     <a key={s.id} href={s.website || "#"} target="_blank" rel="noreferrer" className="sponsor-card">
@@ -555,9 +679,106 @@ export default function EventDetailPage() {
                         <div className="sponsor-fallback">{s.name?.charAt(0)?.toUpperCase()}</div>
                       )}
                       <div className="sponsor-name">{s.name}</div>
+                      {s.tier && <div className="sponsor-tier">{s.tier}</div>}
                       {s.challenge_desc && <div className="sponsor-desc">{s.challenge_desc}</div>}
                     </a>
                   ))}
+                </div>
+              </div>
+            )}
+            {canManageSponsors && (
+              <div className="description-card" id="sponsor-manage">
+                <div className="sponsor-manage-head">
+                  <h2 className="section-title">Manage Sponsors</h2>
+                  {Array.isArray(event.sponsors) && event.sponsors.length > 0 && (
+                    <Link href={`/events/${id}/sponsors`} className="sponsor-cta">
+                      Preview Sponsors Page â†’
+                    </Link>
+                  )}
+                </div>
+
+                {sponsorMessage.text && (
+                  <div className={`sponsor-msg ${sponsorMessage.type}`}>
+                    {sponsorMessage.text}
+                  </div>
+                )}
+
+                <form onSubmit={saveSponsor} className="sponsor-form">
+                  <div className="sponsor-row">
+                    <input
+                      name="name"
+                      value={sponsorForm.name}
+                      onChange={handleSponsorChange}
+                      placeholder="Sponsor name *"
+                      className="sponsor-input"
+                    />
+                    <input
+                      name="tier"
+                      value={sponsorForm.tier}
+                      onChange={handleSponsorChange}
+                      placeholder="Tier (e.g., Gold)"
+                      className="sponsor-input"
+                    />
+                  </div>
+                  <div className="sponsor-row">
+                    <input
+                      name="logo_url"
+                      value={sponsorForm.logo_url}
+                      onChange={handleSponsorChange}
+                      placeholder="Logo URL"
+                      className="sponsor-input"
+                    />
+                    <input
+                      name="website"
+                      value={sponsorForm.website}
+                      onChange={handleSponsorChange}
+                      placeholder="Website"
+                      className="sponsor-input"
+                    />
+                  </div>
+                  <textarea
+                    name="challenge_desc"
+                    value={sponsorForm.challenge_desc}
+                    onChange={handleSponsorChange}
+                    placeholder="Description or sponsor challenge (optional)"
+                    className="sponsor-input sponsor-textarea"
+                    rows="3"
+                  />
+                  <div className="sponsor-actions">
+                    <button type="submit" className="sponsor-btn" disabled={sponsorSaving}>
+                      {sponsorSaving ? "Saving..." : editingSponsorId ? "Update Sponsor" : "Add Sponsor"}
+                    </button>
+                    {editingSponsorId && (
+                      <button type="button" className="sponsor-btn ghost" onClick={cancelEditSponsor}>
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </form>
+
+                <div className="sponsor-manage-list">
+                  {(event.sponsors || []).length === 0 ? (
+                    <div className="empty-state small">
+                      <p>No sponsors yet. Add the first one above.</p>
+                    </div>
+                  ) : (
+                    event.sponsors.map((s) => (
+                      <div key={s.id} className="sponsor-manage-row">
+                        <div className="sponsor-manage-info">
+                          <span className="sponsor-manage-name">{s.name}</span>
+                          {s.tier && <span className="sponsor-manage-tier">{s.tier}</span>}
+                        </div>
+                        <div className="sponsor-manage-actions">
+                          <button type="button" className="sponsor-manage-btn" onClick={() => startEditSponsor(s)}>
+                            Edit
+                          </button>
+                          <button type="button" className="sponsor-manage-btn danger" onClick={() => deleteSponsor(s)}>
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             )}
@@ -1123,11 +1344,25 @@ export default function EventDetailPage() {
           color: #888;
         }
 
-        .sponsor-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 12px;
-        }
+          .sponsor-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+          }
+          .sponsor-head{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:16px;
+            margin-bottom:12px;
+          }
+          .sponsor-cta{
+            font-size:12px;
+            font-weight:600;
+            color:#6EE7B7;
+            text-decoration:none;
+          }
+          .sponsor-cta:hover{ text-decoration:underline; }
 
         .sponsor-card {
           display: flex;
@@ -1171,16 +1406,98 @@ export default function EventDetailPage() {
           color: #6EE7B7;
         }
 
-        .sponsor-name {
-          font-size: 13px;
-          font-weight: 600;
-          color: #f0f0f3;
-        }
+          .sponsor-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #f0f0f3;
+          }
+          .sponsor-tier{
+            font-size:10px;
+            font-weight:700;
+            color:#fbbf24;
+            text-transform:uppercase;
+            letter-spacing:.6px;
+          }
 
-        .sponsor-desc {
-          font-size: 11px;
-          color: #888;
-        }
+          .sponsor-desc {
+            font-size: 11px;
+            color: #888;
+          }
+
+          .sponsor-manage-head{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:16px;
+            margin-bottom:12px;
+          }
+          .sponsor-form{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+          .sponsor-row{display:flex;gap:10px;flex-wrap:wrap}
+          .sponsor-input{
+            flex:1;
+            min-width:180px;
+            background:#0f0f12;
+            border:1px solid #1e1e24;
+            border-radius:10px;
+            padding:8px 12px;
+            color:#f0f0f3;
+            font-size:13px;
+            font-family:'DM Sans',sans-serif;
+            outline:none;
+          }
+          .sponsor-input:focus{border-color:rgba(110,231,183,0.35)}
+          .sponsor-textarea{min-height:80px;resize:vertical}
+          .sponsor-actions{display:flex;gap:8px;align-items:center}
+          .sponsor-btn{
+            padding:8px 14px;
+            background:rgba(110,231,183,0.12);
+            border:1px solid rgba(110,231,183,0.3);
+            color:#6EE7B7;
+            border-radius:999px;
+            font-size:12px;
+            font-weight:600;
+            cursor:pointer;
+            transition:all .2s ease;
+          }
+          .sponsor-btn:hover:not(:disabled){background:rgba(110,231,183,0.2);border-color:rgba(110,231,183,0.5)}
+          .sponsor-btn:disabled{opacity:.6;cursor:not-allowed}
+          .sponsor-btn.ghost{background:transparent;border:1px solid #26262e;color:#b0b0ba}
+          .sponsor-msg{
+            margin-bottom:10px;
+            font-size:12px;
+            padding:8px 10px;
+            border-radius:8px;
+            background:#111114;
+            border:1px solid #1e1e24;
+          }
+          .sponsor-msg.success{color:#6EE7B7;border-color:rgba(110,231,183,0.3)}
+          .sponsor-msg.error{color:#f87171;border-color:rgba(248,113,113,0.3)}
+          .sponsor-manage-list{display:flex;flex-direction:column;gap:8px}
+          .sponsor-manage-row{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:10px;
+            padding:10px 12px;
+            border:1px solid #1e1e24;
+            border-radius:12px;
+            background:#111114;
+          }
+          .sponsor-manage-info{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+          .sponsor-manage-name{font-size:13px;font-weight:600}
+          .sponsor-manage-tier{font-size:10px;font-weight:700;color:#fbbf24;text-transform:uppercase;letter-spacing:.6px}
+          .sponsor-manage-actions{display:flex;gap:8px}
+          .sponsor-manage-btn{
+            padding:6px 10px;
+            border-radius:999px;
+            border:1px solid #26262e;
+            background:transparent;
+            color:#b0b0ba;
+            font-size:11px;
+            cursor:pointer;
+          }
+          .sponsor-manage-btn:hover{color:#6EE7B7;border-color:rgba(110,231,183,0.35)}
+          .sponsor-manage-btn.danger{color:#f87171;border-color:rgba(248,113,113,0.35)}
 
         /* Teams Tab */
         .teams-header {

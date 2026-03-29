@@ -249,6 +249,7 @@ class EventResource(models.Model):
 class EventSponsor(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="sponsors")
     name = models.CharField(max_length=255)
+    tier = models.CharField(max_length=50, blank=True, null=True)
     logo_url = models.URLField(blank=True, null=True)
     website = models.URLField(blank=True, null=True)
     challenge_desc = models.TextField(blank=True, null=True)

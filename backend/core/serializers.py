@@ -501,7 +501,7 @@ class EventResourceSerializer(serializers.ModelSerializer):
 class EventSponsorSerializer(serializers.ModelSerializer):
     class Meta:
         model = EventSponsor
-        fields = ['id', 'event', 'name', 'logo_url', 'website', 'challenge_desc', 'created_at']
+        fields = ['id', 'event', 'name', 'tier', 'logo_url', 'website', 'challenge_desc', 'created_at']
 
 class AwardCategorySerializer(serializers.ModelSerializer):
     sponsor_details = EventSponsorSerializer(source='sponsor', read_only=True)

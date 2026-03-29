@@ -63,6 +63,8 @@ export default function DashboardPage() {
   const [notifMarking, setNotifMarking] = useState(false);
   const [galleryPreview, setGalleryPreview] = useState([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
+  const [sponsorPreview, setSponsorPreview] = useState([]);
+  const [sponsorLoading, setSponsorLoading] = useState(false);
 
   const isOrganizer = user?.is_organizer || user?.is_staff;
   const isJudge     = user?.is_judge;
@@ -130,6 +132,37 @@ export default function DashboardPage() {
     };
     loadGalleryPreview();
   }, [authLoading, user?.id]);
+
+  useEffect(() => {
+    if (authLoading || !user) return;
+    const loadSponsors = async () => {
+      setSponsorLoading(true);
+      try {
+        const endpoint = isOrganizer ? "/events/?page_size=100" : "/events/live/";
+        const res = await api.get(endpoint);
+        const list = res.data?.results || res.data || [];
+        const relevant = isOrganizer ? list.filter((e) => e.organizer === user.id) : list;
+        const flat = [];
+        (relevant || []).forEach((ev) => {
+          (ev.sponsors || []).forEach((s) => {
+            flat.push({
+              id: s.id,
+              name: s.name,
+              logo_url: s.logo_url,
+              event_id: ev.id,
+              event_name: ev.name,
+            });
+          });
+        });
+        setSponsorPreview(flat.slice(0, 10));
+      } catch {
+        setSponsorPreview([]);
+      } finally {
+        setSponsorLoading(false);
+      }
+    };
+    loadSponsors();
+  }, [authLoading, user?.id, isOrganizer]);
 
   const stats          = data?.stats          || {};
   const series         = data?.series         || {};
@@ -511,6 +544,44 @@ export default function DashboardPage() {
           </div>
         </section>
 
+        {(sponsorLoading || sponsorPreview.length > 0) && (
+          <section className="dp-sponsors-section">
+            <div className="dp-section-head">
+              <div><div className="dp-sh-label">Sponsors</div><div className="dp-sh-title">Partner Spotlight</div></div>
+              <Link href="/events" className="dp-sh-link">All events â†’</Link>
+            </div>
+            {sponsorLoading ? (
+              <div className="dp-empty">Loading sponsors...</div>
+            ) : (
+              <div className="dp-sponsor-strip">
+                {sponsorPreview.map((s) => (
+                  <button
+                    key={`${s.event_id}-${s.id}`}
+                    className="dp-sponsor-card"
+                    onClick={() =>
+                      router.push(
+                        isOrganizer
+                          ? `/events/${s.event_id}#sponsor-manage`
+                          : `/events/${s.event_id}/sponsors`
+                      )
+                    }
+                  >
+                    <div className="dp-sponsor-logo">
+                      {s.logo_url ? (
+                        <img src={s.logo_url} alt={s.name} />
+                      ) : (
+                        <span>{s.name?.[0]?.toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div className="dp-sponsor-name">{s.name}</div>
+                    <div className="dp-sponsor-event">{s.event_name}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
         {/* —— OPERATIONS —— */}
           {isOrganizer && (
             <section className="dp-ops-section">
@@ -836,6 +907,42 @@ export default function DashboardPage() {
         .dp-gcard-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px;background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.25);flex-shrink:0}
         .dp-gcard-meta{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#5c5c6e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .dp-gcard-score{font-size:12px;color:#6EE7B7;font-weight:600}
+
+        /* Sponsors Preview */
+        .dp-sponsors-section{margin-bottom:20px}
+        .dp-sponsor-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+        .dp-sponsor-card{
+          background:#111114;
+          border:1px solid #1e1e24;
+          border-radius:14px;
+          padding:12px 14px;
+          display:flex;
+          flex-direction:column;
+          gap:6px;
+          text-align:left;
+          color:inherit;
+          cursor:pointer;
+          transition:all .15s ease;
+        }
+        .dp-sponsor-card:hover{border-color:#26262e;transform:translateY(-2px)}
+        .dp-sponsor-logo{
+          width:48px;
+          height:48px;
+          border-radius:10px;
+          background:#0c0c0f;
+          border:1px solid #1e1e24;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          overflow:hidden;
+          font-family:'Syne',sans-serif;
+          font-size:16px;
+          font-weight:700;
+          color:#6EE7B7;
+        }
+        .dp-sponsor-logo img{width:100%;height:100%;object-fit:contain}
+        .dp-sponsor-name{font-size:12.5px;font-weight:600;color:#f0f0f3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .dp-sponsor-event{font-size:10.5px;color:#5c5c6e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
         /* Health Section */
         .dp-health-section{margin-bottom:0}

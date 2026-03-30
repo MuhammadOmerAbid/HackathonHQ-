@@ -136,6 +136,26 @@ export default function ActivityCard({ activities: propActivities, loading: prop
         <line x1="8" y1="12" x2="16" y2="12"></line>
       </svg>
     ),
+    moderation_warn: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+    ),
+    moderation_suspend: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="9" y1="9" x2="15" y2="15"></line>
+        <line x1="15" y1="9" x2="9" y2="15"></line>
+      </svg>
+    ),
+    moderation_ban: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+    ),
   };
   return icons[type] || icons.submission;
 };
@@ -156,6 +176,9 @@ const getActivityColor = (type) => {
     became_judge: '#a78bfa',      // Purple
     became_organizer: '#f472b6',   // Pink
     role_removed: '#f87171',       // Red
+    moderation_warn: '#fbbf24',
+    moderation_suspend: '#60a5fa',
+    moderation_ban: '#f87171',
   };
   return colors[type] || '#888';
 };

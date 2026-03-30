@@ -69,6 +69,62 @@ def _notify_users(users, n_type, title, body="", link=""):
     except Exception:
         pass
 
+def _as_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value).strip().lower()
+    if text in ("1", "true", "yes", "y", "on"):
+        return True
+    if text in ("0", "false", "no", "n", "off", ""):
+        return False
+    return default
+
+def _notify_moderation(target_user, action_type, reason=None, message=None, duration_days=None):
+    title_map = {
+        "warn": "Account Warning",
+        "suspend": "Account Suspended",
+        "ban": "Account Banned",
+    }
+    default_body = {
+        "warn": "You have received a warning for violating the rules.",
+        "suspend": "Your account has been suspended.",
+        "ban": "Your account has been banned.",
+    }
+    if action_type in ("suspend", "ban") and duration_days:
+        try:
+            days = int(duration_days)
+            if days > 0:
+                if action_type == "suspend":
+                    default_body[action_type] = f"Your account has been suspended for {days} day(s)."
+                elif action_type == "ban":
+                    default_body[action_type] = f"Your account has been banned for {days} day(s)."
+        except Exception:
+            pass
+    reason_text = str(reason).strip() if reason is not None else ""
+    message_text = str(message).strip() if message is not None else ""
+    if message_text and reason_text:
+        body = f"{message_text}\nReason: {reason_text}"
+    elif message_text:
+        body = message_text
+    elif reason_text:
+        body = f"Reason: {reason_text}"
+    else:
+        body = default_body.get(action_type, "")
+    try:
+        Notification.objects.create(
+            user=target_user,
+            type=f"moderation_{action_type}",
+            title=title_map.get(action_type, "Account Notice"),
+            body=body,
+            link=""
+        )
+    except Exception:
+        pass
+
 def _get_event_participants(event):
     try:
         team_ids = TeamEvent.objects.filter(
@@ -313,8 +369,14 @@ class UserViewSet(viewsets.ModelViewSet):
     def warn(self, request, pk=None):
         """Warn a user. Organizers/admins only."""
         target_user = self.get_object()
+        if (is_organizer(target_user) or is_admin(target_user)) and not is_admin(request.user):
+            return Response({"error": "Only admins can moderate organizers or admins."}, status=status.HTTP_403_FORBIDDEN)
         reason = request.data.get('reason')
         message = request.data.get('message')
+        notify_user = _as_bool(request.data.get('notify_user'), default=False)
+
+        if not (reason and str(reason).strip()):
+            return Response({"error": "reason is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         UserWarning.objects.create(
             user=target_user,
@@ -330,13 +392,30 @@ class UserViewSet(viewsets.ModelViewSet):
             reason=reason
         )
 
+        try:
+            from .utils.activity_helpers import create_moderation_activity
+            create_moderation_activity(target_user, "warn", reason=reason, message=message, made_by=request.user)
+        except Exception:
+            pass
+
+        if notify_user:
+            _notify_moderation(target_user, "warn", reason=reason, message=message)
+
         return Response({"success": f"{target_user.username} has been warned."})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def suspend(self, request, pk=None):
         """Suspend a user for a duration (days). Organizers/admins only."""
         target_user = self.get_object()
+        if (is_organizer(target_user) or is_admin(target_user)) and not is_admin(request.user):
+            return Response({"error": "Only admins can moderate organizers or admins."}, status=status.HTTP_403_FORBIDDEN)
+        reason = request.data.get('reason')
+        message = request.data.get('message')
+        notify_user = _as_bool(request.data.get('notify_user'), default=False)
         duration_days = request.data.get('duration_days') or request.data.get('duration')
+
+        if not (reason and str(reason).strip()):
+            return Response({"error": "reason is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             duration_days = int(duration_days)
@@ -358,9 +437,26 @@ class UserViewSet(viewsets.ModelViewSet):
             moderator=request.user,
             target_user=target_user,
             action_type=ModerationAction.ACTION_SUSPEND,
+            reason=reason,
             duration=timedelta(days=duration_days),
             expires_at=expires_at
         )
+
+        try:
+            from .utils.activity_helpers import create_moderation_activity
+            create_moderation_activity(
+                target_user,
+                "suspend",
+                reason=reason,
+                message=message,
+                made_by=request.user,
+                duration_days=duration_days
+            )
+        except Exception:
+            pass
+
+        if notify_user:
+            _notify_moderation(target_user, "suspend", reason=reason, message=message, duration_days=duration_days)
 
         return Response({"success": f"{target_user.username} has been suspended.", "suspended_until": expires_at})
 
@@ -395,7 +491,12 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response({"error": "Only admins can ban organizers or admins."}, status=status.HTTP_403_FORBIDDEN)
 
         reason = request.data.get('reason')
+        message = request.data.get('message')
+        notify_user = _as_bool(request.data.get('notify_user'), default=False)
         duration_days = request.data.get('duration_days') or 30
+
+        if not (reason and str(reason).strip()):
+            return Response({"error": "reason is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             duration_days = int(duration_days)
@@ -422,6 +523,22 @@ class UserViewSet(viewsets.ModelViewSet):
             duration=timedelta(days=duration_days),
             expires_at=expires_at
         )
+
+        try:
+            from .utils.activity_helpers import create_moderation_activity
+            create_moderation_activity(
+                target_user,
+                "ban",
+                reason=reason,
+                message=message,
+                made_by=request.user,
+                duration_days=duration_days
+            )
+        except Exception:
+            pass
+
+        if notify_user:
+            _notify_moderation(target_user, "ban", reason=reason, message=message, duration_days=duration_days)
 
         return Response({"success": f"{target_user.username} has been banned.", "banned_until": expires_at})
     

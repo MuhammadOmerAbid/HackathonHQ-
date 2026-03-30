@@ -670,7 +670,7 @@ export default function DMPanel({
                   {sending ? (
                     <span className="dm-spinner dm-spinner-small" />
                   ) : (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg className="dm-send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <line x1="22" y1="2" x2="11" y2="13" />
                       <polygon points="22 2 15 22 11 13 2 9 22 2" />
                     </svg>
@@ -1003,6 +1003,15 @@ export default function DMPanel({
         }
         .dm-send-btn:disabled {
           opacity: 0.4;
+        }
+        .dm-send-icon {
+          width: 16px;
+          height: 16px;
+          stroke: currentColor;
+          fill: none;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+          transform: translateX(1px);
         }
 
         /* Loading States */

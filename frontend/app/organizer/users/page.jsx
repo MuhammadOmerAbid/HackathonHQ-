@@ -6,6 +6,7 @@ import Link from "next/link";
 import axios from "@/utils/axios";
 import { useAuth } from "@/context/AuthContext";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import ModerationModal from "@/components/users/ModerationModal";
 
 export default function OrganizerUsersPage() {
   const router = useRouter();
@@ -15,6 +16,11 @@ export default function OrganizerUsersPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [actionLoading, setActionLoading] = useState({});
   const [message, setMessage] = useState({ type: "", text: "" });
+  const [moderationOpen, setModerationOpen] = useState(false);
+  const [moderationTarget, setModerationTarget] = useState(null);
+  const [moderationAction, setModerationAction] = useState("warn");
+  const [moderationError, setModerationError] = useState("");
+  const [moderationSaving, setModerationSaving] = useState(false);
 
   useEffect(() => {
     // Redirect if not organizer
@@ -80,6 +86,68 @@ export default function OrganizerUsersPage() {
     u.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const isAdmin = user?.is_staff || user?.is_superuser;
+
+  const targetIsAdminOrOrganizer = (u) => {
+    if (!u) return false;
+    return !!(u.is_superuser || u.is_staff || u.is_organizer || u.profile?.is_organizer);
+  };
+
+  const canModerateTarget = (u) => {
+    if (!user || !u) return false;
+    if (u.id === user.id) return false;
+    if (isAdmin) return true;
+    if (isOrganizer) return !targetIsAdminOrOrganizer(u);
+    return false;
+  };
+
+  const allowedActionsFor = (u) => {
+    if (!canModerateTarget(u)) return [];
+    return isAdmin ? ["warn", "suspend", "ban"] : ["warn", "suspend"];
+  };
+
+  const openModeration = (u, actionType) => {
+    setModerationTarget(u);
+    setModerationAction(actionType || "warn");
+    setModerationError("");
+    setModerationOpen(true);
+  };
+
+  const closeModeration = () => {
+    if (moderationSaving) return;
+    setModerationOpen(false);
+    setModerationTarget(null);
+    setModerationError("");
+  };
+
+  const handleModerationSubmit = async ({ action, reason, message: note, durationDays, notifyUser }) => {
+    if (!moderationTarget) return;
+    setModerationSaving(true);
+    setModerationError("");
+    try {
+      const payload = {
+        reason,
+        message: note || "",
+        notify_user: !!notifyUser,
+      };
+      if (action === "suspend") {
+        payload.duration_days = durationDays;
+      }
+      if (action === "ban" && durationDays) {
+        payload.duration_days = durationDays;
+      }
+      const res = await axios.post(`/users/${moderationTarget.id}/${action}/`, payload);
+      setMessage({ type: "success", text: res.data?.success || `User ${action}ed successfully.` });
+      setModerationOpen(false);
+      setModerationTarget(null);
+      fetchUsers();
+    } catch (err) {
+      setModerationError(err.response?.data?.error || "Failed to moderate user.");
+    } finally {
+      setModerationSaving(false);
+    }
+  };
 
   if (loading) {
     return <LoadingSpinner message="Loading users..." />;
@@ -167,20 +235,23 @@ export default function OrganizerUsersPage() {
                 <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>Teams</th>
                 <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>Submissions</th>
                 <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>Actions</th>
+                <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>Moderation</th>
               </tr>
             </thead>
             <tbody>
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={{ padding: '2rem', textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
+                  <td colSpan="7" style={{ padding: '2rem', textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
                     No users found
                   </td>
                 </tr>
               ) : (
                 filteredUsers.map((u) => {
                   const isUserJudge = u.profile?.is_judge === true;
-                  const isUserOrganizer = u.profile?.is_organizer === true || u.is_staff || u.is_superuser;
+                  const isUserOrganizer = u.profile?.is_organizer === true || u.is_organizer || u.is_staff || u.is_superuser;
                   const isLoading = actionLoading[u.id];
+                  const canModerate = canModerateTarget(u);
+                  const allowedActions = allowedActionsFor(u);
                   
                   return (
                     <tr key={u.id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
@@ -212,12 +283,12 @@ export default function OrganizerUsersPage() {
                           <span style={{ color: 'white', fontWeight: 500 }}>{u.username}</span>
                         </div>
                       </td>
-                      <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.7)' }}>{u.email || '—'}</td>
+                      <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.7)' }}>{u.email || '-'}</td>
                       <td style={{ padding: '1rem' }}>
                         {u.is_superuser ? (
                           <span style={{
                             padding: '0.2rem 0.6rem',
-                            borderRadius: '4px',
+                            borderRadius: '999px',
                             fontSize: '0.7rem',
                             fontWeight: 600,
                             background: 'rgba(239,68,68,0.15)',
@@ -227,7 +298,7 @@ export default function OrganizerUsersPage() {
                         ) : isUserOrganizer ? (
                           <span style={{
                             padding: '0.2rem 0.6rem',
-                            borderRadius: '4px',
+                            borderRadius: '999px',
                             fontSize: '0.7rem',
                             fontWeight: 600,
                             background: 'rgba(110,231,183,0.15)',
@@ -237,7 +308,7 @@ export default function OrganizerUsersPage() {
                         ) : isUserJudge ? (
                           <span style={{
                             padding: '0.2rem 0.6rem',
-                            borderRadius: '4px',
+                            borderRadius: '999px',
                             fontSize: '0.7rem',
                             fontWeight: 600,
                             background: 'rgba(251,191,36,0.15)',
@@ -247,7 +318,7 @@ export default function OrganizerUsersPage() {
                         ) : (
                           <span style={{
                             padding: '0.2rem 0.6rem',
-                            borderRadius: '4px',
+                            borderRadius: '999px',
                             fontSize: '0.7rem',
                             fontWeight: 600,
                             background: 'rgba(255,255,255,0.05)',
@@ -273,7 +344,7 @@ export default function OrganizerUsersPage() {
                               padding: '0.4rem 0.8rem',
                               background: 'rgba(239,68,68,0.15)',
                               border: '1px solid rgba(239,68,68,0.3)',
-                              borderRadius: '4px',
+                              borderRadius: '999px',
                               color: '#f87171',
                               fontSize: '0.75rem',
                               fontWeight: 600,
@@ -293,7 +364,7 @@ export default function OrganizerUsersPage() {
                               padding: '0.4rem 0.8rem',
                               background: 'rgba(110,231,183,0.15)',
                               border: '1px solid rgba(110,231,183,0.3)',
-                              borderRadius: '4px',
+                              borderRadius: '999px',
                               color: '#6EE7B7',
                               fontSize: '0.75rem',
                               fontWeight: 600,
@@ -307,6 +378,41 @@ export default function OrganizerUsersPage() {
                           </button>
                         )}
                       </td>
+                      <td style={{ padding: '1rem' }}>
+                        {canModerate ? (
+                          <div className="mod-actions">
+                            {allowedActions.includes("warn") && (
+                              <button
+                                className="mod-btn mod-btn-warn"
+                                onClick={() => openModeration(u, "warn")}
+                                disabled={moderationSaving}
+                              >
+                                Warn
+                              </button>
+                            )}
+                            {allowedActions.includes("suspend") && (
+                              <button
+                                className="mod-btn mod-btn-suspend"
+                                onClick={() => openModeration(u, "suspend")}
+                                disabled={moderationSaving}
+                              >
+                                Suspend
+                              </button>
+                            )}
+                            {allowedActions.includes("ban") && (
+                              <button
+                                className="mod-btn mod-btn-ban"
+                                onClick={() => openModeration(u, "ban")}
+                                disabled={moderationSaving}
+                              >
+                                Ban
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.85rem' }}>-</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })
@@ -314,7 +420,62 @@ export default function OrganizerUsersPage() {
             </tbody>
           </table>
         </div>
+        <ModerationModal
+          isOpen={moderationOpen}
+          onClose={closeModeration}
+          onSubmit={handleModerationSubmit}
+          targetUser={moderationTarget}
+          allowedActions={moderationTarget ? allowedActionsFor(moderationTarget) : []}
+          initialAction={moderationAction}
+          loading={moderationSaving}
+          error={moderationError}
+        />
       </div>
+
+      <style jsx>{`
+        .mod-actions {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+        .mod-btn {
+          padding: 0.35rem 0.65rem;
+          border-radius: 999px;
+          font-size: 0.72rem;
+          font-weight: 600;
+          border: 1px solid transparent;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .mod-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .mod-btn-warn {
+          background: rgba(251,191,36,0.15);
+          border-color: rgba(251,191,36,0.3);
+          color: #fbbf24;
+        }
+        .mod-btn-warn:hover:not(:disabled) {
+          background: rgba(251,191,36,0.25);
+        }
+        .mod-btn-suspend {
+          background: rgba(96,165,250,0.15);
+          border-color: rgba(96,165,250,0.3);
+          color: #60a5fa;
+        }
+        .mod-btn-suspend:hover:not(:disabled) {
+          background: rgba(96,165,250,0.25);
+        }
+        .mod-btn-ban {
+          background: rgba(248,113,113,0.15);
+          border-color: rgba(248,113,113,0.3);
+          color: #f87171;
+        }
+        .mod-btn-ban:hover:not(:disabled) {
+          background: rgba(248,113,113,0.25);
+        }
+      `}</style>
     </div>
   );
 }

@@ -88,6 +88,52 @@ def create_role_removed_activity(user, role, removed_by=None):
         }
     )
 
+def create_moderation_activity(user, action_type, reason=None, message=None, made_by=None, duration_days=None):
+    """Create activity when a user is moderated (warn/suspend/ban)."""
+    title_map = {
+        'warn': 'Account Warning',
+        'suspend': 'Account Suspended',
+        'ban': 'Account Banned',
+    }
+    default_desc = {
+        'warn': 'You received a warning for violating the rules.',
+        'suspend': 'Your account has been suspended.',
+        'ban': 'Your account has been banned.',
+    }
+    if action_type in ('suspend', 'ban') and duration_days:
+        try:
+            days = int(duration_days)
+            if days > 0:
+                if action_type == 'suspend':
+                    default_desc[action_type] = f'Your account has been suspended for {days} day(s).'
+                elif action_type == 'ban':
+                    default_desc[action_type] = f'Your account has been banned for {days} day(s).'
+        except Exception:
+            pass
+    reason_text = str(reason).strip() if reason is not None else ''
+    message_text = str(message).strip() if message is not None else ''
+    if message_text and reason_text:
+        description = f"{message_text}\nReason: {reason_text}"
+    elif message_text:
+        description = message_text
+    elif reason_text:
+        description = f"Reason: {reason_text}"
+    else:
+        description = default_desc.get(action_type, '')
+    Activity.objects.create(
+        user=user,
+        type=f'moderation_{action_type}',
+        title=title_map.get(action_type, 'Account Notice'),
+        description=description,
+        metadata={
+            'moderated_by': made_by.username if made_by else None,
+            'moderated_by_id': made_by.id if made_by else None,
+            'action': action_type,
+            'duration_days': duration_days
+        },
+        is_important=True
+    )
+
 def create_submission_activity(user, submission):
     """Create activity when user submits a project"""
     Activity.objects.create(

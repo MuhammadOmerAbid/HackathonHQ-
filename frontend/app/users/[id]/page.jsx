@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import axios from "../../../utils/axios";
 import PostCard from "../../../components/community/PostCard";
+import ModerationModal from "@/components/users/ModerationModal";
 
 export default function UserProfilePage() {
   const { id } = useParams();
@@ -16,33 +17,39 @@ export default function UserProfilePage() {
   const [error, setError] = useState("");
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [moderationOpen, setModerationOpen] = useState(false);
+  const [moderationAction, setModerationAction] = useState("warn");
+  const [moderationError, setModerationError] = useState("");
+  const [moderationSaving, setModerationSaving] = useState(false);
+  const [moderationMessage, setModerationMessage] = useState({ type: "", text: "" });
+
+  const loadProfile = async () => {
+    setLoading(true);
+    setPostsLoading(true);
+    setError("");
+    try {
+      const [meRes, userRes, postsRes] = await Promise.all([
+        axios.get("/users/me/").catch(() => null),
+        axios.get(`/users/${id}/`),
+        axios.get(`/posts/?author=${id}&ordering=-created_at&page_size=10`)
+      ]);
+      setCurrentUser(meRes?.data || null);
+      setProfileUser(userRes.data);
+      setIsFollowing(!!userRes.data?.is_following);
+      const list = postsRes.data?.results || postsRes.data || [];
+      setPosts(list);
+    } catch (err) {
+      console.error("Error loading user profile:", err);
+      setError("User not found.");
+    } finally {
+      setLoading(false);
+      setPostsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
-    const fetchProfile = async () => {
-      setLoading(true);
-      setPostsLoading(true);
-      setError("");
-      try {
-        const [meRes, userRes, postsRes] = await Promise.all([
-          axios.get("/users/me/").catch(() => null),
-          axios.get(`/users/${id}/`),
-          axios.get(`/posts/?author=${id}&ordering=-created_at&page_size=10`)
-        ]);
-        setCurrentUser(meRes?.data || null);
-        setProfileUser(userRes.data);
-        setIsFollowing(!!userRes.data?.is_following);
-        const list = postsRes.data?.results || postsRes.data || [];
-        setPosts(list);
-      } catch (err) {
-        console.error("Error loading user profile:", err);
-        setError("User not found.");
-      } finally {
-        setLoading(false);
-        setPostsLoading(false);
-      }
-    };
-    fetchProfile();
+    loadProfile();
   }, [id]);
 
   const handleFollow = async () => {
@@ -121,6 +128,59 @@ export default function UserProfilePage() {
     }
   };
 
+  const isCurrentAdmin = currentUser?.is_superuser || currentUser?.is_staff;
+  const isCurrentOrganizer = currentUser?.is_organizer || currentUser?.profile?.is_organizer;
+  const targetIsAdmin = profileUser?.is_superuser || profileUser?.is_staff;
+  const targetIsOrganizer = profileUser?.is_organizer || profileUser?.profile?.is_organizer;
+  const canModerateTarget = !!(
+    currentUser &&
+    profileUser &&
+    currentUser.id !== profileUser.id &&
+    (isCurrentAdmin || (isCurrentOrganizer && !(targetIsAdmin || targetIsOrganizer)))
+  );
+  const allowedModerationActions = isCurrentAdmin ? ["warn", "suspend", "ban"] : ["warn", "suspend"];
+
+  const openModeration = (actionType = "warn") => {
+    setModerationAction(actionType);
+    setModerationError("");
+    setModerationOpen(true);
+  };
+
+  const closeModeration = () => {
+    if (moderationSaving) return;
+    setModerationOpen(false);
+    setModerationError("");
+  };
+
+  const handleModerationSubmit = async ({ action, reason, message: note, durationDays, notifyUser }) => {
+    if (!profileUser) return;
+    setModerationSaving(true);
+    setModerationError("");
+    setModerationMessage({ type: "", text: "" });
+    try {
+      const payload = {
+        reason,
+        message: note || "",
+        notify_user: !!notifyUser,
+      };
+      if (action === "suspend") {
+        payload.duration_days = durationDays;
+      }
+      if (action === "ban" && durationDays) {
+        payload.duration_days = durationDays;
+      }
+      const res = await axios.post(`/users/${profileUser.id}/${action}/`, payload);
+      setModerationMessage({ type: "success", text: res.data?.success || `User ${action}ed successfully.` });
+      setModerationOpen(false);
+      await loadProfile();
+    } catch (err) {
+      setModerationError(err.response?.data?.error || "Failed to moderate user.");
+      setModerationMessage({ type: "error", text: err.response?.data?.error || "Failed to moderate user." });
+    } finally {
+      setModerationSaving(false);
+    }
+  };
+
   if (error) {
     return (
       <div className="profile-page">
@@ -190,9 +250,24 @@ export default function UserProfilePage() {
                 {followLoading ? <span className="btn-spinner" /> : isFollowing ? "Following" : "Follow"}
               </button>
             )}
+            {canModerateTarget && (
+              <button
+                className="moderate-btn"
+                onClick={() => openModeration("warn")}
+                disabled={moderationSaving}
+              >
+                Moderate User
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {moderationMessage.text && (
+        <div className={`moderation-banner ${moderationMessage.type}`}>
+          {moderationMessage.text}
+        </div>
+      )}
 
       <div className="profile-stats">
         <div className="stat">
@@ -208,6 +283,17 @@ export default function UserProfilePage() {
           <span className="stat-label">Following</span>
         </div>
       </div>
+
+      <ModerationModal
+        isOpen={moderationOpen}
+        onClose={closeModeration}
+        onSubmit={handleModerationSubmit}
+        targetUser={profileUser}
+        allowedActions={allowedModerationActions}
+        initialAction={moderationAction}
+        loading={moderationSaving}
+        error={moderationError}
+      />
 
       <div className="profile-posts">
         {postsLoading || loading ? (
@@ -383,6 +469,7 @@ export default function UserProfilePage() {
         .profile-actions {
           display: flex;
           align-items: center;
+          gap: 10px;
         }
 
         .follow-btn {
@@ -411,6 +498,46 @@ export default function UserProfilePage() {
         .follow-btn:disabled {
           opacity: 0.6;
           cursor: not-allowed;
+        }
+
+        .moderate-btn {
+          padding: 10px 18px;
+          border-radius: 999px;
+          border: 1px solid rgba(251,191,36,0.35);
+          background: rgba(251,191,36,0.12);
+          color: #fbbf24;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .moderate-btn:hover {
+          background: rgba(251,191,36,0.2);
+          border-color: rgba(251,191,36,0.5);
+        }
+        .moderate-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .moderation-banner {
+          max-width: 900px;
+          margin: 16px auto 0;
+          padding: 10px 14px;
+          border-radius: 10px;
+          font-size: 13px;
+          border: 1px solid transparent;
+          background: #111114;
+        }
+        .moderation-banner.success {
+          color: #6EE7B7;
+          border-color: rgba(110,231,183,0.3);
+          background: rgba(110,231,183,0.08);
+        }
+        .moderation-banner.error {
+          color: #f87171;
+          border-color: rgba(248,113,113,0.3);
+          background: rgba(248,113,113,0.08);
         }
 
         .btn-spinner {

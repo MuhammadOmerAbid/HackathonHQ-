@@ -49,6 +49,18 @@ const ago  = v => {
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 };
+const splitNotifReason = (text) => {
+  if (!text) return { main: "", reason: "" };
+  const byNewline = text.indexOf("\nReason:");
+  const byInline = text.indexOf("Reason:");
+  let idx = -1;
+  if (byNewline !== -1) idx = byNewline;
+  else if (byInline !== -1) idx = byInline;
+  if (idx === -1) return { main: text, reason: "" };
+  const main = text.slice(0, idx).trim();
+  const raw = text.slice(idx).replace(/^\n?Reason:\s*/i, "").trim();
+  return { main, reason: raw };
+};
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -446,22 +458,33 @@ export default function DashboardPage() {
                     ) : !notifItems.length ? (
                       <div className="dp-empty">No notifications yet.</div>
                     ) : (
-                      notifItems.map(n => (
-                        <div key={n.id} className={`dp-notif-row${n.is_read ? " dp-notif-read" : ""}`}>
-                          <div className="dp-notif-main">
-                            <div className="dp-notif-title">{n.title || "Notification"}</div>
-                            {n.body && <div className="dp-notif-body">{n.body}</div>}
+                      notifItems.map(n => {
+                        const parts = splitNotifReason(n.body || "");
+                        const showReason = !!parts.reason;
+                        const displayText = parts.main || (!showReason ? (n.body || "") : "Please review the violation details below.");
+                        return (
+                          <div key={n.id} className={`dp-notif-row${n.is_read ? " dp-notif-read" : ""}`}>
+                            <div className="dp-notif-main">
+                              <div className="dp-notif-title">{n.title || "Notification"}</div>
+                              {(n.body || displayText) && <div className="dp-notif-body">{displayText || n.body}</div>}
+                              {showReason && (
+                                <div className="dp-notif-reason">
+                                  <span>Reason</span>
+                                  <div>{parts.reason}</div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="dp-notif-meta">
+                              <span className="dp-notif-time">{ago(n.created_at)}</span>
+                              {n.link && (
+                                <button className="dp-notif-link" onClick={() => router.push(n.link)}>
+                                  Open
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          <div className="dp-notif-meta">
-                            <span className="dp-notif-time">{ago(n.created_at)}</span>
-                            {n.link && (
-                              <button className="dp-notif-link" onClick={() => router.push(n.link)}>
-                                Open
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 )}
@@ -805,14 +828,14 @@ export default function DashboardPage() {
         .dp-right-col{display:flex;flex-direction:column;gap:16px;height:100%}
         
         /* Activity Panel */
-        .dp-panel{background:#111114;border:1px solid #1e1e24;border-radius:16px;overflow:hidden;flex:1}
+        .dp-panel{background:#111114;border:1px solid #1e1e24;border-radius:16px;overflow:hidden;flex:1;display:flex;flex-direction:column;height:420px}
         .dp-tabs{display:flex;border-bottom:1px solid #1e1e24;background:#0c0c0f;padding:0 16px}
         .dp-tab{display:flex;align-items:center;gap:6px;padding:13px 14px;font-size:12.5px;font-weight:600;font-family:'DM Sans',sans-serif;color:#5c5c6e;background:transparent;border:none;border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer;transition:color .15s;white-space:nowrap}
         .dp-tab:hover{color:#f0f0f3}
         .dp-tab-on{color:#6EE7B7;border-bottom-color:#6EE7B7}
         .dp-tab-ct{font-size:10px;font-weight:700;padding:1px 6px;border-radius:100px;background:#17171b;color:#5c5c6e}
         .dp-tab-on .dp-tab-ct{background:rgba(110,231,183,.1);color:#6EE7B7}
-        .dp-list{display:flex;flex-direction:column;max-height:380px;overflow-y:auto}
+        .dp-list{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto}
         .dp-list::-webkit-scrollbar{width:3px}
         .dp-list::-webkit-scrollbar-thumb{background:#26262e;border-radius:2px}
         .dp-row{display:flex;align-items:center;gap:11px;padding:12px 18px;transition:background .1s}
@@ -842,6 +865,9 @@ export default function DashboardPage() {
         .dp-notif-main{display:flex;flex-direction:column;gap:4px}
         .dp-notif-title{font-size:13px;font-weight:600;color:#f0f0f3}
         .dp-notif-body{font-size:12px;color:#5c5c6e;line-height:1.5}
+        .dp-notif-reason{margin-top:6px;padding:8px 10px;border-radius:10px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3)}
+        .dp-notif-reason span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#fbbf24;font-weight:700;margin-bottom:4px}
+        .dp-notif-reason div{font-size:12px;color:#f6d98b;line-height:1.45}
         .dp-notif-meta{display:flex;align-items:center;justify-content:space-between}
         .dp-notif-time{font-size:10.5px;color:#6EE7B7;font-weight:600}
         .dp-notif-link{border:1px solid #26262e;background:transparent;color:#6EE7B7;padding:4px 10px;border-radius:999px;font-size:10.5px;cursor:pointer}

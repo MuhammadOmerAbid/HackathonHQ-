@@ -780,6 +780,11 @@ class Activity(models.Model):
         ('like', 'Post Liked'),
         ('repost', 'Post Reposted'),
         ('reply', 'Post Replied'),
+
+        # Moderation Activities
+        ('moderation_warn', 'Account Warning'),
+        ('moderation_suspend', 'Account Suspended'),
+        ('moderation_ban', 'Account Banned'),
         
         # NEW: Role Change Activities
         ('became_judge', 'Became a Judge'),

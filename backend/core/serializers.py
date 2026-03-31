@@ -6,7 +6,7 @@ from .models import (
     Post, Event, Team, TeamEvent, Submission, JudgeFeedback,
     EventResource, EventSponsor, AwardCategory, AwardResult,
     JudgeAssignment, Notification, Announcement, MediaAsset,
-    UserProfile, Activity, Follow, Tag, PostLike, PostRepost,
+    UserProfile, Activity, Follow, Tag, PostLike, PostRepost, UserReport,
     Conversation, ConversationParticipant, Message
 )
 
@@ -722,6 +722,42 @@ class ActivitySerializer(serializers.ModelSerializer):
         model = Activity
         fields = ['id', 'type', 'title', 'description', 'metadata', 
                   'is_important', 'created_at', 'team', 'submission', 'event']
+
+# ========== USER REPORT SERIALIZER ==========
+class UserReportSerializer(serializers.ModelSerializer):
+    reporter_username = serializers.ReadOnlyField(source='reporter.username')
+    reported_user_username = serializers.ReadOnlyField(source='reported_user.username')
+    event_name = serializers.ReadOnlyField(source='event.name')
+    reported_user_is_admin = serializers.SerializerMethodField()
+    reported_user_is_organizer = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserReport
+        fields = [
+            'id', 'report_type', 'description', 'status',
+            'reporter', 'reporter_username',
+            'reported_user', 'reported_user_username', 'reported_username',
+            'reported_user_is_admin', 'reported_user_is_organizer',
+            'event', 'event_name',
+            'created_at', 'updated_at',
+            'reviewed_by', 'reviewed_at', 'resolution_note'
+        ]
+        read_only_fields = ['reporter', 'created_at', 'updated_at', 'reviewed_by', 'reviewed_at']
+
+    def get_reported_user_is_admin(self, obj):
+        try:
+            return bool(obj.reported_user and (obj.reported_user.is_staff or obj.reported_user.is_superuser))
+        except Exception:
+            return False
+
+    def get_reported_user_is_organizer(self, obj):
+        try:
+            if not obj.reported_user:
+                return False
+            profile = getattr(obj.reported_user, 'profile', None)
+            return bool(getattr(profile, 'is_organizer', False))
+        except Exception:
+            return False
 
 # ========== USER DIRECTORY SERIALIZER (FIXED - SINGLE VERSION) ==========
 class UserDirectorySerializer(serializers.ModelSerializer):

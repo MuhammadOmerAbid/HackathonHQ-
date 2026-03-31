@@ -5,11 +5,30 @@ import axios from "@/utils/axios";
 import { useAuth } from "@/context/AuthContext";
 
 const MOD_TYPES = new Set(["moderation_warn", "moderation_suspend", "moderation_ban"]);
+const ACK_KEY_PREFIX = "mod_notice_ack_";
 
 export default function ModerationNotice() {
   const { user } = useAuth();
   const [notice, setNotice] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  const isAcknowledged = (id) => {
+    if (!id || typeof window === "undefined") return false;
+    try {
+      return !!localStorage.getItem(`${ACK_KEY_PREFIX}${id}`);
+    } catch {
+      return false;
+    }
+  };
+
+  const markAcknowledged = (id) => {
+    if (!id || typeof window === "undefined") return;
+    try {
+      localStorage.setItem(`${ACK_KEY_PREFIX}${id}`, new Date().toISOString());
+    } catch {
+      // ignore storage errors
+    }
+  };
 
   const splitReason = (text) => {
     if (!text) return { main: "", reason: "" };
@@ -33,7 +52,8 @@ export default function ModerationNotice() {
       const unread = items
         .filter((n) => MOD_TYPES.has(n.type) && !n.is_read)
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      setNotice(unread[0] || null);
+      const nextNotice = unread.find((n) => !isAcknowledged(n.id)) || null;
+      setNotice(nextNotice);
     } catch (err) {
       setNotice(null);
     } finally {
@@ -64,13 +84,8 @@ export default function ModerationNotice() {
 
   const acknowledge = async () => {
     if (!notice) return;
-    try {
-      await axios.post("/notifications/read", { ids: [notice.id] });
-    } catch (err) {
-      // ignore
-    } finally {
-      setNotice(null);
-    }
+    markAcknowledged(notice.id);
+    setNotice(null);
   };
 
   if (!notice || loading) return null;

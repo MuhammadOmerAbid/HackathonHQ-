@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import UserViewSet, RegisterView, PostViewSet
 from .views import EventViewSet, TeamViewSet, TeamEventViewSet, SubmissionViewSet, JudgeFeedbackViewSet
 from .views import EventResourceViewSet, EventSponsorViewSet, AwardCategoryViewSet, AwardResultViewSet
-from .views import JudgeAssignmentViewSet, NotificationViewSet, AnnouncementViewSet, MediaAssetViewSet
+from .views import JudgeAssignmentViewSet, NotificationViewSet, UserReportViewSet, AnnouncementViewSet, MediaAssetViewSet
 from .views import ConversationListCreate, ConversationMessages, MessageUnreadCount, TeamMessages, NotificationsUnreadCount
 from .views import AnalyticsOverview, AnalyticsJudge, AnalyticsStream, UploadSign
 
@@ -21,6 +21,7 @@ router.register(r'award-categories', AwardCategoryViewSet, basename='award-categ
 router.register(r'award-results', AwardResultViewSet, basename='award-result')
 router.register(r'judge-assignments', JudgeAssignmentViewSet, basename='judge-assignment')
 router.register(r'notifications', NotificationViewSet, basename='notification')
+router.register(r'reports', UserReportViewSet, basename='report')
 router.register(r'announcements', AnnouncementViewSet, basename='announcement')
 router.register(r'media-assets', MediaAssetViewSet, basename='media-asset')
 

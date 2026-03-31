@@ -7,7 +7,7 @@ from .models import (
     EventResource, EventSponsor, AwardCategory, AwardResult,
     JudgeAssignment, Notification, Announcement, MediaAsset, AuditLog,
     UserProfile, Activity, Follow, Tag, PostLike, PostRepost,
-    ModerationAction, UserWarning, AccountDeletionLog,
+    ModerationAction, UserWarning, UserReport, AccountDeletionLog,
     Conversation, ConversationParticipant, Message
 )
 from .serializers import (
@@ -18,7 +18,8 @@ from .serializers import (
     JudgeAssignmentSerializer, NotificationSerializer,
     AnnouncementSerializer, MediaAssetSerializer,
     UserSerializer, RegisterSerializer, ActivitySerializer,
-    UserDirectorySerializer, ConversationSerializer, MessageSerializer
+    UserDirectorySerializer, ConversationSerializer, MessageSerializer,
+    UserReportSerializer
 )
 from django.contrib.auth import get_user_model
 from rest_framework import generics
@@ -36,7 +37,7 @@ from django.http import StreamingHttpResponse
 from django.core.serializers.json import DjangoJSONEncoder
 import json
 import time
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 User = get_user_model()
 
@@ -1909,6 +1910,76 @@ class NotificationViewSet(viewsets.ModelViewSet):
         else:
             Notification.objects.filter(user=request.user, id__in=ids).update(is_read=True)
         return Response({"status": "ok"})
+
+
+# ========== USER REPORTS ==========
+class UserReportViewSet(viewsets.ModelViewSet):
+    queryset = UserReport.objects.all().order_by('-created_at')
+    serializer_class = UserReportSerializer
+    pagination_class = StandardPagination
+    permission_classes = [IsAuthenticated, IsNotBanned]
+    http_method_names = ["get", "post", "patch"]
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [IsAuthenticated(), IsNotBanned()]
+        return [IsAuthenticated(), IsOrganizerOrAdmin(), IsNotBanned()]
+
+    def get_queryset(self):
+        qs = UserReport.objects.all().order_by('-created_at')
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return UserReport.objects.none()
+        if is_admin(user):
+            pass
+        elif is_organizer(user):
+            qs = qs.filter(event__organizer=user)
+        else:
+            return UserReport.objects.none()
+        event_id = self.request.query_params.get("event")
+        if event_id:
+            qs = qs.filter(event_id=event_id)
+        return qs
+
+    def perform_create(self, serializer):
+        reported_user = serializer.validated_data.get("reported_user")
+        reported_username = serializer.validated_data.get("reported_username")
+        if reported_user and reported_user.id == self.request.user.id:
+            raise ValidationError({"reported_user": "You cannot report yourself."})
+
+        if not reported_user and reported_username:
+            lookup = User.objects.filter(username__iexact=reported_username).first()
+            if lookup:
+                reported_user = lookup
+
+        report = serializer.save(reporter=self.request.user, reported_user=reported_user)
+
+        # Notify event organizer/admins
+        recipients = {}
+        try:
+            if report.event and report.event.organizer:
+                recipients[report.event.organizer.id] = report.event.organizer
+        except Exception:
+            pass
+        try:
+            admins = User.objects.filter(Q(is_superuser=True) | Q(is_staff=True))
+            for admin in admins:
+                recipients[admin.id] = admin
+        except Exception:
+            pass
+
+        if recipients:
+            title = "New report submitted"
+            body_parts = [f"Type: {report.report_type.replace('_',' ').title()}"]
+            if report.reported_user:
+                body_parts.append(f"Reported user: {report.reported_user.username}")
+            elif report.reported_username:
+                body_parts.append(f"Reported user: {report.reported_username}")
+            if report.event:
+                body_parts.append(f"Event: {report.event.name}")
+            body = " · ".join(body_parts)
+            link = f"/events/{report.event.id}" if report.event else "/organizer/reports"
+            _notify_users(list(recipients.values()), "report", title, body=body, link=link)
 
 class AnnouncementViewSet(viewsets.ModelViewSet):
     queryset = Announcement.objects.all().order_by('-created_at')

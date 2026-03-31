@@ -413,6 +413,48 @@ class UserWarning(models.Model):
         return f"Warning for {self.user.username}"
 
 
+class UserReport(models.Model):
+    TYPE_ISSUE = "issue"
+    TYPE_CHEATING = "cheating"
+    TYPE_CHOICES = [
+        (TYPE_ISSUE, "Issue"),
+        (TYPE_CHEATING, "Cheating"),
+    ]
+
+    STATUS_OPEN = "open"
+    STATUS_REVIEWED = "reviewed"
+    STATUS_RESOLVED = "resolved"
+    STATUS_CHOICES = [
+        (STATUS_OPEN, "Open"),
+        (STATUS_REVIEWED, "Reviewed"),
+        (STATUS_RESOLVED, "Resolved"),
+    ]
+
+    reporter = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reports_made')
+    reported_user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reports_received'
+    )
+    reported_username = models.CharField(max_length=150, blank=True, null=True)
+    event = models.ForeignKey('Event', on_delete=models.SET_NULL, null=True, blank=True, related_name='reports')
+    report_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_ISSUE)
+    description = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    reviewed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reports_reviewed'
+    )
+    reviewed_at = models.DateTimeField(blank=True, null=True)
+    resolution_note = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        target = self.reported_user.username if self.reported_user else (self.reported_username or "Unknown")
+        return f"Report {self.id} -> {target}"
+
+
 class AccountDeletionLog(models.Model):
     user_id = models.IntegerField()
     username = models.CharField(max_length=150)

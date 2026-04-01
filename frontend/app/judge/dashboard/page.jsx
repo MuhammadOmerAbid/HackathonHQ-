@@ -13,7 +13,7 @@ const Sparkline = ({ series = [], color = "#6EE7B7" }) => {
   const W = 200, H = 52;
   const vals = series.map(s => s.count || 0);
   if (!vals.length) return <div className="no-data">No data yet</div>;
-  
+
   const max = Math.max(1, ...vals);
   const min = Math.min(0, ...vals);
   const step = vals.length > 1 ? W / (vals.length - 1) : W;
@@ -23,7 +23,7 @@ const Sparkline = ({ series = [], color = "#6EE7B7" }) => {
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   });
   const gid = `gradient-${color.replace("#", "")}`;
-  
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 52, display: "block" }}>
       <defs>
@@ -43,14 +43,14 @@ const Ring = ({ pct = 0, color = "#6EE7B7", size = 80 }) => {
   const r = 30, cx = 40, cy = 40;
   const circ = 2 * Math.PI * r;
   const dash = (pct / 100) * circ;
-  
+
   return (
     <svg width={size} height={size} viewBox="0 0 80 80" style={{ flexShrink: 0 }}>
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1e1e24" strokeWidth="7" />
-      <circle 
+      <circle
         cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="7"
         strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-        transform="rotate(-90 40 40)" 
+        transform="rotate(-90 40 40)"
         style={{ transition: "stroke-dasharray 0.7s cubic-bezier(0.16, 1, 0.3, 1)" }}
       />
       <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle"
@@ -101,7 +101,7 @@ export default function JudgeDashboardPage() {
   const [submittingScore, setSubmittingScore] = useState(false);
 
   const hasToken = typeof window !== "undefined" && !!localStorage.getItem("access");
-  
+
   useSSE("/analytics/stream/?channel=judge", {
     enabled: hasToken,
     onMessage: (payload) => {
@@ -116,7 +116,7 @@ export default function JudgeDashboardPage() {
       router.push("/");
       return;
     }
-    
+
     axios.get("/analytics/judge/")
       .then(response => setData(response.data))
       .catch(() => setData(null))
@@ -288,14 +288,14 @@ export default function JudgeDashboardPage() {
             </p>
           </div>
           <div className="header-actions">
-            <Link href="/submissions?filter=pending" className="btn-primary">
+            <button onClick={() => router.push("/submissions?filter=pending")} className="btn-primary">
               Start Reviewing
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
-            </Link>
-            <Link href="/submissions" className="btn-secondary">All Submissions</Link>
-            <Link href="/events?scope=assigned" className="btn-secondary">My Events</Link>
+            </button>
+            <button onClick={() => router.push("/submissions")} className="btn-secondary">All Submissions</button>
+            <button onClick={() => router.push("/events?scope=assigned")} className="btn-secondary">My Events</button>
           </div>
         </div>
 
@@ -393,7 +393,7 @@ export default function JudgeDashboardPage() {
               { label: "Leaderboard", desc: "Current standings", href: "/submissions?view=scores", color: "#4ade80" },
               { label: "My Profile", desc: "Update profile", href: "/profile", color: "#f472b6" },
             ].map(action => (
-              <Link key={action.label} href={action.href} className={`action-link ${action.primary ? "primary" : ""}`}>
+              <button key={action.label} onClick={() => router.push(action.href)} className={`action-link ${action.primary ? "primary" : ""}`}>
                 <div>
                   <div className="action-label">{action.label}</div>
                   <div className="action-desc">{action.desc}</div>
@@ -401,154 +401,154 @@ export default function JudgeDashboardPage() {
                 <svg className="action-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M5 12h14M12 5l7 7-7 7" />
                 </svg>
-              </Link>
+              </button>
             ))}
           </div>
         </div>
 
         {/* Assigned Queue - Properly Adjusted */}
-{!judgingOpen ? (
-  <div className="queue-section queue-locked">
-    <div className="section-header">
-      <div>
-        <div className="card-badge">Judging</div>
-        <div className="card-title">Judging hasnâ€™t started yet</div>
-      </div>
-    </div>
-    <div className="locked-banner">
-      Judges can only score after submissions close.
-    </div>
-    <div className="locked-meta">
-      <div className="locked-label">Next judging window</div>
-      <div className="locked-value">
-        {formatDateTime(nextJudgingStart)}
-        {nextJudgingStart && (
-          <span className="locked-countdown">({timeUntil(nextJudgingStart)})</span>
-        )}
-      </div>
-    </div>
-  </div>
-) : (
-<div className="queue-section">
-  <div className="section-header">
-    <div>
-      <div className="card-badge">Assignments</div>
-      <div className="card-title">Assigned Queue</div>
-    </div>
-    <div className="queue-filters">
-      <button
-        className={`filter-btn ${filter === "all" ? "active" : ""}`}
-        onClick={() => setFilter("all")}
-      >
-        All <span className="filter-count">{queue.length}</span>
-      </button>
-      <button
-        className={`filter-btn ${filter === "pending" ? "active" : ""}`}
-        onClick={() => setFilter("pending")}
-      >
-        Pending <span className="filter-count">{pendingCount}</span>
-      </button>
-      <button
-        className={`filter-btn ${filter === "done" ? "active" : ""}`}
-        onClick={() => setFilter("done")}
-      >
-        Reviewed <span className="filter-count">{doneCount}</span>
-      </button>
-    </div>
-  </div>
+        {!judgingOpen ? (
+          <div className="queue-section queue-locked">
+            <div className="section-header">
+              <div>
+                <div className="card-badge">Judging</div>
+                <div className="card-title">Judging hasnâ€™t started yet</div>
+              </div>
+            </div>
+            <div className="locked-banner">
+              Judges can only score after submissions close.
+            </div>
+            <div className="locked-meta">
+              <div className="locked-label">Next judging window</div>
+              <div className="locked-value">
+                {formatDateTime(nextJudgingStart)}
+                {nextJudgingStart && (
+                  <span className="locked-countdown">({timeUntil(nextJudgingStart)})</span>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="queue-section">
+            <div className="section-header">
+              <div>
+                <div className="card-badge">Assignments</div>
+                <div className="card-title">Assigned Queue</div>
+              </div>
+              <div className="queue-filters">
+                <button
+                  className={`filter-btn ${filter === "all" ? "active" : ""}`}
+                  onClick={() => setFilter("all")}
+                >
+                  All <span className="filter-count">{queue.length}</span>
+                </button>
+                <button
+                  className={`filter-btn ${filter === "pending" ? "active" : ""}`}
+                  onClick={() => setFilter("pending")}
+                >
+                  Pending <span className="filter-count">{pendingCount}</span>
+                </button>
+                <button
+                  className={`filter-btn ${filter === "done" ? "active" : ""}`}
+                  onClick={() => setFilter("done")}
+                >
+                  Reviewed <span className="filter-count">{doneCount}</span>
+                </button>
+              </div>
+            </div>
 
-  {filteredQueue.length === 0 ? (
-    <div className="empty-queue">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-      </svg>
-      <p>{filter === "pending" ? "No pending submissions — great work!" : "No submissions in this filter."}</p>
-    </div>
-  ) : (
-    <div className="queue-container">
-      {filteredQueue.map(sub => (
-        <div
-          key={sub.id}
-          className="queue-card"
-          role="button"
-          tabIndex={0}
-          onClick={() => openDrawer(sub)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") openDrawer(sub);
-          }}
-        >
-          <div className="queue-card-header">
-            <div className="submission-badge">
-              {(sub.title || "S")[0].toUpperCase()}
-            </div>
-            <div className="submission-info">
-              <div className="submission-name">{sub.title}</div>
-              <div className="submission-meta">
-                <span>Added {timeAgo(sub.created_at)}</span>
-                <span className="meta-separator">•</span>
-                <span>{sub.event_name || "No event"}</span>
-                {sub.team_name && (
-                  <>
-                    <span className="meta-separator">•</span>
-                    <span>{sub.team_name}</span>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="submission-status">
-              <span className={`status-badge ${sub.my_score ? "reviewed" : "pending"}`}>
-                {sub.my_score ? "Reviewed" : "Pending"}
-              </span>
-            </div>
-          </div>
-          
-          <div className="queue-card-stats">
-            <div className="stat-group">
-              <div className="stat-label">Judge Coverage</div>
-              <div className="coverage-wrapper">
-                <div className="coverage-bar-bg">
-                  <div className="coverage-bar-fill" style={{
-                    width: `${sub.required_judges_count ? Math.round((sub.completed_judges_count / sub.required_judges_count) * 100) : 0}%`
-                  }} />
-                </div>
-                <span className="coverage-value">{sub.completed_judges_count}/{sub.required_judges_count}</span>
-              </div>
-            </div>
-            
-            <div className="stat-group">
-              <div className="stat-label">My Score</div>
-              <div className="score-wrapper">
-                {sub.my_score != null ? (
-                  <span className="score-value">{sub.my_score}<span className="score-max">/10</span></span>
-                ) : (
-                  <span className="score-placeholder">Not reviewed</span>
-                )}
-              </div>
-            </div>
-            
-            <div className="stat-group">
-              <div className="stat-label">Action</div>
-              <button 
-                className={`review-btn ${sub.my_score ? "reviewed" : "pending"}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  openDrawer(sub);
-                }}
-              >
-                {sub.my_score ? "View Score" : "Review Now"}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M5 12h14M12 5l7 7-7 7" />
+            {filteredQueue.length === 0 ? (
+              <div className="empty-queue">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
-              </button>
-            </div>
+                <p>{filter === "pending" ? "No pending submissions — great work!" : "No submissions in this filter."}</p>
+              </div>
+            ) : (
+              <div className="queue-container">
+                {filteredQueue.map(sub => (
+                  <div
+                    key={sub.id}
+                    className="queue-card"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openDrawer(sub)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") openDrawer(sub);
+                    }}
+                  >
+                    <div className="queue-card-header">
+                      <div className="submission-badge">
+                        {(sub.title || "S")[0].toUpperCase()}
+                      </div>
+                      <div className="submission-info">
+                        <div className="submission-name">{sub.title}</div>
+                        <div className="submission-meta">
+                          <span>Added {timeAgo(sub.created_at)}</span>
+                          <span className="meta-separator">•</span>
+                          <span>{sub.event_name || "No event"}</span>
+                          {sub.team_name && (
+                            <>
+                              <span className="meta-separator">•</span>
+                              <span>{sub.team_name}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="submission-status">
+                        <span className={`status-badge ${sub.my_score ? "reviewed" : "pending"}`}>
+                          {sub.my_score ? "Reviewed" : "Pending"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="queue-card-stats">
+                      <div className="stat-group">
+                        <div className="stat-label">Judge Coverage</div>
+                        <div className="coverage-wrapper">
+                          <div className="coverage-bar-bg">
+                            <div className="coverage-bar-fill" style={{
+                              width: `${sub.required_judges_count ? Math.round((sub.completed_judges_count / sub.required_judges_count) * 100) : 0}%`
+                            }} />
+                          </div>
+                          <span className="coverage-value">{sub.completed_judges_count}/{sub.required_judges_count}</span>
+                        </div>
+                      </div>
+
+                      <div className="stat-group">
+                        <div className="stat-label">My Score</div>
+                        <div className="score-wrapper">
+                          {sub.my_score != null ? (
+                            <span className="score-value">{sub.my_score}<span className="score-max">/10</span></span>
+                          ) : (
+                            <span className="score-placeholder">Not reviewed</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="stat-group">
+                        <div className="stat-label">Action</div>
+                        <button
+                          className={`review-btn ${sub.my_score ? "reviewed" : "pending"}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openDrawer(sub);
+                          }}
+                        >
+                          {sub.my_score ? "View Score" : "Review Now"}
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M5 12h14M12 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      ))}
-    </div>
-  )}
-</div>
-)}
+        )}
 
         {/* Recent Feedbacks */}
         {recent.length > 0 && (
@@ -559,7 +559,7 @@ export default function JudgeDashboardPage() {
               {recent.slice(0, 6).map(fb => {
                 const scoreColor = fb.score >= 7 ? "#4ade80" : fb.score >= 4 ? "#fbbf24" : "#f87171";
                 return (
-                  <Link href={`/submissions/${fb.submission_id}`} key={fb.id} className="feedback-card">
+                  <button onClick={() => router.push(`/submissions/${fb.submission_id}`)} key={fb.id} className="feedback-card" style={{ display: "block", width: "100%", textAlign: "left" }}>
                     <div className="feedback-header">
                       <span className="feedback-score" style={{ color: scoreColor }}>
                         {fb.score}<span className="score-max">/10</span>
@@ -568,7 +568,7 @@ export default function JudgeDashboardPage() {
                     </div>
                     <div className="feedback-title">{fb.submission_title || "Submission"}</div>
                     {fb.comment && <div className="feedback-comment">"{fb.comment}"</div>}
-                  </Link>
+                  </button>
                 );
               })}
             </div>
@@ -590,9 +590,9 @@ export default function JudgeDashboardPage() {
               </div>
               <div className="drawer-actions">
                 {selectedSubmission?.id && (
-                  <Link href={`/submissions/${selectedSubmission.id}`} className="drawer-link">
+                  <button onClick={() => router.push(`/submissions/${selectedSubmission.id}`)} className="drawer-link">
                     Open Full Page
-                  </Link>
+                  </button>
                 )}
                 <button className="drawer-close" onClick={closeDrawer} aria-label="Close">
                   ✕
@@ -695,7 +695,7 @@ export default function JudgeDashboardPage() {
                           {c.label} <span className="rubric-weight">({c.weight || 1}x)</span>
                         </div>
                         <div className="rubric-scores">
-                          {[1,2,3,4,5,6,7,8,9,10].map((n) => (
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
                             <button
                               key={n}
                               type="button"
@@ -725,12 +725,12 @@ export default function JudgeDashboardPage() {
                   />
 
                   <button
-                  className="drawer-submit"
-                  onClick={handleSubmitScore}
-                  disabled={submittingScore || !selectedSubmission?.is_assigned_judge}
-                >
-                  {submittingScore ? "Submitting…" : "Submit Score"}
-                </button>
+                    className="drawer-submit"
+                    onClick={handleSubmitScore}
+                    disabled={submittingScore || !selectedSubmission?.is_assigned_judge}
+                  >
+                    {submittingScore ? "Submitting…" : "Submit Score"}
+                  </button>
                 </div>
               </>
             )}
@@ -816,7 +816,7 @@ export default function JudgeDashboardPage() {
           align-items: center;
           gap: 8px;
           padding: 8px 20px;
-          border-radius: 10px;
+          border-radius: 100px;
           font-size: 13px;
           font-weight: 600;
           text-decoration: none;

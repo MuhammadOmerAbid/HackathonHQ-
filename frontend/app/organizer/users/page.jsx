@@ -89,6 +89,17 @@ export default function OrganizerUsersPage() {
 
   const isAdmin = user?.is_staff || user?.is_superuser;
 
+  const isSuspendedNow = (u) => {
+    if (!u.suspended_until) return false;
+    return new Date(u.suspended_until) > new Date();
+  };
+
+  const formatSuspendedUntil = (dateStr) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    return isNaN(d) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+
   const targetIsAdminOrOrganizer = (u) => {
     if (!u) return false;
     return !!(u.is_superuser || u.is_staff || u.is_organizer || u.profile?.is_organizer);
@@ -242,7 +253,7 @@ export default function OrganizerUsersPage() {
               {filteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan="7" style={{ padding: '2rem', textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
-                    No users found
+                    No users found.
                   </td>
                 </tr>
               ) : (
@@ -252,6 +263,8 @@ export default function OrganizerUsersPage() {
                   const isLoading = actionLoading[u.id];
                   const canModerate = canModerateTarget(u);
                   const allowedActions = allowedActionsFor(u);
+                  const suspended = isSuspendedNow(u);
+                  const suspendedUntilLabel = suspended ? formatSuspendedUntil(u.suspended_until) : "";
                   
                   return (
                     <tr key={u.id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
@@ -285,47 +298,54 @@ export default function OrganizerUsersPage() {
                       </td>
                       <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.7)' }}>{u.email || '-'}</td>
                       <td style={{ padding: '1rem' }}>
-                        {u.is_superuser ? (
-                          <span style={{
-                            padding: '0.2rem 0.6rem',
-                            borderRadius: '999px',
-                            fontSize: '0.7rem',
-                            fontWeight: 600,
-                            background: 'rgba(239,68,68,0.15)',
-                            color: '#f87171',
-                            border: '1px solid rgba(239,68,68,0.3)'
-                          }}>ADMIN</span>
-                        ) : isUserOrganizer ? (
-                          <span style={{
-                            padding: '0.2rem 0.6rem',
-                            borderRadius: '999px',
-                            fontSize: '0.7rem',
-                            fontWeight: 600,
-                            background: 'rgba(110,231,183,0.15)',
-                            color: '#6EE7B7',
-                            border: '1px solid rgba(110,231,183,0.3)'
-                          }}>ORGANIZER</span>
-                        ) : isUserJudge ? (
-                          <span style={{
-                            padding: '0.2rem 0.6rem',
-                            borderRadius: '999px',
-                            fontSize: '0.7rem',
-                            fontWeight: 600,
-                            background: 'rgba(251,191,36,0.15)',
-                            color: '#fbbf24',
-                            border: '1px solid rgba(251,191,36,0.3)'
-                          }}>JUDGE</span>
-                        ) : (
-                          <span style={{
-                            padding: '0.2rem 0.6rem',
-                            borderRadius: '999px',
-                            fontSize: '0.7rem',
-                            fontWeight: 600,
-                            background: 'rgba(255,255,255,0.05)',
-                            color: 'rgba(255,255,255,0.5)',
-                            border: '1px solid rgba(255,255,255,0.1)'
-                          }}>PARTICIPANT</span>
-                        )}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-start' }}>
+                          {u.is_superuser ? (
+                            <span style={{
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '999px',
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              background: 'rgba(239,68,68,0.15)',
+                              color: '#f87171',
+                              border: '1px solid rgba(239,68,68,0.3)'
+                            }}>ADMIN</span>
+                          ) : isUserOrganizer ? (
+                            <span style={{
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '999px',
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              background: 'rgba(110,231,183,0.15)',
+                              color: '#6EE7B7',
+                              border: '1px solid rgba(110,231,183,0.3)'
+                            }}>ORGANIZER</span>
+                          ) : isUserJudge ? (
+                            <span style={{
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '999px',
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              background: 'rgba(251,191,36,0.15)',
+                              color: '#fbbf24',
+                              border: '1px solid rgba(251,191,36,0.3)'
+                            }}>JUDGE</span>
+                          ) : (
+                            <span style={{
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: '999px',
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                              background: 'rgba(255,255,255,0.05)',
+                              color: 'rgba(255,255,255,0.5)',
+                              border: '1px solid rgba(255,255,255,0.1)'
+                            }}>PARTICIPANT</span>
+                          )}
+                          {suspended && (
+                            <span className="suspended-badge" title={`Suspended until ${suspendedUntilLabel}`}>
+                              🔒 Suspended · {suspendedUntilLabel}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)' }}>{u.teams_count || 0}</td>
                       <td style={{ padding: '1rem', color: 'rgba(255,255,255,0.5)' }}>{u.submissions_count || 0}</td>
@@ -392,11 +412,12 @@ export default function OrganizerUsersPage() {
                             )}
                             {allowedActions.includes("suspend") && (
                               <button
-                                className="mod-btn mod-btn-suspend"
+                                className={`mod-btn ${suspended ? "mod-btn-resuspend" : "mod-btn-suspend"}`}
                                 onClick={() => openModeration(u, "suspend")}
                                 disabled={moderationSaving}
+                                title={suspended ? `Already suspended until ${suspendedUntilLabel}` : "Suspend user"}
                               >
-                                Suspend
+                                {suspended ? "Re-suspend" : "Suspend"}
                               </button>
                             )}
                             {allowedActions.includes("ban") && (
@@ -467,6 +488,14 @@ export default function OrganizerUsersPage() {
         .mod-btn-suspend:hover:not(:disabled) {
           background: rgba(96,165,250,0.25);
         }
+        .mod-btn-resuspend {
+          background: rgba(251,146,60,0.15);
+          border-color: rgba(251,146,60,0.4);
+          color: #fb923c;
+        }
+        .mod-btn-resuspend:hover:not(:disabled) {
+          background: rgba(251,146,60,0.28);
+        }
         .mod-btn-ban {
           background: rgba(248,113,113,0.15);
           border-color: rgba(248,113,113,0.3);
@@ -474,6 +503,20 @@ export default function OrganizerUsersPage() {
         }
         .mod-btn-ban:hover:not(:disabled) {
           background: rgba(248,113,113,0.25);
+        }
+        .suspended-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 0.18rem 0.55rem;
+          border-radius: 999px;
+          font-size: 0.65rem;
+          font-weight: 700;
+          background: rgba(251,146,60,0.12);
+          color: #fb923c;
+          border: 1px solid rgba(251,146,60,0.35);
+          letter-spacing: 0.01em;
+          white-space: nowrap;
         }
       `}</style>
     </div>

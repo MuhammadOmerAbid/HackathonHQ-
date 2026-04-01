@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import CustomSelect from "@/components/forms/CustomSelect";
 
 const REPORT_TYPES = [
   { value: "issue", label: "Issue" },
@@ -14,12 +15,15 @@ export default function ReportModal({
   loading = false,
   error = "",
   eventName = "",
+  events = [],
   defaultType = "issue",
   defaultReportedUser = "",
+  defaultEventId = "",
 }) {
   const [reportType, setReportType] = useState(defaultType);
   const [description, setDescription] = useState("");
   const [reportedUser, setReportedUser] = useState(defaultReportedUser || "");
+  const [eventId, setEventId] = useState(defaultEventId || "");
   const [localError, setLocalError] = useState("");
 
   useEffect(() => {
@@ -27,8 +31,15 @@ export default function ReportModal({
     setReportType(defaultType || "issue");
     setDescription("");
     setReportedUser(defaultReportedUser || "");
+    setEventId(defaultEventId || "");
     setLocalError("");
-  }, [isOpen, defaultType, defaultReportedUser]);
+  }, [isOpen, defaultType, defaultReportedUser, defaultEventId]);
+
+  const eventOptions = useMemo(() => {
+    const base = [{ value: "", label: "General (no event)" }];
+    const rest = (events || []).map((ev) => ({ value: String(ev.id), label: ev.name }));
+    return [...base, ...rest];
+  }, [events]);
 
   if (!isOpen) return null;
 
@@ -39,10 +50,15 @@ export default function ReportModal({
       setLocalError("Description is required.");
       return;
     }
+    if (reportType === "cheating" && !String(reportedUser || "").trim()) {
+      setLocalError("Reported username is required for cheating.");
+      return;
+    }
     await onSubmit?.({
       reportType,
       description: trimmed,
       reportedUsername: String(reportedUser || "").trim(),
+      eventId: eventId ? String(eventId) : "",
     });
   };
 
@@ -81,7 +97,9 @@ export default function ReportModal({
         </div>
 
         <div className="report-field">
-          <label>Reported user (optional)</label>
+          <label>
+            Reported user {reportType === "cheating" ? <span className="required">*</span> : "(optional)"}
+          </label>
           <input
             type="text"
             value={reportedUser}
@@ -89,6 +107,18 @@ export default function ReportModal({
             placeholder="Username of the user involved"
           />
         </div>
+
+        {events.length > 0 && (
+          <div className="report-field">
+            <label>Event (optional)</label>
+            <CustomSelect
+              value={eventId}
+              onChange={setEventId}
+              options={eventOptions}
+              placeholder="General (no event)"
+            />
+          </div>
+        )}
 
         <div className="report-field">
           <label>Description <span className="required">*</span></label>
@@ -189,17 +219,18 @@ export default function ReportModal({
         }
         .report-field textarea,
         .report-field input {
-          background: #0f0f12;
+          background: #0c0c0f;
           border: 1px solid #1e1e24;
-          border-radius: 10px;
+          border-radius: 9px;
           color: #f0f0f3;
-          padding: 10px 12px;
-          font-size: 13px;
+          padding: 10px 14px;
+          font-size: 13.5px;
           font-family: 'DM Sans', sans-serif;
           outline: none;
         }
         .report-field textarea:focus,
-        .report-field input:focus {
+        .report-field input:focus,
+        .report-field select:focus {
           border-color: rgba(110,231,183,0.4);
         }
         .report-type-tabs {
@@ -267,4 +298,3 @@ export default function ReportModal({
     </div>
   );
 }
-

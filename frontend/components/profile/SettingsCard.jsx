@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import axios from "@/utils/axios";
+import ReportModal from "@/components/reports/ReportModal";
 
 export default function SettingsCard({
   passwordData,
@@ -13,6 +15,11 @@ export default function SettingsCard({
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteReason, setDeleteReason] = useState("");
   const [deleteError, setDeleteError] = useState("");
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState("");
+  const [reportSuccess, setReportSuccess] = useState("");
+  const [reportEvents, setReportEvents] = useState([]);
 
   const openDeleteModal = () => {
     setShowDeleteModal(true);
@@ -27,6 +34,64 @@ export default function SettingsCard({
       setDeletePassword("");
       setDeleteReason("");
       setDeleteError("");
+    }
+  };
+
+  useEffect(() => {
+    const loadEvents = async () => {
+      try {
+        const res = await axios.get("/team-events/?mine=1&page_size=100");
+        const list = res.data?.results || res.data || [];
+        const map = new Map();
+        list.forEach((item) => {
+          if (item.event && item.event_name) {
+            map.set(item.event, item.event_name);
+          }
+        });
+        const events = Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+        setReportEvents(events);
+      } catch {
+        setReportEvents([]);
+      }
+    };
+    loadEvents();
+  }, []);
+
+  const openReportModal = () => {
+    setReportError("");
+    setReportSuccess("");
+    setReportOpen(true);
+  };
+
+  const closeReportModal = () => {
+    if (!reportLoading) {
+      setReportOpen(false);
+      setReportError("");
+    }
+  };
+
+  const handleReportSubmit = async ({ reportType, description, reportedUsername, eventId }) => {
+    setReportLoading(true);
+    setReportError("");
+    setReportSuccess("");
+    try {
+      const payload = {
+        report_type: reportType,
+        description,
+      };
+      if (reportedUsername) payload.reported_username = reportedUsername;
+      if (eventId) payload.event = eventId;
+      await axios.post("/reports/", payload);
+      setReportSuccess("Report submitted. Our team will review it soon.");
+      setReportOpen(false);
+    } catch (err) {
+      setReportError(
+        err.response?.data?.error ||
+        err.response?.data?.detail ||
+        "Failed to submit report."
+      );
+    } finally {
+      setReportLoading(false);
     }
   };
 
@@ -150,6 +215,31 @@ export default function SettingsCard({
         </div>
       </div>
 
+      {/* Report Issue */}
+      <div className="profile-card">
+        <h3 className="profile-card-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.5rem' }}>
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          Report Issue or Cheating
+        </h3>
+        <p className="settings-description">
+          Flag harassment, cheating, or other violations for organizer review.
+        </p>
+        {reportSuccess && <div className="report-success">{reportSuccess}</div>}
+        <div className="report-action">
+          <button
+            onClick={openReportModal}
+            className="report-btn"
+            disabled={saving}
+          >
+            Submit Report
+          </button>
+        </div>
+      </div>
+
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="modal-overlay" onClick={closeDeleteModal}>
@@ -213,6 +303,15 @@ export default function SettingsCard({
           </div>
         </div>
       )}
+
+      <ReportModal
+        isOpen={reportOpen}
+        onClose={closeReportModal}
+        onSubmit={handleReportSubmit}
+        loading={reportLoading}
+        error={reportError}
+        events={reportEvents}
+      />
 
       <style jsx>{`
         .profile-card {
@@ -365,6 +464,44 @@ export default function SettingsCard({
         .settings-delete-btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
+        }
+
+        .report-action {
+          display: flex;
+          justify-content: flex-start;
+        }
+
+        .report-btn {
+          padding: 0.6rem 1.5rem;
+          background: rgba(110,231,183,0.12);
+          border: 1px solid rgba(110,231,183,0.35);
+          border-radius: 8px;
+          color: #6EE7B7;
+          font-size: 0.9rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .report-btn:hover:not(:disabled) {
+          background: rgba(110,231,183,0.2);
+          border-color: rgba(110,231,183,0.6);
+          transform: translateY(-1px);
+        }
+
+        .report-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .report-success {
+          margin-bottom: 12px;
+          padding: 8px 10px;
+          border-radius: 8px;
+          font-size: 12px;
+          color: #6EE7B7;
+          background: rgba(110,231,183,0.08);
+          border: 1px solid rgba(110,231,183,0.2);
         }
 
         /* Modal Styles */

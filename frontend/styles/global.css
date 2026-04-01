@@ -49,6 +49,24 @@ h1, h2, h3, h4, h5, h6 {
   margin: 0;
 }
 
+select {
+  background: #0c0c0f;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  font-size: 13.5px;
+  font-family: 'DM Sans', sans-serif;
+  outline: none;
+  color-scheme: dark;
+}
+select:focus { border-color: var(--accent-mid); }
+select:disabled { opacity: 0.45; cursor: not-allowed; }
+select option,
+select optgroup {
+  background: var(--surface);
+  color: var(--text);
+}
+
 /* ═══════════════════════════════════════════════
    KEYFRAMES
 ═══════════════════════════════════════════════ */

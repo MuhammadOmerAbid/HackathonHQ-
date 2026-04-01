@@ -112,7 +112,7 @@ def _notify_moderation(target_user, action_type, reason=None, message=None, dura
     elif message_text:
         body = message_text
     elif reason_text:
-        body = f"Reason: {reason_text}"
+        body = f"{default_body.get(action_type, 'Your account has been moderated.')}\nReason: {reason_text}"
     else:
         body = default_body.get(action_type, "")
     try:
@@ -485,7 +485,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def ban(self, request, pk=None):
-        """Ban a user with a grace period (default 30 days). Organizers/admins only."""
+        """Permanently ban (delete) a user. Admins only."""
         target_user = self.get_object()
 
         if (is_organizer(target_user) or is_admin(target_user)) and not is_admin(request.user):
@@ -494,54 +494,30 @@ class UserViewSet(viewsets.ModelViewSet):
         reason = request.data.get('reason')
         message = request.data.get('message')
         notify_user = _as_bool(request.data.get('notify_user'), default=False)
-        duration_days = request.data.get('duration_days') or 30
 
         if not (reason and str(reason).strip()):
             return Response({"error": "reason is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            duration_days = int(duration_days)
-        except (TypeError, ValueError):
-            duration_days = 30
+        banned_username = target_user.username
+        banned_email = target_user.email
 
-        if duration_days <= 0:
-            duration_days = 30
-
-        profile, _ = UserProfile.objects.get_or_create(user=target_user)
-        expires_at = timezone.now() + timedelta(days=duration_days)
-        profile.banned_until = expires_at
-        profile.ban_reason = reason
-        profile.save()
-
-        target_user.is_active = False
-        target_user.save()
-
-        ModerationAction.objects.create(
-            moderator=request.user,
-            target_user=target_user,
-            action_type=ModerationAction.ACTION_BAN,
-            reason=reason,
-            duration=timedelta(days=duration_days),
-            expires_at=expires_at
+        # Log the deletion before deleting
+        AccountDeletionLog.objects.create(
+            user_id=target_user.id,
+            username=banned_username,
+            email=banned_email,
+            reason=f"[BAN] {str(reason).strip()}",
+            deleted_by=request.user
         )
 
-        try:
-            from .utils.activity_helpers import create_moderation_activity
-            create_moderation_activity(
-                target_user,
-                "ban",
-                reason=reason,
-                message=message,
-                made_by=request.user,
-                duration_days=duration_days
-            )
-        except Exception:
-            pass
-
+        # Notify the user before their account is deleted (if requested)
         if notify_user:
-            _notify_moderation(target_user, "ban", reason=reason, message=message, duration_days=duration_days)
+            _notify_moderation(target_user, "ban", reason=reason, message=message)
 
-        return Response({"success": f"{target_user.username} has been banned.", "banned_until": expires_at})
+        # Hard delete - cascades all related data via Django FK rules
+        target_user.delete()
+
+        return Response({"success": f"{banned_username} has been permanently banned and their account deleted."})
     
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def verify_password(self, request):
@@ -1933,19 +1909,28 @@ class UserReportViewSet(viewsets.ModelViewSet):
         if is_admin(user):
             pass
         elif is_organizer(user):
-            qs = qs.filter(event__organizer=user)
+            qs = qs.filter(Q(event__organizer=user) | Q(event__isnull=True))
         else:
             return UserReport.objects.none()
         event_id = self.request.query_params.get("event")
         if event_id:
             qs = qs.filter(event_id=event_id)
+        status_filter = (self.request.query_params.get("status") or "").strip().lower()
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        type_filter = (self.request.query_params.get("report_type") or "").strip().lower()
+        if type_filter:
+            qs = qs.filter(report_type=type_filter)
         return qs
 
     def perform_create(self, serializer):
         reported_user = serializer.validated_data.get("reported_user")
         reported_username = serializer.validated_data.get("reported_username")
+        report_type = serializer.validated_data.get("report_type")
         if reported_user and reported_user.id == self.request.user.id:
             raise ValidationError({"reported_user": "You cannot report yourself."})
+        if report_type == UserReport.TYPE_CHEATING and not (reported_user or reported_username):
+            raise ValidationError({"reported_username": "Reported username is required for cheating reports."})
 
         if not reported_user and reported_username:
             lookup = User.objects.filter(username__iexact=reported_username).first()
@@ -1954,7 +1939,7 @@ class UserReportViewSet(viewsets.ModelViewSet):
 
         report = serializer.save(reporter=self.request.user, reported_user=reported_user)
 
-        # Notify event organizer/admins
+        # Notify recipients
         recipients = {}
         try:
             if report.event and report.event.organizer:
@@ -1962,7 +1947,12 @@ class UserReportViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
         try:
-            admins = User.objects.filter(Q(is_superuser=True) | Q(is_staff=True))
+            if report.event:
+                admins = User.objects.filter(Q(is_superuser=True) | Q(is_staff=True))
+            else:
+                admins = User.objects.filter(
+                    Q(is_superuser=True) | Q(is_staff=True) | Q(profile__is_organizer=True)
+                ).distinct()
             for admin in admins:
                 recipients[admin.id] = admin
         except Exception:
@@ -1977,9 +1967,31 @@ class UserReportViewSet(viewsets.ModelViewSet):
                 body_parts.append(f"Reported user: {report.reported_username}")
             if report.event:
                 body_parts.append(f"Event: {report.event.name}")
-            body = " · ".join(body_parts)
-            link = f"/events/{report.event.id}" if report.event else "/organizer/reports"
+            body = " | ".join(body_parts)
+            link = "/organizer/reports"
             _notify_users(list(recipients.values()), "report", title, body=body, link=link)
+
+    def perform_update(self, serializer):
+        prior = self.get_object()
+        next_status = serializer.validated_data.get("status", prior.status)
+        next_note = serializer.validated_data.get("resolution_note", prior.resolution_note)
+        report = serializer.save()
+        if next_status in [UserReport.STATUS_REVIEWED, UserReport.STATUS_RESOLVED]:
+            if report.reviewed_by_id is None or prior.status != next_status:
+                report.reviewed_by = self.request.user
+                report.reviewed_at = timezone.now()
+                report.save(update_fields=["reviewed_by", "reviewed_at"])
+        if prior.status != report.status or (next_note and next_note != prior.resolution_note):
+            try:
+                title = "Report Update"
+                status_label = report.status.replace("_", " ").title()
+                body = f"Your report was marked {status_label}."
+                if report.resolution_note:
+                    body = f"{body}\nNote: {report.resolution_note}"
+                _notify_users([report.reporter], "report_update", title, body=body, link="/profile?tab=settings")
+            except Exception:
+                pass
+        return report
 
 class AnnouncementViewSet(viewsets.ModelViewSet):
     queryset = Announcement.objects.all().order_by('-created_at')

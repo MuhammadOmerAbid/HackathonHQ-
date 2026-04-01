@@ -32,15 +32,16 @@ export default function ModerationNotice() {
 
   const splitReason = (text) => {
     if (!text) return { main: "", reason: "" };
-    const byNewline = text.indexOf("\nReason:");
-    const byInline = text.indexOf("Reason:");
+    const byNewline = text.lastIndexOf("\nReason:");
+    const byInline = text.lastIndexOf("Reason:");
     let idx = -1;
     if (byNewline !== -1) idx = byNewline;
     else if (byInline !== -1) idx = byInline;
     if (idx === -1) return { main: text, reason: "" };
     const main = text.slice(0, idx).trim();
     const raw = text.slice(idx).replace(/^\n?Reason:\s*/i, "").trim();
-    return { main, reason: raw };
+    const firstLine = raw.split("\n")[0].trim();
+    return { main, reason: firstLine };
   };
 
   const fetchModerationNotice = async () => {

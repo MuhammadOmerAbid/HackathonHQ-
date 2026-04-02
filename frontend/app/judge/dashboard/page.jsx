@@ -132,7 +132,7 @@ export default function JudgeDashboardPage() {
   const nextJudgingStart = data?.next_judging_start ? new Date(data.next_judging_start) : null;
 
   const formatDateTime = (d) => {
-    if (!d || Number.isNaN(d.getTime())) return "â€”";
+    if (!d || Number.isNaN(d.getTime())) return " ";
     return d.toLocaleString("en-US", {
       month: "short",
       day: "numeric",
@@ -412,7 +412,7 @@ export default function JudgeDashboardPage() {
             <div className="section-header">
               <div>
                 <div className="card-badge">Judging</div>
-                <div className="card-title">Judging hasnâ€™t started yet</div>
+                <div className="card-title">Judging hasn't started yet</div>
               </div>
             </div>
             <div className="locked-banner">

@@ -664,7 +664,7 @@ export default function LandingPage() {
       `}</style>
 
       <style jsx>{`
-        .ll{min-height:100vh;background:#0c0c0f;color:#f0f0f3;font-family:'DM Sans',sans-serif;overflow-x:hidden}
+        .ll{min-height:100vh;background:#0c0c0f;color:#f0f0f3;font-family:'DM Sans',sans-serif}
         .ll-wrap{max-width:1200px;margin:0 auto;padding:0 40px}
         .ll-section{padding:120px 0}
         .ll-alt-bg{background:#111114;border-top:1px solid #1e1e24;border-bottom:1px solid #1e1e24}

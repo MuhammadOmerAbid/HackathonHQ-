@@ -16,7 +16,7 @@ export default function SubmissionsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [stats, setStats] = useState({ total: 0, pending: 0, reviewed: 0, winners: 0 });
   const [page, setPage] = useState(1);
-  const pageSize = 9;
+  const pageSize = 12;
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState("all");
   const [user, setUser] = useState(null);

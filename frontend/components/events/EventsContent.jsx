@@ -16,7 +16,9 @@ export default function EventsContent() {
   const [isOrganizer, setIsOrganizer] = useState(false);
   const [isJudge, setIsJudge] = useState(false);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
   const assignedOnly = searchParams.get("scope") === "assigned";
+  const PAGE_SIZE = 12;
 
   useEffect(() => {
     const msg = searchParams.get("error");
@@ -25,7 +27,65 @@ export default function EventsContent() {
 
   useEffect(() => {
     let active = true;
+    const fetchAllEvents = async (currentUser) => {
+      const pageSize = 100;
+      let pageIndex = 1;
+      let all = [];
+      let hasNext = true;
+      const assignedQuery = assignedOnly && currentUser?.is_judge ? "assigned=1&" : "";
+
+      while (hasNext) {
+        const res = await axios.get(`/events/?${assignedQuery}page=${pageIndex}&page_size=${pageSize}`);
+        const data = res?.data;
+        const isPaginated = data && Array.isArray(data.results);
+        const items = isPaginated ? data.results : Array.isArray(data) ? data : [];
+
+        all = all.concat(items);
+        if (!isPaginated || !data.next) {
+          hasNext = false;
+        } else {
+          pageIndex += 1;
+        }
+      }
+
+      if (assignedOnly && currentUser?.is_judge && currentUser?.id) {
+        const hasInlineJudges = all.some((e) =>
+          Array.isArray(e.judges_details) || Array.isArray(e.judges) || Array.isArray(e.judge_ids)
+        );
+
+        if (hasInlineJudges) {
+          all = all.filter((e) => {
+            const judgeIds = Array.isArray(e.judges_details)
+              ? e.judges_details.map((j) => j.id)
+              : Array.isArray(e.judges)
+              ? e.judges
+              : Array.isArray(e.judge_ids)
+              ? e.judge_ids
+              : [];
+            return judgeIds.some((id) => String(id) === String(currentUser.id));
+          });
+        } else {
+          const checks = await Promise.all(
+            all.map(async (ev) => {
+              try {
+                const res = await axios.get(`/events/${ev.id}/judges/`);
+                const judges = res.data?.judges || [];
+                const assigned = judges.some((j) => String(j.id) === String(currentUser.id));
+                return assigned ? ev : null;
+              } catch {
+                return null;
+              }
+            })
+          );
+          all = checks.filter(Boolean);
+        }
+      }
+
+      return all;
+    };
+
     (async () => {
+      if (active) setLoading(true);
       try {
         const token = localStorage.getItem("access");
         let currentUser = null;
@@ -44,51 +104,7 @@ export default function EventsContent() {
           } catch {}
         }
 
-        // If judge wants assigned-only events, try server-side filter first.
-        let evRes;
-        if (assignedOnly && currentUser?.is_judge) {
-          evRes = await axios.get("/events/?assigned=1").catch(() => null);
-        }
-        if (!evRes) {
-          evRes = await axios.get("/events/");
-        }
-
-        let list = evRes?.data?.results || evRes?.data || [];
-
-        // Fallback: client-side filter for judge-assigned events.
-        if (assignedOnly && currentUser?.is_judge && currentUser?.id) {
-          const hasInlineJudges = list.some((e) =>
-            Array.isArray(e.judges_details) || Array.isArray(e.judges) || Array.isArray(e.judge_ids)
-          );
-
-          if (hasInlineJudges) {
-            list = list.filter((e) => {
-              const judgeIds = Array.isArray(e.judges_details)
-                ? e.judges_details.map((j) => j.id)
-                : Array.isArray(e.judges)
-                ? e.judges
-                : Array.isArray(e.judge_ids)
-                ? e.judge_ids
-                : [];
-              return judgeIds.some((id) => String(id) === String(currentUser.id));
-            });
-          } else {
-            const checks = await Promise.all(
-              list.map(async (ev) => {
-                try {
-                  const res = await axios.get(`/events/${ev.id}/judges/`);
-                  const judges = res.data?.judges || [];
-                  const assigned = judges.some((j) => String(j.id) === String(currentUser.id));
-                  return assigned ? ev : null;
-                } catch {
-                  return null;
-                }
-              })
-            );
-            list = checks.filter(Boolean);
-          }
-        }
-
+        const list = await fetchAllEvents(currentUser);
         if (active) setEvents(list);
       } catch (e) {
         console.error(e);
@@ -98,6 +114,10 @@ export default function EventsContent() {
     })();
     return () => { active = false; };
   }, [assignedOnly]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter, searchTerm, assignedOnly]);
 
   const now = new Date();
   const filtered = events.filter(e => {
@@ -127,6 +147,31 @@ export default function EventsContent() {
 
   const liveCount     = events.filter(e => new Date(e.start_date) <= now && new Date(e.end_date) >= now).length;
   const upcomingCount = events.filter(e => new Date(e.start_date) > now).length;
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(Math.max(page, 1), totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pageItems = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+
+  const pageList = (() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    const pages = [1];
+    if (currentPage > 3) pages.push("...");
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 1, currentPage + 1);
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (currentPage < totalPages - 2) pages.push("...");
+    pages.push(totalPages);
+    return pages;
+  })();
+
+  const goToPage = (nextPage) => {
+    if (nextPage < 1 || nextPage > totalPages) return;
+    setPage(nextPage);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   if (loading) return (
     <div className="ev-loading">
@@ -278,9 +323,44 @@ export default function EventsContent() {
           )}
         </div>
       ) : (
-        <div className="ev-grid">
-          {filtered.map(ev => <EventCard key={ev.id} event={ev} />)}
-        </div>
+        <>
+          <div className="ev-grid">
+            {pageItems.map(ev => <EventCard key={ev.id} event={ev} />)}
+          </div>
+          {totalPages > 1 && (
+            <div className="ev-pagination">
+              <button
+                className="ev-page-nav"
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                Prev
+              </button>
+              <div className="ev-page-list">
+                {pageList.map((p, idx) => (
+                  p === "..."
+                    ? <span key={`ellipsis-${idx}`} className="ev-page-ellipsis">...</span>
+                    : (
+                      <button
+                        key={p}
+                        className={`ev-page-btn${p === currentPage ? " active" : ""}`}
+                        onClick={() => goToPage(p)}
+                      >
+                        {p}
+                      </button>
+                    )
+                ))}
+              </div>
+              <button
+                className="ev-page-nav"
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

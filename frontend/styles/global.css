@@ -704,6 +704,42 @@ select option {
 .ev-tag-closed { background: #17171b; color: #5c5c6e; border: 1px solid #26262e; }
 .ev-premium { margin-left: auto; padding: 2px 8px; border-radius: 100px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; background: rgba(251,191,36,.12); color: #fbbf24; border: 1px solid rgba(251,191,36,.2); }
 
+/* â”€â”€ Pagination â”€â”€ */
+.ev-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+.ev-page-list { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.ev-page-btn,
+.ev-page-nav {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #26262e;
+  background: #111114;
+  color: #5c5c6e;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ev-page-btn:hover:not(:disabled),
+.ev-page-nav:hover:not(:disabled) {
+  color: #f0f0f3;
+  border-color: rgba(110,231,183,.35);
+  background: #17171b;
+}
+.ev-page-btn.active {
+  background: #6EE7B7;
+  border-color: #4fb88b;
+  color: #0c0c0f;
+}
+.ev-page-nav:disabled,
+.ev-page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ev-page-ellipsis {
+  color: #5c5c6e;
+  font-size: 12px;
+  padding: 0 4px;
+}
 
 .evc-btn-submit svg,
 .evd-btn-primary svg,

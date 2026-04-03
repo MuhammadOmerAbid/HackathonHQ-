@@ -15,7 +15,7 @@ export default function TeamsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [stats, setStats] = useState({ total: 0, open: 0, full: 0, mine: 0 });
   const [page, setPage] = useState(1);
-  const pageSize = 9;
+  const pageSize = 12;
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState("all");
   const [user, setUser] = useState(null);

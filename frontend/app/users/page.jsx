@@ -14,12 +14,13 @@ export default function UsersPage() {
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
   const [viewMode, setViewMode] = useState("grid");
   const [currentUser, setCurrentUser] = useState(null);
   const { openChat } = useMessaging();
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 12;
   const [pagination, setPagination] = useState({
     count: 0,
     next: null,
@@ -36,33 +37,26 @@ export default function UsersPage() {
     judges: 0
   });
 
-  const fetchUsers = async (pageUrl = null) => {
-    if (pageUrl) {
-      setLoadingMore(true);
-    } else {
-      setIsLoading(true);
-    }
-    
+  const fetchUsers = async () => {
+    setIsLoading(true);
     try {
-      const url = pageUrl || "/users/directory/";
-      const res = await api.get(url);
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("page_size", String(PAGE_SIZE));
+      const res = await api.get(`/users/directory/?${params.toString()}`);
       console.log("Raw API response:", res.data);
 
       const usersArray = res.data.results || [];
       const activeUsers = usersArray.filter(user => user.is_active);
       
-      if (pageUrl) {
-        setUsers(prev => [...prev, ...activeUsers]);
-      } else {
-        setUsers(activeUsers);
-      }
+      setUsers(activeUsers);
 
       setPagination({
         count: res.data.count || 0,
         next: res.data.next,
         previous: res.data.previous,
-        currentPage: pageUrl ? pagination.currentPage + 1 : 1,
-        totalPages: res.data.count ? Math.ceil(res.data.count / 20) : 1
+        currentPage: page,
+        totalPages: res.data.count ? Math.ceil(res.data.count / PAGE_SIZE) : 1
       });
 
       // Update filter counts
@@ -78,7 +72,6 @@ export default function UsersPage() {
       console.error("Error fetching users:", err);
     } finally {
       setIsLoading(false);
-      setLoadingMore(false);
     }
   };
 
@@ -94,7 +87,7 @@ export default function UsersPage() {
     
     fetchCurrentUser();
     fetchUsers();
-  }, []);
+  }, [page]);
 
   useEffect(() => {
     let filtered = [...users];
@@ -129,11 +122,9 @@ export default function UsersPage() {
     setFilteredUsers(filtered);
   }, [users, searchTerm, activeFilter]);
 
-  const loadMore = () => {
-    if (pagination.next) {
-      fetchUsers(pagination.next);
-    }
-  };
+  useEffect(() => {
+    setPage(1);
+  }, [activeFilter, searchTerm]);
 
   const handleFollow = async (userId, isFollowing) => {
     setUsers(prev => prev.map(u => 
@@ -158,6 +149,28 @@ export default function UsersPage() {
   if (isLoading && users.length === 0) {
     return <LoadingSpinner message="Loading users..." />;
   }
+
+  const totalPages = Math.max(1, pagination.totalPages || 1);
+  const currentPage = Math.min(Math.max(page, 1), totalPages);
+  const pageList = (() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    const pages = [1];
+    if (currentPage > 3) pages.push("...");
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 1, currentPage + 1);
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (currentPage < totalPages - 2) pages.push("...");
+    pages.push(totalPages);
+    return pages;
+  })();
+
+  const goToPage = (nextPage) => {
+    if (nextPage < 1 || nextPage > totalPages) return;
+    setPage(nextPage);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   return (
     <div className="users-page">
@@ -354,26 +367,38 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Load More */}
-      {pagination.next && filteredUsers.length > 0 && (
-        <div className="users-load-more">
+      {/* Pagination */}
+      {filteredUsers.length > 0 && totalPages > 1 && (
+        <div className="users-pagination">
           <button
-            onClick={loadMore}
-            disabled={loadingMore}
-            className="users-load-more-btn"
+            className="users-page-nav"
+            onClick={() => goToPage(currentPage - 1)}
+            disabled={currentPage === 1}
           >
-            {loadingMore ? (
-              <>
-                <span className="users-spinner"></span>
-                Loading...
-              </>
-            ) : (
-              "Load More Users"
-            )}
+            Prev
           </button>
-          <p className="users-pagination-info">
-            Page {pagination.currentPage} of {pagination.totalPages}
-          </p>
+          <div className="users-page-list">
+            {pageList.map((p, idx) => (
+              p === "..."
+                ? <span key={`ellipsis-${idx}`} className="users-page-ellipsis">...</span>
+                : (
+                  <button
+                    key={p}
+                    className={`users-page-btn${p === currentPage ? " active" : ""}`}
+                    onClick={() => goToPage(p)}
+                  >
+                    {p}
+                  </button>
+                )
+            ))}
+          </div>
+          <button
+            className="users-page-nav"
+            onClick={() => goToPage(currentPage + 1)}
+            disabled={currentPage === totalPages}
+          >
+            Next
+          </button>
         </div>
       )}
       </div>
@@ -711,47 +736,54 @@ export default function UsersPage() {
           margin: 0;
         }
 
-        /* Load More */
-        .users-load-more {
-          text-align: center;
-          margin-top: 2rem;
-        }
-        .users-load-more-btn {
-          display: inline-flex;
+        /* Pagination */
+        .users-pagination {
+          display: flex;
           align-items: center;
           justify-content: center;
-          gap: 8px;
-          padding: 12px 32px;
-          background: #6EE7B7;
-          border: 1px solid #4fb88b;
-          border-radius: 100px;
-          color: #0c0c0f;
-          font-size: 14px;
+          gap: 12px;
+          margin-top: 2rem;
+          flex-wrap: wrap;
+        }
+        .users-page-list {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+          justify-content: center;
+        }
+        .users-page-btn,
+        .users-page-nav {
+          padding: 6px 12px;
+          border-radius: 999px;
+          border: 1px solid #26262e;
+          background: #111114;
+          color: #5c5c6e;
+          font-size: 12px;
           font-weight: 600;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: all 0.15s ease;
         }
-        .users-load-more-btn:hover:not(:disabled) {
-          background: #86efac;
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(110,231,183,0.3);
+        .users-page-btn:hover:not(:disabled),
+        .users-page-nav:hover:not(:disabled) {
+          color: #f0f0f3;
+          border-color: rgba(110,231,183,.35);
+          background: #17171b;
         }
-        .users-load-more-btn:disabled {
+        .users-page-btn.active {
+          background: #6EE7B7;
+          border-color: #4fb88b;
+          color: #0c0c0f;
+        }
+        .users-page-nav:disabled,
+        .users-page-btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
         }
-        .users-spinner {
-          width: 16px;
-          height: 16px;
-          border: 2px solid rgba(12,12,15,0.2);
-          border-top-color: #0c0c0f;
-          border-radius: 50%;
-          animation: spin 0.6s linear infinite;
-        }
-        .users-pagination-info {
+        .users-page-ellipsis {
           color: #5c5c6e;
           font-size: 12px;
-          margin-top: 12px;
+          padding: 0 4px;
         }
 
         /* Animations */

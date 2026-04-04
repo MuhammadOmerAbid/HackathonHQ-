@@ -7,7 +7,7 @@ from .models import (
     EventResource, EventSponsor, AwardCategory, AwardResult,
     JudgeAssignment, Notification, Announcement, MediaAsset, AuditLog,
     UserProfile, Activity, Follow, Tag, PostLike, PostRepost,
-    ModerationAction, UserWarning, UserReport, AccountDeletionLog,
+    ModerationAction, UserWarning, UserReport, AccountDeletionLog, BannedAccount,
     Conversation, ConversationParticipant, Message
 )
 from .serializers import (
@@ -38,6 +38,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 import json
 import time
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from .auth import _moderation_block_for_user, _moderation_error_payload
 
 User = get_user_model()
 
@@ -152,11 +153,10 @@ class IsOrganizerOrAdmin(BasePermission):
     def has_object_permission(self, request, view, obj):
         if request.method in permissions.SAFE_METHODS:
             return True
-        return (
-            request.user.is_staff or
-            request.user.is_superuser or
-            obj.organizer == request.user
-        )
+        if not request.user or not request.user.is_authenticated:
+            return False
+        # User objects don't have "organizer" attribute; reuse role checks.
+        return is_organizer(request.user) or is_admin(request.user)
 
 class IsJudge(BasePermission):
     def has_permission(self, request, view):
@@ -182,15 +182,11 @@ class IsNotBanned(BasePermission):
         user = request.user
         if not user or not user.is_authenticated:
             return False
+        block = _moderation_block_for_user(user)
+        if block:
+            raise PermissionDenied(_moderation_error_payload(block))
         if not user.is_active:
             return False
-        profile = getattr(user, 'profile', None)
-        now = timezone.now()
-        if profile:
-            if profile.banned_until and profile.banned_until > now:
-                return False
-            if profile.suspended_until and profile.suspended_until > now:
-                return False
         return True
 
 # ========== PAGINATION ==========
@@ -510,9 +506,18 @@ class UserViewSet(viewsets.ModelViewSet):
             deleted_by=request.user
         )
 
-        # Notify the user before their account is deleted (if requested)
-        if notify_user:
-            _notify_moderation(target_user, "ban", reason=reason, message=message)
+        # Store a ban record so future login attempts can show a banned notice
+        try:
+            BannedAccount.objects.create(
+                user_id=target_user.id,
+                username=banned_username,
+                email=banned_email,
+                reason=str(reason).strip(),
+                message=str(message).strip() if message else "",
+                banned_by=request.user
+            )
+        except Exception:
+            pass
 
         # Hard delete - cascades all related data via Django FK rules
         target_user.delete()

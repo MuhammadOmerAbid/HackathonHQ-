@@ -5,6 +5,7 @@ import { AuthProvider } from '@/context/AuthContext';
 import { MessagingProvider } from "@/context/MessagingContext";
 import FloatingMessageBubble from "@/components/community/FloatingMessageBubble";
 import ModerationNotice from "@/components/users/ModerationNotice";
+import ModerationBlockModal from "@/components/users/ModerationBlockModal";
 import "../styles/global.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -20,6 +21,7 @@ export default function RootLayout({ children }) {
       <body className={inter.className}>
         <AuthProvider>
           <MessagingProvider>
+            <ModerationBlockModal />
             <AuthGate>
               <Navbar />
               <ModerationNotice />

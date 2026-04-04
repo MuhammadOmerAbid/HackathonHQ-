@@ -56,7 +56,7 @@ export default function ModerationModal({
 
   const activeMeta = ACTIONS[action] || ACTIONS.warn;
   const requiresDuration = action === "suspend";
-  const showDuration = action === "suspend" || action === "ban";
+  const showDuration = action === "suspend";
 
   const handleSubmit = async () => {
     setLocalError("");

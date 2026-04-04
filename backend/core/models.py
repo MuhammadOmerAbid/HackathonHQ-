@@ -467,6 +467,29 @@ class AccountDeletionLog(models.Model):
 
     def __str__(self):
         return f"Deletion log for {self.username}"
+
+
+class BannedAccount(models.Model):
+    user_id = models.IntegerField(blank=True, null=True)
+    username = models.CharField(max_length=150)
+    email = models.EmailField(blank=True, null=True)
+    reason = models.TextField(blank=True, null=True)
+    message = models.TextField(blank=True, null=True)
+    banned_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='banned_accounts'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['username']),
+            models.Index(fields=['email']),
+            models.Index(fields=['user_id']),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Banned: {self.username}"
     
     
 class Follow(models.Model):

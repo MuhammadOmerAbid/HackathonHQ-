@@ -145,9 +145,6 @@ export default function OrganizerUsersPage() {
       if (action === "suspend") {
         payload.duration_days = durationDays;
       }
-      if (action === "ban" && durationDays) {
-        payload.duration_days = durationDays;
-      }
       const res = await axios.post(`/users/${moderationTarget.id}/${action}/`, payload);
       setMessage({ type: "success", text: res.data?.success || `User ${action}ed successfully.` });
       setModerationOpen(false);

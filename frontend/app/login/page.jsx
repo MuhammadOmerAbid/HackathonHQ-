@@ -57,10 +57,43 @@ function LoginContent() {
       router.push(redirectUrl);
 
     } catch (err) {
-      console.error(err);
+      const status = err.response?.status;
+      if (!(status === 400 || status === 401)) {
+        console.error(err);
+      }
+      const data = err.response?.data || {};
+      const detail = typeof data.detail === "string" ? data.detail : "";
+      const code = data.code;
+      const usernameErrors = Array.isArray(data.username) ? data.username : null;
+      const passwordErrors = Array.isArray(data.password) ? data.password : null;
+
+      let text = "Unable to sign in. Please try again.";
+      if (usernameErrors?.length) {
+        text = `Username: ${usernameErrors[0]}`;
+      } else if (passwordErrors?.length) {
+        text = `Password: ${passwordErrors[0]}`;
+      } else if (code === "user_not_found") {
+        text = "Username not found.";
+      } else if (code === "user_inactive") {
+        text = "Your account is inactive. Please contact support.";
+      } else if (code === "user_suspended" || code === "user_banned") {
+        // Modal handles the full details; keep login message simple.
+        text = "Your account is currently restricted.";
+      } else if (status === 400) {
+        text = detail || "Please check your username and password.";
+      } else if (status === 401) {
+        text = "Incorrect username or password.";
+      } else if (status === 403) {
+        text = detail || "You do not have access to sign in.";
+      } else if (!err.response) {
+        text = "Network error. Please check your connection and try again.";
+      } else if (detail) {
+        text = detail;
+      }
+
       setMessage({
         type: "error",
-        text: err.response?.data?.message || err.response?.data?.detail || "Invalid credentials. Please try again."
+        text
       });
     } finally {
       setIsLoading(false);
